@@ -9,9 +9,9 @@
 #ifndef RUN_THREAD_H
 #define RUN_THREAD_H
 
-struct NinjamPlugin;
-
 namespace ninjam {
+
+struct NinjamPlugin;
 
 /**
  * Start the Run thread.

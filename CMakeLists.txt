@@ -96,6 +96,13 @@ add_library(ninjam-threading STATIC
 target_include_directories(ninjam-threading PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(ninjam-threading PUBLIC njclient clap)
 
+# UI library
+add_library(ninjam-ui STATIC
+    src/ui/ui_main.cpp
+)
+target_include_directories(ninjam-ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(ninjam-ui PUBLIC njclient imgui clap)
+
 # Main plugin
 add_library(ninjam-clap MODULE
     src/plugin/clap_entry.cpp
@@ -105,9 +112,11 @@ target_include_directories(ninjam-clap PRIVATE
     src/third_party
 )
 
-# Platform-specific GUI sources (placeholder)
+# Platform-specific GUI sources
 if(APPLE)
-    # target_sources(ninjam-clap PRIVATE src/platform/gui_macos.mm)
+    target_sources(ninjam-clap PRIVATE src/platform/gui_macos.mm)
+elseif(WIN32)
+    target_sources(ninjam-clap PRIVATE src/platform/gui_win32.cpp)
 endif()
 
 target_link_libraries(ninjam-clap PRIVATE
@@ -115,6 +124,7 @@ target_link_libraries(ninjam-clap PRIVATE
     clap-helpers
     njclient
     ninjam-threading
+    ninjam-ui
     imgui
 )
 
@@ -130,6 +140,11 @@ if(APPLE)
     set_target_properties(ninjam-clap PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/resources/Info.plist.in
+    )
+    # Set bundle bit so Finder shows it as a single file
+    add_custom_command(TARGET ninjam-clap POST_BUILD
+        COMMAND SetFile -a B "$<TARGET_BUNDLE_DIR:ninjam-clap>"
+        COMMENT "Setting bundle bit on NINJAM.clap"
     )
 endif()
 

@@ -23,10 +23,10 @@
 
 // Forward declarations
 class NJClient;
-struct GuiContext;
 
 namespace ninjam {
 
+struct GuiContext;
 
 /**
  * Main plugin instance structure.

@@ -30,6 +30,7 @@ static clap_process_status plugin_process(const clap_plugin_t* plugin,
                                           const clap_process_t* process);
 static const void* plugin_get_extension(const clap_plugin_t* plugin, const char* id);
 static void plugin_on_main_thread(const clap_plugin_t* plugin);
+static void gui_destroy(const clap_plugin_t* clap_plugin);
 
 //------------------------------------------------------------------------------
 // Plugin Descriptor
@@ -130,6 +131,10 @@ static void plugin_destroy(const clap_plugin_t* clap_plugin) {
     // Ensure teardown even if host skips deactivate()
     if (plugin->client) {
         plugin_deactivate(clap_plugin);
+    }
+
+    if (plugin->gui_created || plugin->gui_context) {
+        gui_destroy(clap_plugin);
     }
 
     // Clear sensitive data
@@ -685,6 +690,190 @@ static const clap_plugin_state_t s_state = {
 };
 
 //------------------------------------------------------------------------------
+// GUI Extension
+//------------------------------------------------------------------------------
+
+#include "platform/gui_context.h"
+
+static bool gui_is_api_supported(const clap_plugin_t* plugin,
+                                 const char* api,
+                                 bool is_floating) {
+#ifdef _WIN32
+    return strcmp(api, CLAP_WINDOW_API_WIN32) == 0 && !is_floating;
+#elif __APPLE__
+    return strcmp(api, CLAP_WINDOW_API_COCOA) == 0 && !is_floating;
+#else
+    return false;
+#endif
+}
+
+static bool gui_get_preferred_api(const clap_plugin_t* plugin,
+                                  const char** api,
+                                  bool* is_floating) {
+#ifdef _WIN32
+    *api = CLAP_WINDOW_API_WIN32;
+#elif __APPLE__
+    *api = CLAP_WINDOW_API_COCOA;
+#endif
+    *is_floating = false;
+    return true;
+}
+
+static bool gui_create(const clap_plugin_t* clap_plugin,
+                       const char* api,
+                       bool is_floating) {
+    auto* plugin = get_plugin(clap_plugin);
+
+    if (plugin->gui_created) return true;
+
+#ifdef _WIN32
+    if (strcmp(api, CLAP_WINDOW_API_WIN32) != 0) return false;
+    plugin->gui_context = create_gui_context_win32(plugin);
+#elif __APPLE__
+    if (strcmp(api, CLAP_WINDOW_API_COCOA) != 0) return false;
+    plugin->gui_context = create_gui_context_macos(plugin);
+#else
+    return false;
+#endif
+
+    if (!plugin->gui_context) return false;
+
+    plugin->gui_created = true;
+    return true;
+}
+
+static void gui_destroy(const clap_plugin_t* clap_plugin) {
+    auto* plugin = get_plugin(clap_plugin);
+
+    if (plugin->gui_context) {
+        delete plugin->gui_context;
+        plugin->gui_context = nullptr;
+    }
+
+    plugin->gui_created = false;
+    plugin->gui_visible = false;
+}
+
+static bool gui_set_scale(const clap_plugin_t* clap_plugin, double scale) {
+    auto* plugin = get_plugin(clap_plugin);
+
+    if (plugin->gui_context) {
+        plugin->gui_context->set_scale(scale);
+    }
+    return true;
+}
+
+static bool gui_get_size(const clap_plugin_t* clap_plugin,
+                         uint32_t* width,
+                         uint32_t* height) {
+    auto* plugin = get_plugin(clap_plugin);
+
+    *width = plugin->gui_width;
+    *height = plugin->gui_height;
+    return true;
+}
+
+static bool gui_can_resize(const clap_plugin_t* plugin) {
+    return true;
+}
+
+static bool gui_get_resize_hints(const clap_plugin_t* plugin,
+                                 clap_gui_resize_hints_t* hints) {
+    hints->can_resize_horizontally = true;
+    hints->can_resize_vertically = true;
+    hints->preserve_aspect_ratio = false;
+    hints->aspect_ratio_width = 0;
+    hints->aspect_ratio_height = 0;
+    return true;
+}
+
+static bool gui_adjust_size(const clap_plugin_t* plugin,
+                            uint32_t* width,
+                            uint32_t* height) {
+    // Enforce minimum size
+    if (*width < 400) *width = 400;
+    if (*height < 300) *height = 300;
+    return true;
+}
+
+static bool gui_set_size(const clap_plugin_t* clap_plugin,
+                         uint32_t width,
+                         uint32_t height) {
+    auto* plugin = get_plugin(clap_plugin);
+
+    plugin->gui_width = width;
+    plugin->gui_height = height;
+
+    if (plugin->gui_context) {
+        plugin->gui_context->set_size(width, height);
+    }
+
+    return true;
+}
+
+static bool gui_set_parent(const clap_plugin_t* clap_plugin,
+                           const clap_window_t* window) {
+    auto* plugin = get_plugin(clap_plugin);
+
+    if (!plugin->gui_context) return false;
+
+#ifdef _WIN32
+    return plugin->gui_context->set_parent(window->win32);
+#elif __APPLE__
+    return plugin->gui_context->set_parent(window->cocoa);
+#else
+    return false;
+#endif
+}
+
+static bool gui_set_transient(const clap_plugin_t* plugin,
+                              const clap_window_t* window) {
+    return false;  // Not supported for embedded GUI
+}
+
+static void gui_suggest_title(const clap_plugin_t* plugin, const char* title) {
+    // Ignored for embedded GUI
+}
+
+static bool gui_show(const clap_plugin_t* clap_plugin) {
+    auto* plugin = get_plugin(clap_plugin);
+
+    if (!plugin->gui_context) return false;
+
+    plugin->gui_context->show();
+    plugin->gui_visible = true;
+    return true;
+}
+
+static bool gui_hide(const clap_plugin_t* clap_plugin) {
+    auto* plugin = get_plugin(clap_plugin);
+
+    if (!plugin->gui_context) return false;
+
+    plugin->gui_context->hide();
+    plugin->gui_visible = false;
+    return true;
+}
+
+static const clap_plugin_gui_t s_gui = {
+    .is_api_supported = gui_is_api_supported,
+    .get_preferred_api = gui_get_preferred_api,
+    .create = gui_create,
+    .destroy = gui_destroy,
+    .set_scale = gui_set_scale,
+    .get_size = gui_get_size,
+    .can_resize = gui_can_resize,
+    .get_resize_hints = gui_get_resize_hints,
+    .adjust_size = gui_adjust_size,
+    .set_size = gui_set_size,
+    .set_parent = gui_set_parent,
+    .set_transient = gui_set_transient,
+    .suggest_title = gui_suggest_title,
+    .show = gui_show,
+    .hide = gui_hide
+};
+
+//------------------------------------------------------------------------------
 // Extension Query
 //------------------------------------------------------------------------------
 
@@ -693,7 +882,7 @@ static const void* plugin_get_extension(const clap_plugin_t* plugin,
     if (strcmp(id, CLAP_EXT_AUDIO_PORTS) == 0) return &s_audio_ports;
     if (strcmp(id, CLAP_EXT_PARAMS) == 0) return &s_params;
     if (strcmp(id, CLAP_EXT_STATE) == 0) return &s_state;
-    // GUI extension will be added in Phase 3
+    if (strcmp(id, CLAP_EXT_GUI) == 0) return &s_gui;
     return nullptr;
 }
 

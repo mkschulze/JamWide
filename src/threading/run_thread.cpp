@@ -27,7 +27,17 @@ void chat_callback(void* user_data, NJClient* client, const char** parms, int np
     event.type = parms[0] ? parms[0] : "";
     event.user = (nparms > 1 && parms[1]) ? parms[1] : "";
     event.text = (nparms > 2 && parms[2]) ? parms[2] : "";
+
+    const bool is_topic = (event.type == "TOPIC");
+    const std::string topic_text = event.text;
+
     plugin->ui_queue.try_push(std::move(event));
+
+    if (is_topic) {
+        TopicChangedEvent topic_event;
+        topic_event.topic = topic_text;
+        plugin->ui_queue.try_push(std::move(topic_event));
+    }
 }
 
 int license_callback(void* user_data, const char* license_text) {
@@ -76,7 +86,14 @@ void setup_callbacks(NinjamPlugin* plugin) {
  * Continuously calls NJClient::Run() while plugin is active.
  */
 void run_thread_func(NinjamPlugin* plugin) {
+    int last_status = NJClient::NJC_STATUS_DISCONNECTED;
+
     while (!plugin->shutdown.load(std::memory_order_acquire)) {
+        bool status_changed = false;
+        int current_status = last_status;
+        std::string error_msg;
+        bool user_info_changed = false;
+
         // Always call Run() regardless of connection state.
         // This allows Run() to process connection attempts and state changes.
         {
@@ -90,7 +107,21 @@ void run_thread_func(NinjamPlugin* plugin) {
                 }
             }
 
-            if (plugin->client->GetStatus() == NJClient::NJC_STATUS_OK) {
+            current_status = plugin->client->GetStatus();
+            if (current_status != last_status) {
+                status_changed = true;
+                last_status = current_status;
+                const char* err = plugin->client->GetErrorStr();
+                if (err) {
+                    error_msg = err;
+                }
+            }
+
+            if (plugin->client->HasUserInfoChanged()) {
+                user_info_changed = true;
+            }
+
+            if (current_status == NJClient::NJC_STATUS_OK) {
                 int pos = 0;
                 int len = 0;
                 plugin->client->GetPosition(&pos, &len);
@@ -109,6 +140,17 @@ void run_thread_func(NinjamPlugin* plugin) {
                 plugin->ui_snapshot.interval_length.store(len, std::memory_order_relaxed);
                 plugin->ui_snapshot.beat_position.store(beat_pos, std::memory_order_relaxed);
             }
+        }
+
+        if (status_changed) {
+            StatusChangedEvent event;
+            event.status = current_status;
+            event.error_msg = error_msg;
+            plugin->ui_queue.try_push(std::move(event));
+        }
+
+        if (user_info_changed) {
+            plugin->ui_queue.try_push(UserInfoChangedEvent{});
         }
         
         // Adaptive sleep based on connection state

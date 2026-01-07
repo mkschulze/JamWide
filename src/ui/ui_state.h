@@ -29,6 +29,7 @@ struct UiState {
     char username_input[64] = "";
     char password_input[64] = "";
     std::string connection_error;
+    std::string server_topic;
     bool connecting = false;
 
     // Status

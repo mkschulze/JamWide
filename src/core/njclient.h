@@ -67,6 +67,8 @@
 #include <stdio.h>
 #include <time.h>
 #include <atomic>
+#include <string>
+#include <vector>
 #include "../wdl/wdlstring.h"
 #include "../wdl/ptrlist.h"
 #include "../wdl/jnetlib/jnetlib.h"
@@ -153,9 +155,29 @@ public:
   unsigned int GetSessionPosition(); // returns milliseconds
 
   int HasUserInfoChanged() { if (m_userinfochange) { m_userinfochange=0; return 1; } return 0; }
-  int GetNumUsers() { return m_remoteusers.GetSize(); }
+  int GetNumUsers();
   const char *GetUserState(int idx, float *vol=0, float *pan=0, bool *mute=0);
   void SetUserState(int idx, bool setvol, float vol, bool setpan, float pan, bool setmute, bool mute);
+
+  struct RemoteChannelInfo {
+    std::string name;
+    int channel_index = -1;
+    bool subscribed = false;
+    float volume = 1.0f;
+    float pan = 0.0f;
+    bool mute = false;
+    bool solo = false;
+    float vu_left = 0.0f;
+    float vu_right = 0.0f;
+  };
+
+  struct RemoteUserInfo {
+    std::string name;
+    bool mute = false;
+    std::vector<RemoteChannelInfo> channels;
+  };
+
+  void GetRemoteUsersSnapshot(std::vector<RemoteUserInfo>& out);
 
   float GetUserChannelPeak(int useridx, int channelidx, int whichch=-1);
   double GetUserSessionPos(int useridx, time_t *lastupdatetime, double *maxlen);

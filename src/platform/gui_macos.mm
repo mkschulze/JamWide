@@ -14,6 +14,8 @@
 #import <Metal/Metal.h>
 #import <MetalKit/MetalKit.h>
 
+#include <memory>
+
 #include "imgui.h"
 #include "imgui_impl_osx.h"
 #include "imgui_impl_metal.h"
@@ -24,20 +26,35 @@ using namespace ninjam;
 // NinjamView - MTKView subclass for Metal rendering
 //------------------------------------------------------------------------------
 
-@interface NinjamView : MTKView
-@property (nonatomic, assign) NinjamPlugin* plugin;
+@interface NinjamView : MTKView {
+@public
+    std::shared_ptr<NinjamPlugin> plugin_;
+}
 @property (nonatomic, strong) id<MTLCommandQueue> commandQueue;
 @property (nonatomic, assign) ImGuiContext* imguiContext;
+- (instancetype)initWithFrame:(NSRect)frame
+                        plugin:(std::shared_ptr<NinjamPlugin>)plugin;
+- (void)clearPlugin;
 @end
 
 @implementation NinjamView
 
-- (instancetype)initWithFrame:(NSRect)frame plugin:(NinjamPlugin*)plugin {
+- (NSView*)findTextInputView {
+    for (NSView* subview in self.subviews) {
+        if ([subview conformsToProtocol:@protocol(NSTextInputClient)]) {
+            return subview;
+        }
+    }
+    return nil;
+}
+
+- (instancetype)initWithFrame:(NSRect)frame
+                        plugin:(std::shared_ptr<NinjamPlugin>)plugin {
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     self = [super initWithFrame:frame device:device];
 
     if (self) {
-        _plugin = plugin;
+        plugin_ = std::move(plugin);
         _commandQueue = [device newCommandQueue];
 
         self.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
@@ -64,6 +81,10 @@ using namespace ninjam;
     }
 
     return self;
+}
+
+- (void)clearPlugin {
+    plugin_.reset();
 }
 
 - (void)dealloc {
@@ -105,13 +126,25 @@ using namespace ninjam;
 
 - (void)drawRect:(NSRect)dirtyRect {
     @autoreleasepool {
-        if (_imguiContext) {
-            ImGui::SetCurrentContext(_imguiContext);
+        // Guard: Must have valid ImGui context and plugin
+        if (!_imguiContext || !plugin_) {
+            fprintf(stderr, "[NinjamView] drawRect: early return - context=%p plugin=%p\n",
+                    (void*)_imguiContext, (void*)plugin_.get());
+            return;
+        }
+        ImGui::SetCurrentContext(_imguiContext);
+        
+        // Verify context was set
+        ImGuiContext* ctx = ImGui::GetCurrentContext();
+        if (!ctx) {
+            fprintf(stderr, "[NinjamView] drawRect: GetCurrentContext returned NULL!\n");
+            return;
         }
 
         id<MTLCommandBuffer> commandBuffer = [_commandQueue commandBuffer];
+        if (!commandBuffer) return;
+        
         MTLRenderPassDescriptor* rpd = self.currentRenderPassDescriptor;
-
         if (rpd == nil) return;
 
         // Start ImGui frame
@@ -120,13 +153,17 @@ using namespace ninjam;
         ImGui::NewFrame();
 
         // Render UI
-        ui_render_frame(_plugin);
+        ui_render_frame(plugin_.get());
 
         // Render ImGui
         ImGui::Render();
 
         id<MTLRenderCommandEncoder> encoder =
             [commandBuffer renderCommandEncoderWithDescriptor:rpd];
+        if (!encoder) {
+            [commandBuffer commit];
+            return;
+        }
 
         ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(),
                                         commandBuffer, encoder);
@@ -141,9 +178,45 @@ using namespace ninjam;
     return YES;
 }
 
-// Note: Modern ImGui OSX backend (1.87+) handles input via the responder chain.
-// The ImGui_ImplOSX_NewFrame() call picks up keyboard/mouse state automatically.
-// No explicit event forwarding is needed.
+- (BOOL)canBecomeKeyView {
+    return YES;
+}
+
+- (BOOL)acceptsFirstMouse:(NSEvent*)event {
+    return YES;
+}
+
+- (BOOL)becomeFirstResponder {
+    NSView* input_view = [self findTextInputView];
+    if (input_view && self.window) {
+        [self.window makeFirstResponder:input_view];
+        return YES;
+    }
+    return [super becomeFirstResponder];
+}
+
+- (void)mouseDown:(NSEvent*)event {
+    NSView* input_view = [self findTextInputView];
+    if (input_view && self.window) {
+        [self.window makeFirstResponder:input_view];
+    }
+    [super mouseDown:event];
+}
+
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+
+    if (!self.window) {
+        return;
+    }
+
+    // ImGui's OSX backend installs a hidden NSTextInputClient subview.
+    // Make sure it becomes first responder so text input works.
+    NSView* input_view = [self findTextInputView];
+    if (input_view) {
+        [self.window makeFirstResponder:input_view];
+    }
+}
 
 @end
 
@@ -155,14 +228,16 @@ namespace ninjam {
 
 class GuiContextMacOS : public GuiContext {
 public:
-    explicit GuiContextMacOS(NinjamPlugin* plugin)
+    explicit GuiContextMacOS(std::shared_ptr<NinjamPlugin> plugin)
         : view_(nil)
     {
-        plugin_ = plugin;
+        plugin_ = std::move(plugin);
     }
 
     ~GuiContextMacOS() override {
         if (view_) {
+            [view_ clearPlugin];
+            [view_ setPaused:YES];
             [view_ removeFromSuperview];
             view_ = nil;
         }
@@ -221,8 +296,8 @@ private:
     NinjamView* view_;
 };
 
-GuiContext* create_gui_context_macos(NinjamPlugin* plugin) {
-    return new GuiContextMacOS(plugin);
+GuiContext* create_gui_context_macos(std::shared_ptr<NinjamPlugin> plugin) {
+    return new GuiContextMacOS(std::move(plugin));
 }
 
 } // namespace ninjam

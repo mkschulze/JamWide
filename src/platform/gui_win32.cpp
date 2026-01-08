@@ -28,7 +28,7 @@ namespace ninjam {
 
 class GuiContextWin32 : public GuiContext {
 public:
-    explicit GuiContextWin32(NinjamPlugin* plugin)
+    explicit GuiContextWin32(std::shared_ptr<NinjamPlugin> plugin)
         : hwnd_(nullptr)
         , parent_hwnd_(nullptr)
         , device_(nullptr)
@@ -38,7 +38,7 @@ public:
         , timer_id_(0)
         , imgui_ctx_(nullptr)
     {
-        plugin_ = plugin;
+        plugin_ = std::move(plugin);
     }
 
     ~GuiContextWin32() override {
@@ -142,13 +142,18 @@ public:
             ImGui::SetCurrentContext(imgui_ctx_);
         }
 
+        auto plugin = plugin_;
+        if (!plugin) {
+            return;
+        }
+
         // Start ImGui frame
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
 
         // Render UI
-        ui_render_frame(plugin_);
+        ui_render_frame(plugin.get());
 
         // Render ImGui
         ImGui::Render();
@@ -329,8 +334,8 @@ private:
     }
 };
 
-GuiContext* create_gui_context_win32(NinjamPlugin* plugin) {
-    return new GuiContextWin32(plugin);
+GuiContext* create_gui_context_win32(std::shared_ptr<NinjamPlugin> plugin) {
+    return new GuiContextWin32(std::move(plugin));
 }
 
 } // namespace ninjam

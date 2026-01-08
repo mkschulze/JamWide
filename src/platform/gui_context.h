@@ -10,6 +10,7 @@
 #define GUI_CONTEXT_H
 
 #include <cstdint>
+#include <memory>
 
 namespace ninjam {
 
@@ -61,7 +62,7 @@ struct GuiContext {
     virtual void render() = 0;
 
 protected:
-    NinjamPlugin* plugin_ = nullptr;
+    std::shared_ptr<NinjamPlugin> plugin_;
     double scale_ = 1.0;
     uint32_t width_ = 600;
     uint32_t height_ = 400;
@@ -69,11 +70,11 @@ protected:
 
 // Platform-specific factory functions
 #ifdef _WIN32
-GuiContext* create_gui_context_win32(NinjamPlugin* plugin);
+GuiContext* create_gui_context_win32(std::shared_ptr<NinjamPlugin> plugin);
 #endif
 
 #ifdef __APPLE__
-GuiContext* create_gui_context_macos(NinjamPlugin* plugin);
+GuiContext* create_gui_context_macos(std::shared_ptr<NinjamPlugin> plugin);
 #endif
 
 } // namespace ninjam

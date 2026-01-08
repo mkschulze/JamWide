@@ -18,6 +18,7 @@
 
 #include "clap/clap.h"
 #include "threading/spsc_ring.h"
+#include "threading/ui_command.h"
 #include "threading/ui_event.h"
 #include "ui/ui_state.h"
 
@@ -51,6 +52,9 @@ struct NinjamPlugin {
     
     // UI event queue (Run → UI)
     SpscRing<UiEvent, 256> ui_queue;
+
+    // UI command queue (UI → Run)
+    SpscRing<UiCommand, 256> cmd_queue;
     
     // License dialog synchronization
     std::mutex license_mutex;

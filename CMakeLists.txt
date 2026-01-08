@@ -4,6 +4,12 @@ project(ninjam-clap VERSION 1.0.0 LANGUAGES C CXX)
 if(APPLE)
     enable_language(OBJC)
     enable_language(OBJCXX)
+    option(NINJAM_CLAP_UNIVERSAL "Build universal binary (arm64 + x86_64)" ON)
+    if(NINJAM_CLAP_UNIVERSAL)
+        if(NOT DEFINED CMAKE_OSX_ARCHITECTURES OR CMAKE_OSX_ARCHITECTURES STREQUAL "")
+            set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures" FORCE)
+        endif()
+    endif()
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -12,6 +18,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Options
 option(NINJAM_CLAP_BUILD_TESTS "Build tests" OFF)
+option(NINJAM_CLAP_DEV_BUILD "Enable development build with verbose logging" ON)
 
 # Submodules
 add_subdirectory(libs/clap EXCLUDE_FROM_ALL)
@@ -88,20 +95,41 @@ target_include_directories(njclient PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_link_libraries(njclient PUBLIC wdl vorbis vorbisenc ogg)
+if(NINJAM_CLAP_DEV_BUILD)
+    target_compile_definitions(njclient PRIVATE NINJAM_DEV_BUILD=1)
+endif()
 
 # Threading library
 add_library(ninjam-threading STATIC
     src/threading/run_thread.cpp
+    src/net/server_list.cpp
 )
-target_include_directories(ninjam-threading PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(ninjam-threading PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
 target_link_libraries(ninjam-threading PUBLIC njclient clap)
+if(NINJAM_CLAP_DEV_BUILD)
+    target_compile_definitions(ninjam-threading PRIVATE NINJAM_DEV_BUILD=1)
+endif()
 
 # UI library
 add_library(ninjam-ui STATIC
     src/ui/ui_main.cpp
+    src/ui/ui_status.cpp
+    src/ui/ui_connection.cpp
+    src/ui/ui_server_browser.cpp
+    src/ui/ui_local.cpp
+    src/ui/ui_master.cpp
+    src/ui/ui_remote.cpp
+    src/ui/ui_meters.cpp
+    src/ui/ui_util.cpp
 )
 target_include_directories(ninjam-ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(ninjam-ui PUBLIC njclient imgui clap)
+if(NINJAM_CLAP_DEV_BUILD)
+    target_compile_definitions(ninjam-ui PRIVATE NINJAM_DEV_BUILD=1)
+endif()
 
 # Main plugin
 add_library(ninjam-clap MODULE

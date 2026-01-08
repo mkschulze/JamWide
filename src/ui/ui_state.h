@@ -4,9 +4,11 @@
 #include <atomic>
 #include <string>
 #include <vector>
+#include "ui/server_list_types.h"
 
 struct RemoteChannel {
     std::string name;
+    int channel_index = -1;
     bool subscribed = true;
     float volume = 1.0f;
     float pan = 0.0f;
@@ -62,6 +64,12 @@ struct UiState {
     // License dialog
     bool show_license_dialog = false;
     std::string license_text;
+
+    // Public server list
+    char server_list_url[256] = "http://ninbot.com/serverlist";
+    std::vector<ServerListEntry> server_list;
+    bool server_list_loading = false;
+    std::string server_list_error;
 
     // Solo state
     bool any_solo_active = false;

@@ -71,20 +71,30 @@ Any DAW that supports CLAP plugins, including:
 
 ```bash
 # Clone the repository
-git clone --recursive https://github.com/yourusername/ninjam-clap.git
+git clone --recursive https://github.com/mkschulze/ninjam-clap.git
 cd ninjam-clap
 
 # Create build directory
 mkdir build && cd build
 
-# Configure (macOS)
-cmake .. -DCMAKE_BUILD_TYPE=Release
+# Configure (macOS) - Dev build with verbose logging
+cmake .. -DCMAKE_BUILD_TYPE=Release -DNINJAM_CLAP_DEV_BUILD=ON
+
+# Configure (macOS) - Production build with minimal logging  
+cmake .. -DCMAKE_BUILD_TYPE=Release -DNINJAM_CLAP_DEV_BUILD=OFF
 
 # Configure (Windows with Visual Studio)
 cmake .. -G "Visual Studio 17 2022" -A x64
 
 # Build
 cmake --build . --config Release
+```
+
+### Quick Install (macOS)
+
+```bash
+# Build and install to ~/Library/Audio/Plug-Ins/CLAP/
+./install.sh
 ```
 
 ### Output
@@ -126,24 +136,28 @@ Copy `NINJAM.clap` to one of:
 
 ## Project Status
 
-🚧 **In Active Development**
+🚧 **In Active Development** (Build r44+)
 
 ### Completed
 - [x] Core NJClient port (audio engine, networking)
 - [x] CLAP wrapper (audio processing, parameters, state)
 - [x] Platform GUI framework (macOS Metal, Windows D3D11)
-- [x] Basic UI panels
+- [x] Full UI panels (status, connection, local, master, remote users)
+- [x] Server browser with live server list from ninbot.com
+- [x] Command queue architecture for thread-safe UI→Network communication
+- [x] Connection to public NINJAM servers (ninbot.com, ninjamer.com, etc.)
+- [x] License agreement dialog
+- [x] Dev/Production build system with configurable logging
 
 ### In Progress
 - [ ] Multi-instance support improvements
-- [ ] Full remote user visualization
-- [ ] Local channel editing
+- [ ] End-to-end audio testing with other musicians
+- [ ] Per-user mixing controls refinement
 
 ### Planned
-- [ ] Built-in server browser
-- [ ] Per-user mixing controls
 - [ ] Chat integration
 - [ ] Linux support (X11/Wayland + OpenGL)
+- [ ] Windows testing and polish
 
 ## Architecture
 
@@ -153,10 +167,24 @@ ninjam-clap/
 │   ├── core/           # NJClient port (networking, audio decode/encode)
 │   ├── plugin/         # CLAP entry point and wrapper
 │   ├── platform/       # OS-specific GUI (Metal/D3D11 + ImGui)
-│   └── ui/             # ImGui UI panels
-├── external/           # Third-party dependencies
+│   ├── threading/      # Run thread, command queue, SPSC ring
+│   ├── net/            # Server list fetcher
+│   ├── ui/             # ImGui UI panels
+│   └── debug/          # Logging utilities
+├── wdl/                # WDL libraries (jnetlib, sha, etc.)
+├── libs/               # Third-party submodules
 └── CMakeLists.txt
 ```
+
+### Threading Model
+
+The plugin uses a command queue architecture for thread safety:
+
+- **UI Thread** - Renders ImGui, sends commands to run thread
+- **Run Thread** - Processes NJClient, handles network I/O
+- **Audio Thread** - Calls AudioProc() for sample processing
+
+Communication is lock-free via SPSC ring buffers.
 
 ## Contributing
 

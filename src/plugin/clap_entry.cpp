@@ -72,8 +72,23 @@ enum ParamId : clap_id {
 // Helpers
 //------------------------------------------------------------------------------
 
+struct PluginInstance {
+    std::shared_ptr<NinjamPlugin> plugin;
+};
+
+static PluginInstance* get_instance(const clap_plugin_t* plugin) {
+    return static_cast<PluginInstance*>(plugin->plugin_data);
+}
+
 static NinjamPlugin* get_plugin(const clap_plugin_t* plugin) {
-    return static_cast<NinjamPlugin*>(plugin->plugin_data);
+    auto* instance = get_instance(plugin);
+    return instance ? instance->plugin.get() : nullptr;
+}
+
+static std::shared_ptr<NinjamPlugin> get_plugin_shared(
+        const clap_plugin_t* plugin) {
+    auto* instance = get_instance(plugin);
+    return instance ? instance->plugin : nullptr;
 }
 
 static void process_param_events(NinjamPlugin* plugin,
@@ -115,6 +130,7 @@ static void process_param_events(NinjamPlugin* plugin,
 
 static bool plugin_init(const clap_plugin_t* clap_plugin) {
     auto* plugin = get_plugin(clap_plugin);
+    if (!plugin) return false;
 
     // Initialize UI state defaults
     snprintf(plugin->ui_state.server_input,
@@ -126,7 +142,18 @@ static bool plugin_init(const clap_plugin_t* clap_plugin) {
 }
 
 static void plugin_destroy(const clap_plugin_t* clap_plugin) {
-    auto* plugin = get_plugin(clap_plugin);
+    auto* instance = get_instance(clap_plugin);
+    if (!instance) {
+        delete clap_plugin;
+        return;
+    }
+
+    auto plugin = instance->plugin;
+    if (!plugin) {
+        delete instance;
+        delete clap_plugin;
+        return;
+    }
 
     // Ensure teardown even if host skips deactivate()
     if (plugin->client) {
@@ -142,7 +169,8 @@ static void plugin_destroy(const clap_plugin_t* clap_plugin) {
     memset(plugin->ui_state.password_input, 0,
            sizeof(plugin->ui_state.password_input));
 
-    delete plugin;
+    instance->plugin.reset();
+    delete instance;
     delete clap_plugin;
 }
 
@@ -151,30 +179,37 @@ static bool plugin_activate(const clap_plugin_t* clap_plugin,
                             uint32_t min_frames,
                             uint32_t max_frames) {
     auto* plugin = get_plugin(clap_plugin);
+    if (!plugin) return false;
 
     plugin->sample_rate = sample_rate;
     plugin->max_frames = max_frames;
 
     // Create NJClient instance
-    plugin->client = std::make_unique<NJClient>();
+    {
+        std::lock_guard<std::mutex> lock(plugin->state_mutex);
+        plugin->client = std::make_unique<NJClient>();
+    }
 
     // Start Run thread (which sets up callbacks)
-    run_thread_start(plugin);
+    auto plugin_shared = get_plugin_shared(clap_plugin);
+    if (!plugin_shared) return false;
+    run_thread_start(plugin, std::move(plugin_shared));
 
     return true;
 }
 
 static void plugin_deactivate(const clap_plugin_t* clap_plugin) {
     auto* plugin = get_plugin(clap_plugin);
-
-    if (!plugin->client) return;
+    if (!plugin) return;
 
     // Disconnect if connected
     {
         std::lock_guard<std::mutex> lock(plugin->state_mutex);
-        int status = plugin->client->GetStatus();
-        if (status >= 0 && status != NJClient::NJC_STATUS_DISCONNECTED) {
-            plugin->client->Disconnect();
+        if (plugin->client) {
+            int status = plugin->client->GetStatus();
+            if (status >= 0 && status != NJClient::NJC_STATUS_DISCONNECTED) {
+                plugin->client->Disconnect();
+            }
         }
     }
 
@@ -182,17 +217,22 @@ static void plugin_deactivate(const clap_plugin_t* clap_plugin) {
     run_thread_stop(plugin);
 
     // Destroy NJClient
-    plugin->client.reset();
+    {
+        std::lock_guard<std::mutex> lock(plugin->state_mutex);
+        plugin->client.reset();
+    }
 }
 
 static bool plugin_start_processing(const clap_plugin_t* clap_plugin) {
     auto* plugin = get_plugin(clap_plugin);
+    if (!plugin) return false;
     plugin->audio_active.store(true, std::memory_order_release);
     return true;
 }
 
 static void plugin_stop_processing(const clap_plugin_t* clap_plugin) {
     auto* plugin = get_plugin(clap_plugin);
+    if (!plugin) return;
     plugin->audio_active.store(false, std::memory_order_release);
 }
 
@@ -211,6 +251,7 @@ static void plugin_on_main_thread(const clap_plugin_t* clap_plugin) {
 static clap_process_status plugin_process(const clap_plugin_t* clap_plugin,
                                           const clap_process_t* process) {
     auto* plugin = get_plugin(clap_plugin);
+    if (!plugin) return CLAP_PROCESS_ERROR;
 
     // Handle parameter events
     process_param_events(plugin, process->in_events);
@@ -723,15 +764,18 @@ static bool gui_create(const clap_plugin_t* clap_plugin,
                        const char* api,
                        bool is_floating) {
     auto* plugin = get_plugin(clap_plugin);
+    if (!plugin) return false;
+    auto plugin_shared = get_plugin_shared(clap_plugin);
+    if (!plugin_shared) return false;
 
     if (plugin->gui_created) return true;
 
 #ifdef _WIN32
     if (strcmp(api, CLAP_WINDOW_API_WIN32) != 0) return false;
-    plugin->gui_context = create_gui_context_win32(plugin);
+    plugin->gui_context = create_gui_context_win32(plugin_shared);
 #elif __APPLE__
     if (strcmp(api, CLAP_WINDOW_API_COCOA) != 0) return false;
-    plugin->gui_context = create_gui_context_macos(plugin);
+    plugin->gui_context = create_gui_context_macos(plugin_shared);
 #else
     return false;
 #endif
@@ -744,6 +788,7 @@ static bool gui_create(const clap_plugin_t* clap_plugin,
 
 static void gui_destroy(const clap_plugin_t* clap_plugin) {
     auto* plugin = get_plugin(clap_plugin);
+    if (!plugin) return;
 
     if (plugin->gui_context) {
         delete plugin->gui_context;
@@ -756,6 +801,7 @@ static void gui_destroy(const clap_plugin_t* clap_plugin) {
 
 static bool gui_set_scale(const clap_plugin_t* clap_plugin, double scale) {
     auto* plugin = get_plugin(clap_plugin);
+    if (!plugin) return false;
 
     if (plugin->gui_context) {
         plugin->gui_context->set_scale(scale);
@@ -767,6 +813,7 @@ static bool gui_get_size(const clap_plugin_t* clap_plugin,
                          uint32_t* width,
                          uint32_t* height) {
     auto* plugin = get_plugin(clap_plugin);
+    if (!plugin) return false;
 
     *width = plugin->gui_width;
     *height = plugin->gui_height;
@@ -800,6 +847,7 @@ static bool gui_set_size(const clap_plugin_t* clap_plugin,
                          uint32_t width,
                          uint32_t height) {
     auto* plugin = get_plugin(clap_plugin);
+    if (!plugin) return false;
 
     plugin->gui_width = width;
     plugin->gui_height = height;
@@ -814,6 +862,7 @@ static bool gui_set_size(const clap_plugin_t* clap_plugin,
 static bool gui_set_parent(const clap_plugin_t* clap_plugin,
                            const clap_window_t* window) {
     auto* plugin = get_plugin(clap_plugin);
+    if (!plugin) return false;
 
     if (!plugin->gui_context) return false;
 
@@ -837,6 +886,7 @@ static void gui_suggest_title(const clap_plugin_t* plugin, const char* title) {
 
 static bool gui_show(const clap_plugin_t* clap_plugin) {
     auto* plugin = get_plugin(clap_plugin);
+    if (!plugin) return false;
 
     if (!plugin->gui_context) return false;
 
@@ -847,6 +897,7 @@ static bool gui_show(const clap_plugin_t* clap_plugin) {
 
 static bool gui_hide(const clap_plugin_t* clap_plugin) {
     auto* plugin = get_plugin(clap_plugin);
+    if (!plugin) return false;
 
     if (!plugin->gui_context) return false;
 
@@ -928,11 +979,13 @@ static const clap_plugin_t* factory_create_plugin(
 
     // Allocate plugin instance
     auto* clap_plugin = new clap_plugin_t(s_plugin_template);
-    auto* plugin = new NinjamPlugin();
+    auto* instance = new PluginInstance();
+    instance->plugin = std::make_shared<NinjamPlugin>();
 
+    auto* plugin = instance->plugin.get();
     plugin->clap_plugin = clap_plugin;
     plugin->host = host;
-    clap_plugin->plugin_data = plugin;
+    clap_plugin->plugin_data = instance;
 
     return clap_plugin;
 }

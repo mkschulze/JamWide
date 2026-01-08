@@ -11,6 +11,8 @@
 
 #include <string>
 #include <variant>
+#include <vector>
+#include "ui/server_list_types.h"
 
 namespace ninjam {
 
@@ -47,6 +49,14 @@ struct TopicChangedEvent {
 };
 
 /**
+ * Public server list update.
+ */
+struct ServerListEvent {
+    std::vector<ServerListEntry> servers;
+    std::string error;
+};
+
+/**
  * Variant type for all UI events.
  * 
  * Note: License handling uses a dedicated atomic slot (license_pending,
@@ -57,7 +67,8 @@ using UiEvent = std::variant<
     ChatMessageEvent,
     StatusChangedEvent,
     UserInfoChangedEvent,
-    TopicChangedEvent
+    TopicChangedEvent,
+    ServerListEvent
 >;
 
 } // namespace ninjam

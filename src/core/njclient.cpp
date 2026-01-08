@@ -624,7 +624,7 @@ void NJClient::_reinit()
   output_peaklevel[0]=output_peaklevel[1]=0.0;
 
   m_connection_keepalive=0;
-  m_status=-1;
+  m_status=1002; // NJC_STATUS_DISCONNECTED (internal code)
 
   m_in_auth=0;
 
@@ -712,8 +712,11 @@ NJClient::~NJClient()
   }
 
   int x;
-  for (x = 0; x < m_remoteusers.GetSize(); x ++) delete m_remoteusers.Get(x);
-  m_remoteusers.Empty();
+  {
+    WDL_MutexLock lock(&m_remotechannel_rd_mutex);
+    for (x = 0; x < m_remoteusers.GetSize(); x ++) delete m_remoteusers.Get(x);
+    m_remoteusers.Empty();
+  }
   for (x = 0; x < m_downloads.GetSize(); x ++) delete m_downloads.Get(x);
   m_downloads.Empty();
   for (x = 0; x < m_locchannels.GetSize(); x ++) delete m_locchannels.Get(x);
@@ -847,8 +850,11 @@ void NJClient::Disconnect()
   m_netcon=0;
 
   int x;
-  for (x=0;x<m_remoteusers.GetSize(); x++) delete m_remoteusers.Get(x);
-  m_remoteusers.Empty();
+  {
+    WDL_MutexLock lock(&m_remotechannel_rd_mutex);
+    for (x=0;x<m_remoteusers.GetSize(); x++) delete m_remoteusers.Get(x);
+    m_remoteusers.Empty();
+  }
   if (x) m_userinfochange=1; // if we removed users, notify parent
 
   for (x = 0; x < m_downloads.GetSize(); x ++) delete m_downloads.Get(x);
@@ -882,6 +888,7 @@ void NJClient::Disconnect()
 
 void NJClient::Connect(const char *host, const char *user, const char *pass)
 {
+  fprintf(stderr, "[NJClient] Connect called: host='%s' user='%s'\n", host ? host : "(null)", user ? user : "(null)");
   Disconnect();
 
   m_session_pos_ms=m_session_pos_samples=0;
@@ -900,6 +907,7 @@ void NJClient::Connect(const char *host, const char *user, const char *pass)
     port=atoi(++p);
     if (!port) port=NJ_PORT;
   }
+  fprintf(stderr, "[NJClient] Connecting to %s:%d\n", tmp, port);
   JNL_Connection *c=new JNL_Connection(JNL_CONNECTION_AUTODNS,65536,65536);
   c->connect(tmp,port);
   m_netcon = new Net_Connection;
@@ -909,6 +917,7 @@ void NJClient::Connect(const char *host, const char *user, const char *pass)
 
   // Update cached status for lock-free audio thread access
   cached_status.store(GetStatus(), std::memory_order_release);
+  fprintf(stderr, "[NJClient] Connection initiated, status=%d\n", GetStatus());
 }
 
 int NJClient::GetStatus()
@@ -1031,6 +1040,7 @@ int NJClient::Run() // nonzero if sleep ok
         if (m_in_auth)  m_status=1001;
         if (m_status > 0 && m_status < 1000) m_status=1002;
         if (m_status == 0) m_status=1000;
+        fprintf(stderr, "[NJClient] Connection failed, m_status=%d (1000=cant connect, 1001=auth fail, 1002=disconnected)\n", m_status);
         return return_with_status(1);
       }
     }
@@ -1061,15 +1071,46 @@ int NJClient::Run() // nonzero if sleep ok
 
 //              printf("Got keepalive of %d\n",m_connection_keepalive);
 
+              // Log auth state
+              {
+                FILE* lf = fopen("/tmp/ninjam-clap.log", "a");
+                if (lf) {
+                  fprintf(lf, "[NJClient] Auth challenge received\n");
+                  fprintf(lf, "[NJClient]   user='%s' pass_len=%d\n", m_user.Get(), (int)strlen(m_pass.Get()));
+                  fprintf(lf, "[NJClient]   license_agreement=%s\n", cha.license_agreement ? "yes" : "no");
+                  fprintf(lf, "[NJClient]   LicenseAgreementCallback=%p\n", (void*)LicenseAgreementCallback);
+                  fclose(lf);
+                }
+              }
+              
               if (cha.license_agreement)
               {
                 m_netcon->SetKeepAlive(45);
-                if (LicenseAgreementCallback && LicenseAgreementCallback(LicenseAgreement_User,cha.license_agreement))
+                int license_result = 0;
+                if (LicenseAgreementCallback) {
+                  license_result = LicenseAgreementCallback(LicenseAgreement_User,cha.license_agreement);
+                }
+                {
+                  FILE* lf = fopen("/tmp/ninjam-clap.log", "a");
+                  if (lf) {
+                    fprintf(lf, "[NJClient]   license callback returned: %d\n", license_result);
+                    fclose(lf);
+                  }
+                }
+                if (license_result)
                 {
                   repl.client_caps|=1;
                 }
               }
               m_netcon->SetKeepAlive(m_connection_keepalive);
+              
+              {
+                FILE* lf = fopen("/tmp/ninjam-clap.log", "a");
+                if (lf) {
+                  fprintf(lf, "[NJClient]   client_caps=%d (bit0=license_accepted)\n", repl.client_caps);
+                  fclose(lf);
+                }
+              }
 
               WDL_SHA1 tmp;
               tmp.add(m_user.Get(),strlen(m_user.Get()));
@@ -2567,8 +2608,17 @@ void NJClient::on_new_interval()
   //else printf("YAY\n");
 
 
+int NJClient::GetNumUsers()
+{
+  WDL_MutexLock lock(&m_users_cs);
+  WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
+  return m_remoteusers.GetSize();
+}
+
 const char *NJClient::GetUserState(int idx, float *vol, float *pan, bool *mute)
 {
+  WDL_MutexLock lock(&m_users_cs);
+  WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
   if (idx<0 || idx>=m_remoteusers.GetSize()) return NULL;
   RemoteUser *p=m_remoteusers.Get(idx);
   if (vol) *vol=p->volume;
@@ -2577,9 +2627,55 @@ const char *NJClient::GetUserState(int idx, float *vol, float *pan, bool *mute)
   return p->name.Get();
 }
 
+void NJClient::GetRemoteUsersSnapshot(std::vector<RemoteUserInfo>& out)
+{
+  WDL_MutexLock lock(&m_users_cs);
+  WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
+  out.clear();
+  const int num_users = m_remoteusers.GetSize();
+  if (num_users <= 0) return;
+
+  out.reserve(num_users);
+  for (int u = 0; u < num_users; ++u)
+  {
+    RemoteUser *user = m_remoteusers.Get(u);
+    if (!user) continue;
+
+    RemoteUserInfo info;
+    info.name = user->name.Get();
+    info.mute = user->muted;
+
+    const int present_mask = user->chanpresentmask;
+    if (present_mask)
+    {
+      for (int ch = 0; ch < MAX_USER_CHANNELS; ++ch)
+      {
+        if (!(present_mask & (1 << ch))) continue;
+        RemoteUser_Channel *chan = user->channels + ch;
+
+        RemoteChannelInfo ch_info;
+        ch_info.channel_index = ch;
+        ch_info.name = chan->name.Get();
+        ch_info.subscribed = (user->submask & (1 << ch)) != 0;
+        ch_info.volume = chan->volume;
+        ch_info.pan = chan->pan;
+        ch_info.mute = (user->mutedmask & (1 << ch)) != 0;
+        ch_info.solo = (user->solomask & (1 << ch)) != 0;
+        ch_info.vu_left = static_cast<float>(chan->decode_peak_vol[0]);
+        ch_info.vu_right = static_cast<float>(chan->decode_peak_vol[1]);
+
+        info.channels.push_back(std::move(ch_info));
+      }
+    }
+
+    out.push_back(std::move(info));
+  }
+}
+
 void NJClient::SetUserState(int idx, bool setvol, float vol, bool setpan, float pan, bool setmute, bool mute)
 {
-  WDL_MutexLock lock(&m_remotechannel_rd_mutex);
+  WDL_MutexLock lock(&m_users_cs);
+  WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
   if (idx<0 || idx>=m_remoteusers.GetSize()) return;
   RemoteUser *p=m_remoteusers.Get(idx);
   if (setvol) p->volume=vol;
@@ -2589,7 +2685,8 @@ void NJClient::SetUserState(int idx, bool setvol, float vol, bool setpan, float 
 
 int NJClient::EnumUserChannels(int useridx, int i)
 {
-  WDL_MutexLock lock(&m_remotechannel_rd_mutex);
+  WDL_MutexLock lock(&m_users_cs);
+  WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
   if (useridx<0 || useridx>=m_remoteusers.GetSize()||i<0||i>=MAX_USER_CHANNELS) return -1;
   RemoteUser *user=m_remoteusers.Get(useridx);
 
@@ -2603,7 +2700,8 @@ int NJClient::EnumUserChannels(int useridx, int i)
 
 const char *NJClient::GetUserChannelState(int useridx, int channelidx, bool *sub, float *vol, float *pan, bool *mute, bool *solo, int *outchannel, int *flags)
 {
-  WDL_MutexLock lock(&m_remotechannel_rd_mutex);
+  WDL_MutexLock lock(&m_users_cs);
+  WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
   if (useridx<0 || useridx>=m_remoteusers.GetSize()||channelidx<0||channelidx>=MAX_USER_CHANNELS) return NULL;
   RemoteUser_Channel *p=m_remoteusers.Get(useridx)->channels + channelidx;
   RemoteUser *user=m_remoteusers.Get(useridx);
@@ -2624,7 +2722,8 @@ const char *NJClient::GetUserChannelState(int useridx, int channelidx, bool *sub
 void NJClient::SetUserChannelState(int useridx, int channelidx,
                                    bool setsub, bool sub, bool setvol, float vol, bool setpan, float pan, bool setmute, bool mute, bool setsolo, bool solo, bool setoutch, int outchannel)
 {
-  WDL_MutexLock lock(&m_remotechannel_rd_mutex);
+  WDL_MutexLock lock(&m_users_cs);
+  WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
 
   if (useridx<0 || useridx>=m_remoteusers.GetSize()||channelidx<0||channelidx>=MAX_USER_CHANNELS) return;
   RemoteUser *user=m_remoteusers.Get(useridx);
@@ -2729,7 +2828,8 @@ double NJClient::GetUserSessionPos(int useridx, time_t *lastupdatetime, double *
 
 float NJClient::GetUserChannelPeak(int useridx, int channelidx, int whichch)
 {
-  WDL_MutexLock lock(&m_remotechannel_rd_mutex);
+  WDL_MutexLock lock(&m_users_cs);
+  WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
 
   if (useridx<0 || useridx>=m_remoteusers.GetSize()||channelidx<0||channelidx>=MAX_USER_CHANNELS) return 0.0f;
   RemoteUser_Channel *p=m_remoteusers.Get(useridx)->channels + channelidx;

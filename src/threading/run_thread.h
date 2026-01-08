@@ -9,6 +9,8 @@
 #ifndef RUN_THREAD_H
 #define RUN_THREAD_H
 
+#include <memory>
+
 namespace ninjam {
 
 struct NinjamPlugin;
@@ -19,7 +21,8 @@ struct NinjamPlugin;
  * 
  * @param plugin Plugin instance
  */
-void run_thread_start(NinjamPlugin* plugin);
+void run_thread_start(NinjamPlugin* plugin,
+                      std::shared_ptr<NinjamPlugin> keepalive);
 
 /**
  * Stop the Run thread.

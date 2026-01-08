@@ -97,6 +97,8 @@ class NJClient
 {
   friend class RemoteDownload;
 public:
+  static constexpr int kRemoteNameMax = 128;
+
   NJClient();
   ~NJClient();
 
@@ -160,7 +162,8 @@ public:
   void SetUserState(int idx, bool setvol, float vol, bool setpan, float pan, bool setmute, bool mute);
 
   struct RemoteChannelInfo {
-    std::string name;
+    char name[kRemoteNameMax + 1] = {};
+    int name_len = 0;
     int channel_index = -1;
     bool subscribed = false;
     float volume = 1.0f;
@@ -172,7 +175,8 @@ public:
   };
 
   struct RemoteUserInfo {
-    std::string name;
+    char name[kRemoteNameMax + 1] = {};
+    int name_len = 0;
     bool mute = false;
     std::vector<RemoteChannelInfo> channels;
   };
@@ -284,6 +288,7 @@ protected:
   int m_srate;
   int m_userinfochange;
   int m_issoloactive;
+  bool m_debug_logged_remote;
 
   unsigned int m_session_pos_ms,m_session_pos_samples; // samples just keeps track of any samples lost to precision errors
 

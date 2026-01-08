@@ -108,7 +108,7 @@ target_include_directories(ninjam-threading PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
-target_link_libraries(ninjam-threading PUBLIC njclient clap)
+target_link_libraries(ninjam-threading PUBLIC clap)
 if(NINJAM_CLAP_DEV_BUILD)
     target_compile_definitions(ninjam-threading PRIVATE NINJAM_DEV_BUILD=1)
 endif()
@@ -126,7 +126,7 @@ add_library(ninjam-ui STATIC
     src/ui/ui_util.cpp
 )
 target_include_directories(ninjam-ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(ninjam-ui PUBLIC njclient imgui clap)
+target_link_libraries(ninjam-ui PUBLIC imgui clap)
 if(NINJAM_CLAP_DEV_BUILD)
     target_compile_definitions(ninjam-ui PRIVATE NINJAM_DEV_BUILD=1)
 endif()

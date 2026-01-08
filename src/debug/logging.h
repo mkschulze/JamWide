@@ -11,6 +11,7 @@
 
 #include <cstdio>
 #include <cstdarg>
+#include <cstdlib>
 
 namespace ninjam {
 namespace logging {
@@ -18,7 +19,18 @@ namespace logging {
 inline FILE* get_log_file() {
     static FILE* f = nullptr;
     if (!f) {
-        f = fopen("/tmp/ninjam-clap.log", "a");
+        const char* paths[2] = { "/tmp/ninjam-clap.log", nullptr };
+        char home_path[512];
+        const char* home = std::getenv("HOME");
+        if (home && *home) {
+            std::snprintf(home_path, sizeof(home_path),
+                          "%s/Library/Logs/ninjam-clap.log", home);
+            paths[1] = home_path;
+        }
+        for (int i = 0; i < 2 && !f; ++i) {
+            if (!paths[i]) continue;
+            f = std::fopen(paths[i], "a");
+        }
         if (f) {
             setvbuf(f, nullptr, _IOLBF, 0);  // Line buffered
         }

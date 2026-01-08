@@ -14,14 +14,7 @@
 void ui_render_remote_channels(ninjam::NinjamPlugin* plugin) {
     if (!plugin) return;
 
-    // Make a local copy of remote_users under lock to avoid race with run thread
-    std::vector<RemoteUser> users_copy;
-    int status;
-    {
-        std::lock_guard<std::mutex> lock(plugin->state_mutex);
-        status = plugin->ui_state.status;
-        users_copy = plugin->ui_state.remote_users;
-    }
+    const int status = plugin->ui_state.status;
     
     if (!ImGui::CollapsingHeader("Remote Users", ImGuiTreeNodeFlags_DefaultOpen)) {
         return;
@@ -35,94 +28,129 @@ void ui_render_remote_channels(ninjam::NinjamPlugin* plugin) {
         return;
     }
 
-    if (users_copy.empty()) {
+    std::unique_lock<std::mutex> client_lock(plugin->client_mutex);
+    NJClient* client = plugin->client.get();
+    if (!client) {
+        ImGui::TextDisabled("Not connected");
+        ImGui::Unindent();
+        return;
+    }
+
+    const int num_users = client->GetNumUsers();
+    if (num_users <= 0) {
         ImGui::TextDisabled("No remote users connected");
         ImGui::Unindent();
         return;
     }
 
-    for (size_t u = 0; u < users_copy.size(); ++u) {
-        auto& user = users_copy[u];
-        ImGui::PushID(static_cast<int>(u));
+    for (int u = 0; u < num_users; ++u) {
+        float user_vol = 0.0f;
+        float user_pan = 0.0f;
+        bool user_mute = false;
+        const char* user_name = client->GetUserState(u, &user_vol, &user_pan, &user_mute);
+        const char* label = (user_name && *user_name) ? user_name : "User";
+
+        ImGui::PushID(u);
 
         const bool user_open = ImGui::TreeNodeEx(
-            user.name.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+            label, ImGuiTreeNodeFlags_DefaultOpen);
 
         ImGui::SameLine();
-        if (ImGui::Checkbox("M##user", &user.mute)) {
+        if (ImGui::Checkbox("M##user", &user_mute)) {
             ninjam::SetUserStateCommand cmd;
-            cmd.user_index = static_cast<int>(u);
+            cmd.user_index = u;
             cmd.set_mute = true;
-            cmd.mute = user.mute;
+            cmd.mute = user_mute;
             plugin->cmd_queue.try_push(std::move(cmd));
         }
 
         if (user_open) {
             ImGui::Indent();
 
-            for (size_t c = 0; c < user.channels.size(); ++c) {
-                auto& channel = user.channels[c];
-                ImGui::PushID(static_cast<int>(channel.channel_index));
+            for (int c = 0; ; ++c) {
+                const int channel_index = client->EnumUserChannels(u, c);
+                if (channel_index < 0) {
+                    break;
+                }
 
-                if (ImGui::Checkbox("##sub", &channel.subscribed)) {
+                bool subscribed = false;
+                float volume = 1.0f;
+                float pan = 0.0f;
+                bool mute = false;
+                bool solo = false;
+                int out_channel = 0;
+                int flags = 0;
+                const char* channel_name = client->GetUserChannelState(
+                    u, channel_index, &subscribed, &volume, &pan,
+                    &mute, &solo, &out_channel, &flags);
+                if (!channel_name) {
+                    continue;
+                }
+
+                const char* channel_label = (*channel_name) ? channel_name : "Channel";
+                ImGui::PushID(channel_index);
+
+                if (ImGui::Checkbox("##sub", &subscribed)) {
                     ninjam::SetUserChannelStateCommand cmd;
-                    cmd.user_index = static_cast<int>(u);
-                    cmd.channel_index = channel.channel_index;
+                    cmd.user_index = u;
+                    cmd.channel_index = channel_index;
                     cmd.set_sub = true;
-                    cmd.subscribed = channel.subscribed;
+                    cmd.subscribed = subscribed;
                     plugin->cmd_queue.try_push(std::move(cmd));
                 }
 
                 ImGui::SameLine();
-                ImGui::Text("%s", channel.name.c_str());
+                ImGui::Text("%s", channel_label);
 
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(120.0f);
-                if (ImGui::SliderFloat("##vol", &channel.volume,
+                if (ImGui::SliderFloat("##vol", &volume,
                                        0.0f, 2.0f, "%.2f")) {
                     ninjam::SetUserChannelStateCommand cmd;
-                    cmd.user_index = static_cast<int>(u);
-                    cmd.channel_index = channel.channel_index;
+                    cmd.user_index = u;
+                    cmd.channel_index = channel_index;
                     cmd.set_vol = true;
-                    cmd.volume = channel.volume;
+                    cmd.volume = volume;
                     plugin->cmd_queue.try_push(std::move(cmd));
                 }
 
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(80.0f);
-                if (ImGui::SliderFloat("##pan", &channel.pan,
+                if (ImGui::SliderFloat("##pan", &pan,
                                        -1.0f, 1.0f, "%.2f")) {
                     ninjam::SetUserChannelStateCommand cmd;
-                    cmd.user_index = static_cast<int>(u);
-                    cmd.channel_index = channel.channel_index;
+                    cmd.user_index = u;
+                    cmd.channel_index = channel_index;
                     cmd.set_pan = true;
-                    cmd.pan = channel.pan;
+                    cmd.pan = pan;
                     plugin->cmd_queue.try_push(std::move(cmd));
                 }
 
                 ImGui::SameLine();
-                if (ImGui::Checkbox("M##chan_mute", &channel.mute)) {
+                if (ImGui::Checkbox("M##chan_mute", &mute)) {
                     ninjam::SetUserChannelStateCommand cmd;
-                    cmd.user_index = static_cast<int>(u);
-                    cmd.channel_index = channel.channel_index;
+                    cmd.user_index = u;
+                    cmd.channel_index = channel_index;
                     cmd.set_mute = true;
-                    cmd.mute = channel.mute;
+                    cmd.mute = mute;
                     plugin->cmd_queue.try_push(std::move(cmd));
                 }
 
                 ImGui::SameLine();
-                if (ImGui::Checkbox("S##chan_solo", &channel.solo)) {
+                if (ImGui::Checkbox("S##chan_solo", &solo)) {
                     ninjam::SetUserChannelStateCommand cmd;
-                    cmd.user_index = static_cast<int>(u);
-                    cmd.channel_index = channel.channel_index;
+                    cmd.user_index = u;
+                    cmd.channel_index = channel_index;
                     cmd.set_solo = true;
-                    cmd.solo = channel.solo;
+                    cmd.solo = solo;
                     plugin->cmd_queue.try_push(std::move(cmd));
                     ui_update_solo_state(plugin);
                 }
 
                 ImGui::SameLine();
-                render_vu_meter("##chan_vu", channel.vu_left, channel.vu_right);
+                const float vu_left = client->GetUserChannelPeak(u, channel_index, 0);
+                const float vu_right = client->GetUserChannelPeak(u, channel_index, 1);
+                render_vu_meter("##chan_vu", vu_left, vu_right);
 
                 ImGui::PopID();
             }

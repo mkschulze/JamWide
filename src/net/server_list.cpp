@@ -41,6 +41,38 @@ const wdl_json_element* get_list_root(const wdl_json_element* root) {
     return nullptr;
 }
 
+int count_array_items(const wdl_json_element* elem) {
+    if (!elem || !elem->is_array()) {
+        return 0;
+    }
+    int count = 0;
+    while (elem->enum_item(count)) {
+        ++count;
+    }
+    return count;
+}
+
+int parse_user_count(const wdl_json_element* item) {
+    if (!item) return 0;
+
+    const char* count_value = item->get_string_by_name("user_count", true);
+    if (count_value && count_value[0]) {
+        return parse_int(count_value, 0);
+    }
+
+    const char* users_value = item->get_string_by_name("users", true);
+    if (users_value && users_value[0]) {
+        return parse_int(users_value, 0);
+    }
+
+    const wdl_json_element* users_elem = item->get_item_by_name("users");
+    if (users_elem && users_elem->is_array()) {
+        return count_array_items(users_elem);
+    }
+
+    return 0;
+}
+
 } // namespace
 
 ServerListFetcher::ServerListFetcher() = default;
@@ -157,8 +189,7 @@ bool ServerListFetcher::parse_response(const std::string& data,
             entry.port = parse_int(port_alt, 0);
         }
 
-        const char* users_value = item->get_string_by_name("users", true);
-        entry.users = parse_int(users_value, 0);
+        entry.users = parse_user_count(item);
 
         entry.topic = get_string_or_empty(item, "topic");
 

@@ -473,7 +473,9 @@ static unsigned char zero_guid[16];
 static void guidtostr(const unsigned char *guid, char *str)
 {
   int x;
-  for (x = 0; x < 16; x ++) sprintf(str+x*2,"%02x",guid[x]);
+  for (x = 0; x < 16; x ++) {
+    snprintf(str + x * 2, 3, "%02x", guid[x]);
+  }
 }
 static bool strtoguid(const char *str, unsigned char *guid)
 {
@@ -634,6 +636,7 @@ void NJClient::_reinit()
   m_beatinfo_updated=1;
 
   m_audio_enable=0;
+  m_debug_logged_remote=false;
 
   m_active_bpm=120;
   m_active_bpi=32;
@@ -713,7 +716,8 @@ NJClient::~NJClient()
 
   int x;
   {
-    WDL_MutexLock lock(&m_remotechannel_rd_mutex);
+    WDL_MutexLock lock_users(&m_users_cs);
+    WDL_MutexLock lock_channels(&m_remotechannel_rd_mutex);
     for (x = 0; x < m_remoteusers.GetSize(); x ++) delete m_remoteusers.Get(x);
     m_remoteusers.Empty();
   }
@@ -757,8 +761,15 @@ void NJClient::AudioProc(float **inbuf, int innch, float **outbuf, int outnch, i
   int x;
   for (x = 0; x < outnch; x ++) memset(outbuf[x],0,sizeof(float)*len);
 
+  int remote_user_count = 0;
+  if (!justmonitor)
+  {
+    WDL_MutexLock lock(&m_users_cs);
+    remote_user_count = m_remoteusers.GetSize();
+  }
+
   if (!m_audio_enable||justmonitor ||
-      (!m_max_localch && !m_remoteusers.GetSize()) // in a lobby, effectively
+      (!m_max_localch && remote_user_count == 0) // in a lobby, effectively
       )
   {
     process_samples(inbuf,innch,outbuf,outnch,len,srate,0,1,isPlaying,isSeek,cursessionpos);
@@ -846,12 +857,14 @@ void NJClient::Disconnect()
   m_host.Set("");
   m_user.Set("");
   m_pass.Set("");
+  m_debug_logged_remote=false;
   delete m_netcon;
   m_netcon=0;
 
   int x;
   {
-    WDL_MutexLock lock(&m_remotechannel_rd_mutex);
+    WDL_MutexLock lock_users(&m_users_cs);
+    WDL_MutexLock lock_channels(&m_remotechannel_rd_mutex);
     for (x=0;x<m_remoteusers.GetSize(); x++) delete m_remoteusers.Get(x);
     m_remoteusers.Empty();
   }
@@ -1230,12 +1243,12 @@ int NJClient::Run() // nonzero if sleep ok
                     }
 
                     theuser->channels[cid].name.Set(chn);
-                    theuser->chanpresentmask |= 1<<cid;
+                    theuser->chanpresentmask |= 1u<<cid;
 
 
                     if (config_autosubscribe)
                     {
-                      theuser->submask |= 1<<cid;
+                      theuser->submask |= 1u<<cid;
                       mpb_client_set_usermask su;
                       su.build_add_rec(un,theuser->submask);
                       m_netcon->Send(su.build());
@@ -1272,11 +1285,11 @@ int NJClient::Run() // nonzero if sleep ok
                       theuser->channels[cid].ClearSessionInfo();
 
                       theuser->channels[cid].name.Set("");
-                      theuser->chanpresentmask &= ~(1<<cid);
-                      theuser->submask &= ~(1<<cid);
+                      theuser->chanpresentmask &= ~(1u<<cid);
+                      theuser->submask &= ~(1u<<cid);
 
-                      int chksolo=theuser->solomask == (1<<cid);
-                      theuser->solomask &= ~(1<<cid);
+                      int chksolo=theuser->solomask == (1u<<cid);
+                      theuser->solomask &= ~(1u<<cid);
 
                       delete theuser->channels[cid].ds;
                       delete theuser->channels[cid].next_ds[0];
@@ -1314,6 +1327,7 @@ int NJClient::Run() // nonzero if sleep ok
             mpb_server_download_interval_begin dib;
             if (!dib.parse(msg) && dib.username)
             {
+              WDL_MutexLock lock(&m_users_cs);
               int x;
               RemoteUser *theuser;
               for (x = 0; x < m_remoteusers.GetSize() && strcmp((theuser=m_remoteusers.Get(x))->name.Get(),dib.username); x ++);
@@ -1324,11 +1338,9 @@ int NJClient::Run() // nonzero if sleep ok
                 {
                   if (!(theuser->channels[dib.chidx].flags&4) && !(theuser->channels[dib.chidx].flags&2))
                   {
-                    m_users_cs.Enter();
                     int useidx=!!theuser->channels[dib.chidx].next_ds[0];
                     DecodeState *tmp=theuser->channels[dib.chidx].next_ds[useidx];
                     theuser->channels[dib.chidx].next_ds[useidx]=0;
-                    m_users_cs.Leave();
                     delete tmp;
 //                    OutputDebugString("added silence to channel\n");
                   }
@@ -1351,11 +1363,9 @@ int NJClient::Run() // nonzero if sleep ok
                 {
 //                  OutputDebugString("added free-guid to channel\n");
                   DecodeState *tmp=start_decode(dib.guid, theuser->channels[dib.chidx].flags, 0, NULL);
-                  m_users_cs.Enter();
                   int useidx=!!theuser->channels[dib.chidx].next_ds[0];
                   DecodeState *t2=theuser->channels[dib.chidx].next_ds[useidx];
                   theuser->channels[dib.chidx].next_ds[useidx]=tmp;
-                  m_users_cs.Leave();
                   delete t2;
                 }
 
@@ -1414,12 +1424,13 @@ int NJClient::Run() // nonzero if sleep ok
               {
                 if (foo.parms[1] && foo.parms[2] && foo.parms[3] && foo.parms[4])
                 {
+                  WDL_MutexLock lock(&m_users_cs);
                   int x;
                   RemoteUser *theuser;
                   for (x = 0; x < m_remoteusers.GetSize() && strcmp((theuser=m_remoteusers.Get(x))->name.Get(),foo.parms[1]); x ++);
                   int chanidx=atoi(foo.parms[3]);
                   if (x < m_remoteusers.GetSize() && chanidx >= 0 && chanidx < MAX_USER_CHANNELS &&
-                      ((theuser->submask & theuser->chanpresentmask) & (1<<chanidx)) && // only update if subscribed
+                      ((theuser->submask & theuser->chanpresentmask) & (1u<<chanidx)) && // only update if subscribed
                       (theuser->channels[chanidx].flags&4))
                   {
                     unsigned char guid[16];
@@ -1999,6 +2010,21 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
   {
     // mix in all active (subscribed) channels
     m_users_cs.Enter();
+    if (!m_debug_logged_remote && m_remoteusers.GetSize() > 0)
+    {
+      m_debug_logged_remote = true;
+      RemoteUser *user = m_remoteusers.Get(0);
+      int mask = user ? user->chanpresentmask : 0;
+      int out_idx = user ? user->channels[0].out_chan_index : -1;
+      int flags = user ? user->channels[0].flags : 0;
+      FILE* lf = fopen("/tmp/ninjam-clap.log", "a");
+      if (lf)
+      {
+        fprintf(lf, "[NJClient][AudioProc] users=%d mask=0x%x out_idx=%d flags=%d\n",
+                m_remoteusers.GetSize(), mask, out_idx, flags);
+        fclose(lf);
+      }
+    }
     for (u = 0; u < m_remoteusers.GetSize(); u ++)
     {
       RemoteUser *user=m_remoteusers.Get(u);
@@ -2015,8 +2041,8 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
           else if (lpan>1.0)lpan=1.0;
 
           bool muteflag;
-          if (m_issoloactive) muteflag = !(user->solomask & (1<<ch));
-          else muteflag=(user->mutedmask & (1<<ch)) || user->muted;
+          if (m_issoloactive) muteflag = !(user->solomask & (1u<<ch));
+          else muteflag=(user->mutedmask & (1u<<ch)) || user->muted;
 
           mixInChannel(user,ch,muteflag,
             user->volume*user->channels[ch].volume,lpan,
@@ -2590,7 +2616,7 @@ void NJClient::on_new_interval()
         if (chan->ds) chan->ds->calcOverlap(&fade_state);
         delete chan->ds;
         chan->ds=0;
-        if ((user->submask & user->chanpresentmask) & (1<<ch)) chan->ds = chan->next_ds[0];
+        if ((user->submask & user->chanpresentmask) & (1u<<ch)) chan->ds = chan->next_ds[0];
         else delete chan->next_ds[0];
         chan->next_ds[0]=chan->next_ds[1]; // advance queue
         chan->next_ds[1]=0;
@@ -2629,11 +2655,13 @@ const char *NJClient::GetUserState(int idx, float *vol, float *pan, bool *mute)
 
 void NJClient::GetRemoteUsersSnapshot(std::vector<RemoteUserInfo>& out)
 {
-  WDL_MutexLock lock(&m_users_cs);
   WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
+  WDL_MutexLock lock_users(&m_users_cs);
   out.clear();
   const int num_users = m_remoteusers.GetSize();
   if (num_users <= 0) return;
+
+  const int kMaxNameLen = kRemoteNameMax;
 
   out.reserve(num_users);
   for (int u = 0; u < num_users; ++u)
@@ -2642,25 +2670,44 @@ void NJClient::GetRemoteUsersSnapshot(std::vector<RemoteUserInfo>& out)
     if (!user) continue;
 
     RemoteUserInfo info;
-    info.name = user->name.Get();
+    info.name[0] = '\0';
+    info.name_len = 0;
+    const char* user_name = user->name.Get();
+    const int user_name_len = user->name.GetLength();
+    if (user_name && user_name_len > 0) {
+      const int copy_len = user_name_len > kMaxNameLen ? kMaxNameLen : user_name_len;
+      memcpy(info.name, user_name, static_cast<size_t>(copy_len));
+      info.name[copy_len] = '\0';
+      info.name_len = copy_len;
+    }
     info.mute = user->muted;
 
-    const int present_mask = user->chanpresentmask;
+    const unsigned int present_mask =
+        static_cast<unsigned int>(user->chanpresentmask);
     if (present_mask)
     {
       for (int ch = 0; ch < MAX_USER_CHANNELS; ++ch)
       {
-        if (!(present_mask & (1 << ch))) continue;
+        if (!(present_mask & (1u << ch))) continue;
         RemoteUser_Channel *chan = user->channels + ch;
 
         RemoteChannelInfo ch_info;
+        ch_info.name[0] = '\0';
+        ch_info.name_len = 0;
         ch_info.channel_index = ch;
-        ch_info.name = chan->name.Get();
-        ch_info.subscribed = (user->submask & (1 << ch)) != 0;
+        const char* channel_name = chan->name.Get();
+        const int channel_name_len = chan->name.GetLength();
+        if (channel_name && channel_name_len > 0) {
+          const int copy_len = channel_name_len > kMaxNameLen ? kMaxNameLen : channel_name_len;
+          memcpy(ch_info.name, channel_name, static_cast<size_t>(copy_len));
+          ch_info.name[copy_len] = '\0';
+          ch_info.name_len = copy_len;
+        }
+        ch_info.subscribed = (user->submask & (1u << ch)) != 0;
         ch_info.volume = chan->volume;
         ch_info.pan = chan->pan;
-        ch_info.mute = (user->mutedmask & (1 << ch)) != 0;
-        ch_info.solo = (user->solomask & (1 << ch)) != 0;
+        ch_info.mute = (user->mutedmask & (1u << ch)) != 0;
+        ch_info.solo = (user->solomask & (1u << ch)) != 0;
         ch_info.vu_left = static_cast<float>(chan->decode_peak_vol[0]);
         ch_info.vu_right = static_cast<float>(chan->decode_peak_vol[1]);
 
@@ -2693,7 +2740,7 @@ int NJClient::EnumUserChannels(int useridx, int i)
   int x;
   for (x = 0; x < 32; x ++)
   {
-    if ((user->chanpresentmask & (1<<x)) && !i--) return x;
+    if ((user->chanpresentmask & (1u<<x)) && !i--) return x;
   }
   return -1;
 }
@@ -2705,13 +2752,13 @@ const char *NJClient::GetUserChannelState(int useridx, int channelidx, bool *sub
   if (useridx<0 || useridx>=m_remoteusers.GetSize()||channelidx<0||channelidx>=MAX_USER_CHANNELS) return NULL;
   RemoteUser_Channel *p=m_remoteusers.Get(useridx)->channels + channelidx;
   RemoteUser *user=m_remoteusers.Get(useridx);
-  if (!(user->chanpresentmask & (1<<channelidx))) return 0;
+  if (!(user->chanpresentmask & (1u<<channelidx))) return 0;
 
-  if (sub) *sub=!!(user->submask & (1<<channelidx));
+  if (sub) *sub=!!(user->submask & (1u<<channelidx));
   if (vol) *vol=p->volume;
   if (pan) *pan=p->pan;
-  if (mute) *mute=!!(user->mutedmask & (1<<channelidx));
-  if (solo) *solo=!!(user->solomask & (1<<channelidx));
+  if (mute) *mute=!!(user->mutedmask & (1u<<channelidx));
+  if (solo) *solo=!!(user->solomask & (1u<<channelidx));
   if (outchannel) *outchannel=p->out_chan_index;
   if (flags) *flags=p->flags;
 
@@ -2728,15 +2775,15 @@ void NJClient::SetUserChannelState(int useridx, int channelidx,
   if (useridx<0 || useridx>=m_remoteusers.GetSize()||channelidx<0||channelidx>=MAX_USER_CHANNELS) return;
   RemoteUser *user=m_remoteusers.Get(useridx);
   RemoteUser_Channel *p=user->channels + channelidx;
-  if (!(user->chanpresentmask & (1<<channelidx))) return;
+  if (!(user->chanpresentmask & (1u<<channelidx))) return;
 
-  if (setsub && !!(user->submask&(1<<channelidx)) != sub)
+  if (setsub && !!(user->submask&(1u<<channelidx)) != sub)
   {
     // toggle subscription
     if (!sub)
     {
       mpb_client_set_usermask su;
-      su.build_add_rec(user->name.Get(),(user->submask&=~(1<<channelidx)));
+      su.build_add_rec(user->name.Get(),(user->submask&=~(1u<<channelidx)));
       m_netcon->Send(su.build());
 
       DecodeState *tmp,*tmp2,*tmp3;
@@ -2756,7 +2803,7 @@ void NJClient::SetUserChannelState(int useridx, int channelidx,
     else
     {
       mpb_client_set_usermask su;
-      su.build_add_rec(user->name.Get(),(user->submask|=(1<<channelidx)));
+      su.build_add_rec(user->name.Get(),(user->submask|=(1u<<channelidx)));
       m_netcon->Send(su.build());
     }
 
@@ -2767,14 +2814,14 @@ void NJClient::SetUserChannelState(int useridx, int channelidx,
   if (setmute)
   {
     if (mute)
-      user->mutedmask |= (1<<channelidx);
+      user->mutedmask |= (1u<<channelidx);
     else
-      user->mutedmask &= ~(1<<channelidx);
+      user->mutedmask &= ~(1u<<channelidx);
   }
   if (setsolo)
   {
-    if (solo) user->solomask |= (1<<channelidx);
-    else user->solomask &= ~(1<<channelidx);
+    if (solo) user->solomask |= (1u<<channelidx);
+    else user->solomask &= ~(1u<<channelidx);
 
     if (user->solomask) m_issoloactive|=1;
     else
@@ -2834,7 +2881,7 @@ float NJClient::GetUserChannelPeak(int useridx, int channelidx, int whichch)
   if (useridx<0 || useridx>=m_remoteusers.GetSize()||channelidx<0||channelidx>=MAX_USER_CHANNELS) return 0.0f;
   RemoteUser_Channel *p=m_remoteusers.Get(useridx)->channels + channelidx;
   RemoteUser *user=m_remoteusers.Get(useridx);
-  if (!(user->chanpresentmask & (1<<channelidx))) return 0.0f;
+  if (!(user->chanpresentmask & (1u<<channelidx))) return 0.0f;
 
   if (whichch==0) return (float)p->decode_peak_vol[0];
   if (whichch==1) return (float)p->decode_peak_vol[1];
@@ -2844,6 +2891,7 @@ float NJClient::GetUserChannelPeak(int useridx, int channelidx, int whichch)
 
 float NJClient::GetLocalChannelPeak(int ch, int whichch)
 {
+  WDL_MutexLock lock(&m_locchan_cs);
   int x;
   for (x = 0; x < m_locchannels.GetSize() && m_locchannels.Get(x)->channel_idx!=ch; x ++);
   if (x == m_locchannels.GetSize()) return 0.0f;
@@ -3056,7 +3104,7 @@ void NJClient::SetWorkDir(char *path)
   {
     WDL_String tmp(m_workdir.Get());
     char buf[5];
-    sprintf(buf,"%x",a);
+    snprintf(buf, sizeof(buf), "%x", a);
     tmp.Append(buf);
 #ifdef _WIN32
     CreateDirectory(tmp.Get(),NULL);
@@ -3255,6 +3303,7 @@ void RemoteDownload::startPlaying(int force)
   if (force)
     // wait until we have config_play_prebuffer of data to start playing, or if config_play_prebuffer is 0, we are forced to play (download finished)
   {
+    WDL_MutexLock lock(&m_parent->m_users_cs);
     int x;
     RemoteUser *theuser;
     for (x = 0; x < m_parent->m_remoteusers.GetSize() && strcmp((theuser=m_parent->m_remoteusers.Get(x))->name.Get(),username.Get()); x ++);
@@ -3271,11 +3320,9 @@ void RemoteDownload::startPlaying(int force)
 //        OutputDebugString(tmp?"started new decde\n":"tried to start new decode\n");
 
         DecodeState *tmp2;
-        m_parent->m_users_cs.Enter();
         int useidx=!!theuser->channels[chidx].next_ds[0];
         tmp2=theuser->channels[chidx].next_ds[useidx];
         theuser->channels[chidx].next_ds[useidx]=tmp;
-        m_parent->m_users_cs.Leave();
         delete tmp2;
       }
     }

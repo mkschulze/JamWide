@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../../../.."
+		},
+		{
+			"path": "../../ninjam"
+		},
+		{
+			"path": ".."
+		}
+	],
+	"settings": {
+		"hide-files.files": []
+	}
+}

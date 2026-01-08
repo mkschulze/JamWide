@@ -15,6 +15,7 @@
 #include "ui_master.h"
 #include "ui_remote.h"
 #include "ui_server_browser.h"
+#include "debug/logging.h"
 #include "imgui.h"
 
 using namespace ninjam;
@@ -129,6 +130,7 @@ void ui_render_frame(NinjamPlugin* plugin) {
             ImGui::Separator();
 
             if (ImGui::Button("Accept", ImVec2(120, 0))) {
+                NLOG("[UI] License accepted\n");
                 plugin->license_response.store(1, std::memory_order_release);
                 plugin->license_cv.notify_one();
                 plugin->ui_state.show_license_dialog = false;
@@ -138,6 +140,7 @@ void ui_render_frame(NinjamPlugin* plugin) {
             ImGui::SameLine();
 
             if (ImGui::Button("Reject", ImVec2(120, 0))) {
+                NLOG("[UI] License rejected\n");
                 plugin->license_response.store(-1, std::memory_order_release);
                 plugin->license_cv.notify_one();
                 plugin->ui_state.show_license_dialog = false;

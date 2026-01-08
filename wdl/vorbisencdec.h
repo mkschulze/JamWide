@@ -85,8 +85,8 @@ public:
 
 #ifndef WDL_VORBIS_INTERFACE_ONLY
 
-#include "../WDL/queue.h"
-#include "../WDL/assocarray.h"
+#include "../wdl/queue.h"
+#include "../wdl/assocarray.h"
 
 class VorbisDecoder : public VorbisDecoderInterface
 {

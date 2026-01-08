@@ -43,8 +43,11 @@ struct NinjamPlugin {
     
     // =========== Threading Primitives ===========
     
-    // Main state mutex (protects NJClient API calls except AudioProc)
+    // Protects plugin/UI state (not NJClient calls).
     std::mutex state_mutex;
+
+    // Serializes all NJClient API calls except AudioProc.
+    std::mutex client_mutex;
     
     // Run thread
     std::thread run_thread;
@@ -68,6 +71,7 @@ struct NinjamPlugin {
     std::atomic<bool> audio_active{false};
     double sample_rate{48000.0};
     uint32_t max_frames{512};
+    bool serialize_audio_proc{false}; // Diagnostic: serialize AudioProc with client_mutex.
     
     // =========== Connection Settings ===========
     

@@ -5,10 +5,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <memory>
+#include <mutex>
 
 #include "ninjam_plugin.h"
 #include "core/njclient.h"
+#include "debug/logging.h"
 #include "threading/run_thread.h"
 #include "third_party/picojson.h"
 
@@ -137,6 +140,16 @@ static bool plugin_init(const clap_plugin_t* clap_plugin) {
              sizeof(plugin->ui_state.server_input), "%s", "ninbot.com");
     snprintf(plugin->ui_state.username_input,
              sizeof(plugin->ui_state.username_input), "%s", "anonymous");
+#ifdef NINJAM_DEV_BUILD
+    const char* serialize_env = std::getenv("NINJAM_CLAP_SERIALIZE_AUDIOPROC");
+    plugin->serialize_audio_proc = (serialize_env && *serialize_env &&
+                                    std::strcmp(serialize_env, "0") != 0);
+    if (plugin->serialize_audio_proc) {
+        NLOG("[Init] AudioProc serialization enabled (NINJAM_CLAP_SERIALIZE_AUDIOPROC)\n");
+    }
+#else
+    plugin->serialize_audio_proc = false;
+#endif
 
     return true;
 }
@@ -186,7 +199,7 @@ static bool plugin_activate(const clap_plugin_t* clap_plugin,
 
     // Create NJClient instance
     {
-        std::lock_guard<std::mutex> lock(plugin->state_mutex);
+        std::lock_guard<std::mutex> client_lock(plugin->client_mutex);
         plugin->client = std::make_unique<NJClient>();
     }
 
@@ -202,24 +215,16 @@ static void plugin_deactivate(const clap_plugin_t* clap_plugin) {
     auto* plugin = get_plugin(clap_plugin);
     if (!plugin) return;
 
-    // Disconnect if connected
-    {
-        std::lock_guard<std::mutex> lock(plugin->state_mutex);
-        if (plugin->client) {
-            int status = plugin->client->GetStatus();
-            if (status >= 0 && status != NJClient::NJC_STATUS_DISCONNECTED) {
-                plugin->client->Disconnect();
-            }
-        }
-    }
-
     // Stop Run thread
     run_thread_stop(plugin);
 
-    // Destroy NJClient
+    // Disconnect and destroy NJClient
     {
-        std::lock_guard<std::mutex> lock(plugin->state_mutex);
-        plugin->client.reset();
+        std::lock_guard<std::mutex> client_lock(plugin->client_mutex);
+        if (plugin->client) {
+            plugin->client->Disconnect();
+            plugin->client.reset();
+        }
     }
 }
 
@@ -287,26 +292,33 @@ static clap_process_status plugin_process(const clap_plugin_t* clap_plugin,
     }
 
     // Sync CLAP params to NJClient atomics
-    if (plugin->client) {
-        plugin->client->config_mastervolume.store(
+    std::unique_lock<std::mutex> client_lock;
+    NJClient* client = plugin->client.get();
+    if (plugin->serialize_audio_proc) {
+        client_lock = std::unique_lock<std::mutex>(plugin->client_mutex);
+        client = plugin->client.get();
+    }
+
+    if (client) {
+        client->config_mastervolume.store(
             plugin->param_master_volume.load(std::memory_order_relaxed),
             std::memory_order_relaxed);
-        plugin->client->config_mastermute.store(
+        client->config_mastermute.store(
             plugin->param_master_mute.load(std::memory_order_relaxed),
             std::memory_order_relaxed);
-        plugin->client->config_metronome.store(
+        client->config_metronome.store(
             plugin->param_metro_volume.load(std::memory_order_relaxed),
             std::memory_order_relaxed);
-        plugin->client->config_metronome_mute.store(
+        client->config_metronome_mute.store(
             plugin->param_metro_mute.load(std::memory_order_relaxed),
             std::memory_order_relaxed);
 
         // Check connection status (lock-free)
-        int status = plugin->client->cached_status.load(std::memory_order_acquire);
+        int status = client->cached_status.load(std::memory_order_acquire);
 
         if (status == NJClient::NJC_STATUS_OK) {
             bool just_monitor = !is_playing;
-            plugin->client->AudioProc(
+            client->AudioProc(
                 in, 2, out, 2,
                 static_cast<int>(frames),
                 static_cast<int>(plugin->sample_rate),
@@ -315,13 +327,13 @@ static clap_process_status plugin_process(const clap_plugin_t* clap_plugin,
 
             // Update VU snapshot for UI
             plugin->ui_snapshot.master_vu_left.store(
-                plugin->client->GetOutputPeak(0), std::memory_order_relaxed);
+                client->GetOutputPeak(0), std::memory_order_relaxed);
             plugin->ui_snapshot.master_vu_right.store(
-                plugin->client->GetOutputPeak(1), std::memory_order_relaxed);
+                client->GetOutputPeak(1), std::memory_order_relaxed);
             plugin->ui_snapshot.local_vu_left.store(
-                plugin->client->GetLocalChannelPeak(0, 0), std::memory_order_relaxed);
+                client->GetLocalChannelPeak(0, 0), std::memory_order_relaxed);
             plugin->ui_snapshot.local_vu_right.store(
-                plugin->client->GetLocalChannelPeak(0, 1), std::memory_order_relaxed);
+                client->GetLocalChannelPeak(0, 1), std::memory_order_relaxed);
 
             return CLAP_PROCESS_CONTINUE;
         }

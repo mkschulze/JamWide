@@ -248,6 +248,17 @@ void run_thread_func(std::shared_ptr<NinjamPlugin> plugin) {
                 error_msg = err;
                 NLOG("[RunThread] Error: %s\n", err);
             }
+            
+            // Initialize default local channel when connection succeeds
+            if (current_status == NJClient::NJC_STATUS_OK) {
+                NLOG("[RunThread] Connection established, initializing local channel 0\n");
+                std::lock_guard<std::mutex> state_lock(plugin->state_mutex);
+                const char* ch_name = plugin->ui_state.local_name_input[0] ? 
+                                     plugin->ui_state.local_name_input : "Channel";
+                // Set default channel: stereo input (ch 0), 128kbps, transmit enabled
+                client->SetLocalChannelInfo(0, ch_name, true, 0|(1<<10), true, 128, true, true);
+                NLOG("[RunThread] Local channel 0 configured: name='%s'\n", ch_name);
+            }
         }
 
         if (current_status == NJClient::NJC_STATUS_OK) {

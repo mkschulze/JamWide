@@ -1,0 +1,36 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libogg\src\bitwise.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libogg\src\framing.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\build-release\libs\libogg\include\ogg\config_types.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libogg\include\ogg\ogg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libogg\include\ogg\os_types.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libogg\src\crctable.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libogg\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{A59F9093-EDFC-3710-BFF3-90AEA0C15C4B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{8884C1DD-ED0B-3161-B3EE-6261E1CFF4D6}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

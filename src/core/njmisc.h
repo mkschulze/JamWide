@@ -35,7 +35,8 @@ void mkvolpanstr(char *str, double vol, double pan);
 void mkvolstr(char *str, double vol);
 void mkpanstr(char *str, double pan);
 
-#ifdef _WIN32
+// Jesusonic support disabled for CLAP plugin
+#if 0 // def _WIN32
 
 #include "../wdl/wdlstring.h"
 #include "winclient/old_jesusonic_dll.h"

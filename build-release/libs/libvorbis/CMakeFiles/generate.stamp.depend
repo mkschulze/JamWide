@@ -1,0 +1,10 @@
+# CMake generation dependency list for this directory.
+C:/Program Files/CMake/share/cmake-4.1/Modules/CTest.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/CTestUseLaunchers.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/CheckIncludeFiles.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/CheckLibraryExists.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/GNUInstallDirs.cmake
+C:/Users/yoto/JUCEDEV/ninjam-clap/libs/libvorbis/CMakeLists.txt
+C:/Users/yoto/JUCEDEV/ninjam-clap/libs/libvorbis/vorbis.pc.in
+C:/Users/yoto/JUCEDEV/ninjam-clap/libs/libvorbis/vorbisenc.pc.in
+C:/Users/yoto/JUCEDEV/ninjam-clap/libs/libvorbis/vorbisfile.pc.in

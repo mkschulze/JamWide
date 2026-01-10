@@ -1,0 +1,7 @@
+# CMake generation dependency list for this directory.
+C:/Program Files/CMake/share/cmake-4.1/Modules/BasicConfigVersion-AnyNewerVersion.cmake.in
+C:/Program Files/CMake/share/cmake-4.1/Modules/CMakePackageConfigHelpers.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/GNUInstallDirs.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/WriteBasicConfigVersionFile.cmake
+C:/Users/yoto/JUCEDEV/ninjam-clap/libs/clap/CMakeLists.txt
+C:/Users/yoto/JUCEDEV/ninjam-clap/libs/clap/clap.pc.in

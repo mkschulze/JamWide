@@ -87,9 +87,9 @@ void mkvolstr(char *str, double vol)
 
 
 
-/// jesusonic interfacing
+/// jesusonic interfacing - disabled for CLAP plugin
 
-#ifdef _WIN32
+#if 0 // def _WIN32
 
 void deleteJesusonicProc(void *i, int chi)
 {

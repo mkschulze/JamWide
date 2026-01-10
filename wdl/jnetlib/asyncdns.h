@@ -19,6 +19,7 @@
 #ifndef _ASYNCDNS_H_
 #define _ASYNCDNS_H_
 
+#include "netinc.h"
 #include <time.h>
 
 #ifndef JNL_NO_DEFINE_INTERFACES

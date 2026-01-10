@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\yoto\JUCEDEV\ninjam-clap\build-release\CMakeFiles\2dd8ea190314af11e8dd66d23c8d131a\INSTALL_force.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{7D20062A-0711-32D3-8F8D-D34A67EC40B0}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

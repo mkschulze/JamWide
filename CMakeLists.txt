@@ -80,6 +80,7 @@ add_library(wdl STATIC
 )
 target_include_directories(wdl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/wdl)
 if(WIN32)
+    target_sources(wdl PRIVATE wdl/win32_utf8.c)
     target_link_libraries(wdl PUBLIC ws2_32)
 endif()
 
@@ -158,16 +159,20 @@ target_link_libraries(ninjam-clap PRIVATE
     imgui
 )
 
+if(WIN32)
+    target_link_libraries(ninjam-clap PRIVATE d3d11)
+endif()
+
 # CLAP bundle setup
 set_target_properties(ninjam-clap PROPERTIES
-    BUNDLE TRUE
-    BUNDLE_EXTENSION clap
     PREFIX ""
     OUTPUT_NAME "NINJAM"
 )
 
 if(APPLE)
     set_target_properties(ninjam-clap PROPERTIES
+        BUNDLE TRUE
+        BUNDLE_EXTENSION clap
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/resources/Info.plist.in
     )
@@ -175,6 +180,10 @@ if(APPLE)
     add_custom_command(TARGET ninjam-clap POST_BUILD
         COMMAND SetFile -a B "$<TARGET_BUNDLE_DIR:ninjam-clap>"
         COMMENT "Setting bundle bit on NINJAM.clap"
+    )
+elseif(WIN32)
+    set_target_properties(ninjam-clap PROPERTIES
+        SUFFIX ".clap"
     )
 endif()
 

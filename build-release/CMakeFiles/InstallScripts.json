@@ -1,0 +1,12 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Users/yoto/JUCEDEV/ninjam-clap/build-release/cmake_install.cmake",
+		"C:/Users/yoto/JUCEDEV/ninjam-clap/build-release/libs/clap/cmake_install.cmake",
+		"C:/Users/yoto/JUCEDEV/ninjam-clap/build-release/libs/clap-helpers/cmake_install.cmake",
+		"C:/Users/yoto/JUCEDEV/ninjam-clap/build-release/libs/libogg/cmake_install.cmake",
+		"C:/Users/yoto/JUCEDEV/ninjam-clap/build-release/libs/libvorbis/cmake_install.cmake",
+		"C:/Users/yoto/JUCEDEV/ninjam-clap/build-release/libs/libvorbis/lib/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

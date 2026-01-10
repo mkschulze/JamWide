@@ -1,0 +1,2563 @@
+[UI] License accepted
+[License] Got response: 1
+[License] Returning 1 (1=accept, 0=reject)
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Status changed: 1 -> 0
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[CORE] RemoteUser::RemoteUser() constructed at 0x145017c00 sizeof=5968
+User added: 0x145017c00 name='ninbot_@104.243.42.x' seq=1 sizeof(RemoteUser)=5968
+  Memory check: muted=0 volume=1.000000 pan=0.000000 submask=0x0 chanpresent=0x0
+User 0x145017c00 'ninbot_@104.243.42.x' chan 0 name set '' seq=3
+User 0x145017c00 'ninbot_@104.243.42.x' chan 0 present set -> mask=0x1 seq=4
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Executing DisconnectCommand
+Disconnect: deleting RemoteUser[0]=0x145017c00 name='ninbot_@104.243.42.x' chanpresent=0x1 sub=0x1 muted=0x0 solo=0x0
+  ch 0 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+  ch 1 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+  ch 2 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+  ch 3 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+Disconnect: about to call 'delete ru' for 0x145017c00
+  Pre-delete memory check: muted=0 volume=1.000000 pan=0.000000 submask=0x1 chanpresent=0x1
+  Pre-delete: sizeof(RemoteUser)=5968 sizeof(*ru)=5968
+[UI] RemoteUser::~RemoteUser ENTRY this=0x145017c00
+[UI] RemoteUser::~RemoteUser this=0x145017c00 name='' channels=-1227133514 seq=0
+[UI] RemoteChannel::~RemoteChannel ENTRY this=0xffffffffffffffc8
+UiState::UiState constructed at 0x1197da2f8
+[RunThread] Started
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Executing ConnectCommand: server='ninbot.com:2053' user='anonymous'
+Disconnect: cleared 0 remote users
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Status changed: -3 -> 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[License] license_callback called
+[License] License text received, waiting for user response...
+[UI] License accepted
+[License] Got response: 1
+[License] Returning 1 (1=accept, 0=reject)
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Status changed: 1 -> 0
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[CORE] RemoteUser::RemoteUser() constructed at 0x12696f400 sizeof=5968
+User added: 0x12696f400 name='ninbot_@104.243.42.x' seq=1 sizeof(RemoteUser)=5968
+  Memory check: muted=0 volume=1.000000 pan=0.000000 submask=0x0 chanpresent=0x0
+User 0x12696f400 'ninbot_@104.243.42.x' chan 0 name set '' seq=3
+User 0x12696f400 'ninbot_@104.243.42.x' chan 0 present set -> mask=0x1 seq=4
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Executing DisconnectCommand
+Disconnect: deleting RemoteUser[0]=0x12696f400 name='ninbot_@104.243.42.x' chanpresent=0x1 sub=0x1 muted=0x0 solo=0x0
+  ch 0 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+  ch 1 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+  ch 2 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+  ch 3 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+Disconnect: about to call 'delete ru' for 0x12696f400
+  Pre-delete memory check: muted=0 volume=1.000000 pan=0.000000 submask=0x1 chanpresent=0x1
+  Pre-delete: sizeof(RemoteUser)=5968 sizeof(*ru)=5968
+[CORE] RemoteUser::~RemoteUser ENTRY this=0x12696f400 sizeof=5968
+[CORE] RemoteUser::~RemoteUser this=0x12696f400 muted=0 volume=1.000000 pan=0.000000
+[CORE] RemoteUser::~RemoteUser this=0x12696f400 submask=0x1 chanpresent=0x1 seq=4
+[CORE] RemoteUser::~RemoteUser this=0x12696f400 name_ptr=0x600003f63700
+[CORE] RemoteUser::~RemoteUser this=0x12696f400 name='ninbot_@104.243.42.x'
+[CORE] RemoteUser::~RemoteUser EXIT this=0x12696f400
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x126970a90
+RemoteUser_Channel::~RemoteUser_Channel this=0x126970a90 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x126970a90
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x1269709d8
+RemoteUser_Channel::~RemoteUser_Channel this=0x1269709d8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x1269709d8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x126970920
+RemoteUser_Channel::~RemoteUser_Channel this=0x126970920 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x126970920
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x126970868
+RemoteUser_Channel::~RemoteUser_Channel this=0x126970868 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x126970868
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x1269707b0
+RemoteUser_Channel::~RemoteUser_Channel this=0x1269707b0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x1269707b0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x1269706f8
+RemoteUser_Channel::~RemoteUser_Channel this=0x1269706f8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x1269706f8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x126970640
+RemoteUser_Channel::~RemoteUser_Channel this=0x126970640 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x126970640
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x126970588
+RemoteUser_Channel::~RemoteUser_Channel this=0x126970588 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x126970588
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x1269704d0
+RemoteUser_Channel::~RemoteUser_Channel this=0x1269704d0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x1269704d0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x126970418
+RemoteUser_Channel::~RemoteUser_Channel this=0x126970418 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x126970418
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x126970360
+RemoteUser_Channel::~RemoteUser_Channel this=0x126970360 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x126970360
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x1269702a8
+RemoteUser_Channel::~RemoteUser_Channel this=0x1269702a8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x1269702a8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x1269701f0
+RemoteUser_Channel::~RemoteUser_Channel this=0x1269701f0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x1269701f0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x126970138
+RemoteUser_Channel::~RemoteUser_Channel this=0x126970138 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x126970138
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x126970080
+RemoteUser_Channel::~RemoteUser_Channel this=0x126970080 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x126970080
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696ffc8
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696ffc8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696ffc8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696ff10
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696ff10 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696ff10
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696fe58
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696fe58 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696fe58
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696fda0
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696fda0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696fda0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696fce8
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696fce8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696fce8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696fc30
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696fc30 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696fc30
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696fb78
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696fb78 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696fb78
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696fac0
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696fac0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696fac0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696fa08
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696fa08 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696fa08
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696f950
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696f950 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696f950
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696f898
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696f898 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696f898
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696f7e0
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696f7e0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696f7e0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696f728
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696f728 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696f728
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696f670
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696f670 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696f670
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696f5b8
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696f5b8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696f5b8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696f500
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696f500 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696f500
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12696f448
+RemoteUser_Channel::~RemoteUser_Channel this=0x12696f448 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12696f448
+Disconnect: returned from 'delete ru' for 0x12696f400
+Disconnect: cleared 1 remote users
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Status changed: 0 -> -3
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Executing ConnectCommand: server='ninbot.com:2053' user='anonymous'
+Disconnect: cleared 0 remote users
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Status changed: -3 -> 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[License] license_callback called
+[License] License text received, waiting for user response...
+[UI] License accepted
+[License] Got response: 1
+[License] Returning 1 (1=accept, 0=reject)
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Status changed: 1 -> 0
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[CORE] RemoteUser::RemoteUser() constructed at 0x12785b200 sizeof=5968
+User added: 0x12785b200 name='ninbot_@104.243.42.x' seq=1 sizeof(RemoteUser)=5968
+  Memory check: muted=0 volume=1.000000 pan=0.000000 submask=0x0 chanpresent=0x0
+User 0x12785b200 'ninbot_@104.243.42.x' chan 0 name set '' seq=3
+User 0x12785b200 'ninbot_@104.243.42.x' chan 0 present set -> mask=0x1 seq=4
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Executing DisconnectCommand
+Disconnect: deleting RemoteUser[0]=0x12785b200 name='ninbot_@104.243.42.x' chanpresent=0x1 sub=0x1 muted=0x0 solo=0x0
+  ch 0 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+  ch 1 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+  ch 2 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+  ch 3 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+Disconnect: about to call 'delete ru' for 0x12785b200
+  Pre-delete memory check: muted=0 volume=1.000000 pan=0.000000 submask=0x1 chanpresent=0x1
+  Pre-delete: sizeof(RemoteUser)=5968 sizeof(*ru)=5968
+[CORE] RemoteUser::~RemoteUser ENTRY this=0x12785b200 sizeof=5968
+[CORE] RemoteUser::~RemoteUser this=0x12785b200 muted=0 volume=1.000000 pan=0.000000
+[CORE] RemoteUser::~RemoteUser this=0x12785b200 submask=0x1 chanpresent=0x1 seq=4
+[CORE] RemoteUser::~RemoteUser this=0x12785b200 name_ptr=0x6000038603c0
+[CORE] RemoteUser::~RemoteUser this=0x12785b200 name='ninbot_@104.243.42.x'
+[CORE] RemoteUser::~RemoteUser EXIT this=0x12785b200
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785c890
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785c890 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785c890
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785c7d8
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785c7d8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785c7d8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785c720
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785c720 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785c720
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785c668
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785c668 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785c668
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785c5b0
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785c5b0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785c5b0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785c4f8
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785c4f8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785c4f8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785c440
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785c440 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785c440
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785c388
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785c388 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785c388
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785c2d0
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785c2d0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785c2d0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785c218
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785c218 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785c218
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785c160
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785c160 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785c160
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785c0a8
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785c0a8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785c0a8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785bff0
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785bff0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785bff0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785bf38
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785bf38 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785bf38
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785be80
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785be80 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785be80
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785bdc8
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785bdc8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785bdc8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785bd10
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785bd10 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785bd10
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785bc58
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785bc58 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785bc58
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785bba0
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785bba0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785bba0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785bae8
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785bae8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785bae8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785ba30
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785ba30 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785ba30
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785b978
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785b978 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785b978
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785b8c0
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785b8c0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785b8c0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785b808
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785b808 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785b808
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785b750
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785b750 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785b750
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785b698
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785b698 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785b698
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785b5e0
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785b5e0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785b5e0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785b528
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785b528 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785b528
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785b470
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785b470 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785b470
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785b3b8
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785b3b8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785b3b8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785b300
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785b300 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785b300
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x12785b248
+RemoteUser_Channel::~RemoteUser_Channel this=0x12785b248 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x12785b248
+Disconnect: returned from 'delete ru' for 0x12785b200
+Disconnect: cleared 1 remote users
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Status changed: 0 -> -3
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Executing ConnectCommand: server='ninbot.com:2049' user='anonymous'
+Disconnect: cleared 0 remote users
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Status changed: -3 -> 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[License] license_callback called
+[License] License text received, waiting for user response...
+[UI] License accepted
+[License] Got response: 1
+[License] Returning 1 (1=accept, 0=reject)
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Status changed: 1 -> 0
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[CORE] RemoteUser::RemoteUser() constructed at 0x134015800 sizeof=5968
+User added: 0x134015800 name='ninbot_@104.243.42.x' seq=1 sizeof(RemoteUser)=5968
+  Memory check: muted=0 volume=1.000000 pan=0.000000 submask=0x0 chanpresent=0x0
+User 0x134015800 'ninbot_@104.243.42.x' chan 0 name set '' seq=3
+User 0x134015800 'ninbot_@104.243.42.x' chan 0 present set -> mask=0x1 seq=4
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Executing DisconnectCommand
+Disconnect: deleting RemoteUser[0]=0x134015800 name='ninbot_@104.243.42.x' chanpresent=0x1 sub=0x1 muted=0x0 solo=0x0
+  ch 0 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+  ch 1 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+  ch 2 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+  ch 3 name='' flags=0x0 out_idx=0 ds=0x0 next0=0x0 next1=0x0
+Disconnect: about to call 'delete ru' for 0x134015800
+  Pre-delete memory check: muted=0 volume=1.000000 pan=0.000000 submask=0x1 chanpresent=0x1
+  Pre-delete: sizeof(RemoteUser)=5968 sizeof(*ru)=5968
+[CORE] RemoteUser::~RemoteUser ENTRY this=0x134015800 sizeof=5968
+[CORE] RemoteUser::~RemoteUser this=0x134015800 muted=0 volume=1.000000 pan=0.000000
+[CORE] RemoteUser::~RemoteUser this=0x134015800 submask=0x1 chanpresent=0x1 seq=4
+[CORE] RemoteUser::~RemoteUser this=0x134015800 name_ptr=0x60000381ca00
+[CORE] RemoteUser::~RemoteUser this=0x134015800 name='ninbot_@104.243.42.x'
+[CORE] RemoteUser::~RemoteUser EXIT this=0x134015800
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016e90
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016e90 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016e90
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016dd8
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016dd8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016dd8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016d20
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016d20 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016d20
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016c68
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016c68 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016c68
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016bb0
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016bb0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016bb0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016af8
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016af8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016af8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016a40
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016a40 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016a40
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016988
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016988 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016988
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x1340168d0
+RemoteUser_Channel::~RemoteUser_Channel this=0x1340168d0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x1340168d0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016818
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016818 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016818
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016760
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016760 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016760
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x1340166a8
+RemoteUser_Channel::~RemoteUser_Channel this=0x1340166a8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x1340166a8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x1340165f0
+RemoteUser_Channel::~RemoteUser_Channel this=0x1340165f0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x1340165f0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016538
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016538 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016538
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016480
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016480 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016480
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x1340163c8
+RemoteUser_Channel::~RemoteUser_Channel this=0x1340163c8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x1340163c8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016310
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016310 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016310
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016258
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016258 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016258
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x1340161a0
+RemoteUser_Channel::~RemoteUser_Channel this=0x1340161a0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x1340161a0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x1340160e8
+RemoteUser_Channel::~RemoteUser_Channel this=0x1340160e8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x1340160e8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134016030
+RemoteUser_Channel::~RemoteUser_Channel this=0x134016030 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134016030
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134015f78
+RemoteUser_Channel::~RemoteUser_Channel this=0x134015f78 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134015f78
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134015ec0
+RemoteUser_Channel::~RemoteUser_Channel this=0x134015ec0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134015ec0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134015e08
+RemoteUser_Channel::~RemoteUser_Channel this=0x134015e08 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134015e08
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134015d50
+RemoteUser_Channel::~RemoteUser_Channel this=0x134015d50 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134015d50
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134015c98
+RemoteUser_Channel::~RemoteUser_Channel this=0x134015c98 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134015c98
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134015be0
+RemoteUser_Channel::~RemoteUser_Channel this=0x134015be0 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134015be0
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134015b28
+RemoteUser_Channel::~RemoteUser_Channel this=0x134015b28 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134015b28
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134015a70
+RemoteUser_Channel::~RemoteUser_Channel this=0x134015a70 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134015a70
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x1340159b8
+RemoteUser_Channel::~RemoteUser_Channel this=0x1340159b8 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x1340159b8
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134015900
+RemoteUser_Channel::~RemoteUser_Channel this=0x134015900 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134015900
+RemoteUser_Channel::~RemoteUser_Channel ENTRY this=0x134015848
+RemoteUser_Channel::~RemoteUser_Channel this=0x134015848 name='' flags=0x0 out_idx=0
+RemoteUser_Channel::~RemoteUser_Channel EXIT this=0x134015848
+Disconnect: returned from 'delete ru' for 0x134015800
+Disconnect: cleared 1 remote users
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Status changed: 0 -> -3
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+[RunThread] Calling client->Run()
+[RunThread] client->Run() returned 1
+Disconnect: cleared 0 remote users
+plugin_destroy: starting destruction
+plugin_destroy: plugin=0x1197d0040 ui_state.remote_users.size()=0
+plugin_destroy: resetting plugin shared_ptr (will destroy NinjamPlugin and UiState)
+plugin_destroy: plugin destroyed, cleaning up instance and clap_plugin
+plugin_destroy: complete
+UiState::~UiState destroying at 0x1197da2f8, remote_users.size()=0

@@ -15,6 +15,14 @@
 #include "threading/run_thread.h"
 #include "third_party/picojson.h"
 
+// Undefine WDL's min/max macros that conflict with std::min/std::max
+#ifdef max
+#undef max
+#endif
+#ifdef min
+#undef min
+#endif
+
 using namespace ninjam;
 
 //------------------------------------------------------------------------------

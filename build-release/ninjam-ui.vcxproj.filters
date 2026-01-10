@@ -1,0 +1,46 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\src\ui\ui_main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\src\ui\ui_status.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\src\ui\ui_connection.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\src\ui\ui_server_browser.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\src\ui\ui_chat.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\src\ui\ui_local.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\src\ui\ui_latency_guide.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\src\ui\ui_master.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\src\ui\ui_remote.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\src\ui\ui_meters.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\src\ui\ui_util.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\yoto\JUCEDEV\ninjam-clap\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{8884C1DD-ED0B-3161-B3EE-6261E1CFF4D6}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

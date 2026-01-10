@@ -115,7 +115,11 @@ std::string make_timestamp() {
     localtime_r(&now_time, &tm_buf);
 #endif
     char buf[6] = {};
+#ifdef _WIN32
+    if (strftime(buf, sizeof(buf), "%H:%M", &tm_buf)) {  // WDL redefines strftime to strftimeUTF8 on Windows
+#else
     if (std::strftime(buf, sizeof(buf), "%H:%M", &tm_buf)) {
+#endif
         return std::string(buf);
     }
     return {};

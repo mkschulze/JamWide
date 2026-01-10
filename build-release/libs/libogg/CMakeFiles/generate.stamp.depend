@@ -1,0 +1,15 @@
+# CMake generation dependency list for this directory.
+C:/Program Files/CMake/share/cmake-4.1/Modules/CMakePackageConfigHelpers.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/CPack.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/CPackComponent.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/CheckIncludeFile.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/CheckIncludeFileCXX.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/CheckIncludeFiles.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/CheckTypeSize.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/GNUInstallDirs.cmake
+C:/Program Files/CMake/share/cmake-4.1/Modules/WriteBasicConfigVersionFile.cmake
+C:/Program Files/CMake/share/cmake-4.1/Templates/CPackConfig.cmake.in
+C:/Users/yoto/JUCEDEV/ninjam-clap/libs/libogg/CMakeLists.txt
+C:/Users/yoto/JUCEDEV/ninjam-clap/libs/libogg/cmake/CheckSizes.cmake
+C:/Users/yoto/JUCEDEV/ninjam-clap/libs/libogg/include/ogg/config_types.h.in
+C:/Users/yoto/JUCEDEV/ninjam-clap/libs/libogg/ogg.pc.in

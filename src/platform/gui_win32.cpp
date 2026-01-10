@@ -62,7 +62,7 @@ public:
             0,
             L"NinjamClapGui",
             L"NINJAM",
-            WS_CHILD | WS_VISIBLE,
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP,
             0, 0, static_cast<int>(width_), static_cast<int>(height_),
             parent_hwnd_,
             nullptr,
@@ -85,7 +85,6 @@ public:
         ImGui::SetCurrentContext(imgui_ctx_);
 
         ImGuiIO& io = ImGui::GetIO();
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.IniFilename = nullptr;  // Don't save imgui.ini
 
         // Set style
@@ -299,9 +298,18 @@ private:
             ImGui::SetCurrentContext(ctx->imgui_ctx_);
         }
 
-        // Forward to ImGui
+        // Forward to ImGui first
         if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
             return 1;
+
+        // If ImGui is capturing keyboard (text input field has focus),
+        // don't let the message propagate to the host
+        if (ctx && ctx->imgui_ctx_) {
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.WantCaptureKeyboard && (msg == WM_KEYDOWN || msg == WM_KEYUP || msg == WM_CHAR || msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP)) {
+                return 0;  // Consume the message
+            }
+        }
 
         if (ctx) {
             return ctx->wnd_proc(hwnd, msg, wParam, lParam);
@@ -312,6 +320,10 @@ private:
 
     LRESULT wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         switch (msg) {
+            case WM_GETDLGCODE:
+                // Tell Windows we want all keys including spacebar
+                return DLGC_WANTALLKEYS | DLGC_WANTCHARS | DLGC_WANTMESSAGE;
+
             case WM_SIZE:
                 if (device_ && wParam != SIZE_MINIMIZED) {
                     width_ = LOWORD(lParam);
@@ -325,6 +337,13 @@ private:
                     render();
                 }
                 return 0;
+
+            case WM_LBUTTONDOWN:
+            case WM_RBUTTONDOWN:
+            case WM_MBUTTONDOWN:
+                // Set keyboard focus when clicking in the window
+                SetFocus(hwnd);
+                break;
 
             case WM_DESTROY:
                 return 0;

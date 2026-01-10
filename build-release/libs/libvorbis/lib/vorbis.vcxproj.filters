@@ -1,0 +1,143 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\mdct.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\smallft.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\block.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\envelope.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\window.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\lsp.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\lpc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\analysis.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\synthesis.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\psy.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\info.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\floor1.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\floor0.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\res0.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\mapping0.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\registry.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\codebook.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\sharedbook.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\lookup.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\bitrate.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\vorbisenc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\envelope.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\lpc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\lsp.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\codebook.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\misc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\psy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\masking.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\os.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\mdct.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\smallft.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\highlevel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\registry.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\scales.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\window.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\lookup.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\lookup_data.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\codec_internal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\backends.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\bitrate.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\lib\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\yoto\JUCEDEV\ninjam-clap\libs\libvorbis\win32\vorbis.def">
+      <Filter>Source Files</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{A59F9093-EDFC-3710-BFF3-90AEA0C15C4B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{8884C1DD-ED0B-3161-B3EE-6261E1CFF4D6}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

@@ -13,6 +13,10 @@
 #include <cstdarg>
 #include <cstdlib>
 
+#ifdef _WIN32
+#include "../../wdl/win32_utf8.h"
+#endif
+
 namespace ninjam {
 namespace logging {
 
@@ -29,7 +33,11 @@ inline FILE* get_log_file() {
         }
         for (int i = 0; i < 2 && !f; ++i) {
             if (!paths[i]) continue;
+#ifdef _WIN32
+            f = fopen(paths[i], "a");  // WDL redefines fopen to fopenUTF8 on Windows
+#else
             f = std::fopen(paths[i], "a");
+#endif
         }
         if (f) {
             setvbuf(f, nullptr, _IOLBF, 0);  // Line buffered

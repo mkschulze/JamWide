@@ -23,6 +23,8 @@ option(NINJAM_CLAP_DEV_BUILD "Enable development build with verbose logging" ON)
 # Submodules
 add_subdirectory(libs/clap EXCLUDE_FROM_ALL)
 add_subdirectory(libs/clap-helpers EXCLUDE_FROM_ALL)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../clap-wrapper
+    ${CMAKE_BINARY_DIR}/clap-wrapper)
 
 # libogg
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -133,23 +135,23 @@ if(NINJAM_CLAP_DEV_BUILD)
     target_compile_definitions(ninjam-ui PRIVATE NINJAM_DEV_BUILD=1)
 endif()
 
-# Main plugin
-add_library(ninjam-clap MODULE
+# Plugin implementation (static)
+add_library(ninjam-impl STATIC
     src/plugin/clap_entry.cpp
 )
-target_include_directories(ninjam-clap PRIVATE
+target_include_directories(ninjam-impl PRIVATE
     src
     src/third_party
 )
 
 # Platform-specific GUI sources
 if(APPLE)
-    target_sources(ninjam-clap PRIVATE src/platform/gui_macos.mm)
+    target_sources(ninjam-impl PRIVATE src/platform/gui_macos.mm)
 elseif(WIN32)
-    target_sources(ninjam-clap PRIVATE src/platform/gui_win32.cpp)
+    target_sources(ninjam-impl PRIVATE src/platform/gui_win32.cpp)
 endif()
 
-target_link_libraries(ninjam-clap PRIVATE
+target_link_libraries(ninjam-impl PUBLIC
     clap
     clap-helpers
     njclient
@@ -157,29 +159,32 @@ target_link_libraries(ninjam-clap PRIVATE
     ninjam-ui
     imgui
 )
+if(NINJAM_CLAP_DEV_BUILD)
+    target_compile_definitions(ninjam-impl PRIVATE NINJAM_DEV_BUILD=1)
+endif()
 
-# CLAP bundle setup
-set_target_properties(ninjam-clap PROPERTIES
-    BUNDLE TRUE
-    BUNDLE_EXTENSION clap
-    PREFIX ""
+make_clapfirst_plugins(
+    TARGET_NAME ninjam
+    IMPL_TARGET ninjam-impl
     OUTPUT_NAME "NINJAM"
+    ENTRY_SOURCE "src/plugin/clap_entry_export.cpp"
+    BUNDLE_IDENTIFIER "com.jamwide.client"
+    BUNDLE_VERSION "1.0.0"
+    PLUGIN_FORMATS CLAP VST3 AUV2
+    AUV2_MANUFACTURER_NAME "JamWide"
+    AUV2_MANUFACTURER_CODE "JMWD"
+    AUV2_SUBTYPE_CODE "JWAU"
+    AUV2_INSTRUMENT_TYPE "aufx"
 )
 
 if(APPLE)
-    set_target_properties(ninjam-clap PROPERTIES
-        MACOSX_BUNDLE TRUE
-        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/resources/Info.plist.in
-    )
-    # Set bundle bit so Finder shows it as a single file
-    add_custom_command(TARGET ninjam-clap POST_BUILD
-        COMMAND SetFile -a B "$<TARGET_BUNDLE_DIR:ninjam-clap>"
+    add_custom_command(TARGET ninjam_clap POST_BUILD
+        COMMAND SetFile -a B "$<TARGET_BUNDLE_DIR:ninjam_clap>"
         COMMENT "Setting bundle bit on NINJAM.clap"
     )
 endif()
 
-# Install
-install(TARGETS ninjam-clap
+install(TARGETS ninjam_clap
     LIBRARY DESTINATION lib/clap
     BUNDLE DESTINATION lib/clap
 )

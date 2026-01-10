@@ -4,12 +4,13 @@
 
 **Date:** 2026-01-10  
 **Phase:** 5 - Integration & Polish  
-**Status:** ✅ Stable - Chat, Timing Guide, and Anonymous Login working
+**Status:** ✅ Multi-format build working (CLAP, VST3, AU v2)
 
-## Latest Build: r90 (DEV BUILD)
+## Latest Build: r92+ (DEV BUILD)
 
 ### What's Working
 - ✅ Plugin loads in REAPER and Bitwig
+- ✅ **Multi-format builds**: CLAP, VST3, Audio Unit v2 (macOS)
 - ✅ Connection to public NINJAM servers (ninbot.com, ninjamer.com)
 - ✅ Server browser fetches live server list
 - ✅ License agreement dialog
@@ -20,29 +21,39 @@
 - ✅ Anonymous login (auto-prefix for public servers)
 - ✅ Dev/Production build toggle
 
-### Recent Fixes (r85-r90)
+### Recent Changes (r90-r92)
+| Change | Details |
+|--------|--------|
+| Multi-format builds | Integrated clap-wrapper for VST3 + AU v2 |
+| CLAP-first pattern | Split into static impl library + entry export |
+| AUv2 codes | Manufacturer: JMWD, Subtype: JWAU, Type: aufx |
+| Bundle identifier | com.jamwide.client |
+
+### Previous Fixes (r85-r90)
 | Issue | Fix |
 |-------|-----|
 | Anonymous login rejected | Auto-prefix "anonymous:" when password empty |
 | Timing guide no dots | Move transient detection before AudioProc |
 | ImGui ID collisions | Add ##suffix pattern and PushID wrappers |
-| Build errors | Fix namespace issues (ninjam::SendChatCommand) |
-| Variable ordering | Fix label_col used before declaration |
 
 ## Build System
 
 ```bash
-# Dev build (verbose logging) - DEFAULT
-cmake .. -DNINJAM_CLAP_DEV_BUILD=ON
+# Configure with auto-download of VST3/AU SDKs
+cmake .. -DCMAKE_BUILD_TYPE=Release -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE
 
-# Production build (minimal logging)
-cmake .. -DNINJAM_CLAP_DEV_BUILD=OFF
+# Build all formats
+cmake --build . --config Release
 
-# Quick install
-./install.sh
+# Output:
+# - NINJAM.clap (CLAP)
+# - NINJAM.vst3 (VST3)
+# - NINJAM.component (AU v2, macOS only)
 
-# Full release workflow (commit, build, push, tag)
-./release.sh
+# Install locations (macOS):
+# ~/Library/Audio/Plug-Ins/CLAP/
+# ~/Library/Audio/Plug-Ins/VST3/
+# ~/Library/Audio/Plug-Ins/Components/
 ```
 
 ### Logging Macros
@@ -51,13 +62,20 @@ cmake .. -DNINJAM_CLAP_DEV_BUILD=OFF
 | `NLOG(...)` | Always logs (errors, status changes) |
 | `NLOG_VERBOSE(...)` | Only in dev builds (per-frame debug) |
 
-## New Files Added (r85-r90)
+## New Files Added (r90-r92)
 
 | File | Purpose |
 |------|---------|
-| `src/ui/ui_chat.cpp/h` | Chat room UI with message history |
-| `src/ui/ui_latency_guide.cpp/h` | Visual timing guide with beat grid |
-| `memory-bank/plan-chat-room.md` | Chat implementation plan |
+| `src/plugin/clap_entry_export.cpp` | CLAP entry export shim for clap-wrapper |
+| `tools/check_imgui_ids.py` | ImGui ID hygiene checker script |
+
+## Key Architecture (clap-wrapper)
+
+| Component | Description |
+|-----------|-------------|
+| `ninjam-impl` | Static library with all plugin code |
+| `clap_entry_export.cpp` | Tiny export file recompiled per format |
+| `make_clapfirst_plugins()` | CMake function that generates all formats |
 | `memory-bank/plan-visual-latency-guide.md` | Timing guide implementation plan |
 | `release.sh` | Automated release script |
 

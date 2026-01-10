@@ -2,7 +2,7 @@
 
 **Project Start:** January 2026  
 **Target Platforms:** Windows 10+ (MSVC/Clang), macOS 10.15+ (Xcode/Clang)  
-**Plugin Format:** CLAP (stereo 2-in/2-out)  
+**Plugin Formats:** CLAP, VST3, Audio Unit v2 (via clap-wrapper)  
 **UI Framework:** Dear ImGui (Metal on macOS, D3D11 on Windows)  
 **Language:** C++20 (std::variant/std::optional + designated initializers)
 

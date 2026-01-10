@@ -1,9 +1,10 @@
-# NINJAM CLAP Plugin
+# NINJAM Plugin
 
-A modern [CLAP](https://clap.audio) audio plugin client for [NINJAM](https://www.cockos.com/ninjam/) — the open-source, internet-based real-time collaboration software for musicians.
+A modern audio plugin client for [NINJAM](https://www.cockos.com/ninjam/) — the open-source, internet-based real-time collaboration software for musicians.
 
 ![License](https://img.shields.io/badge/license-GPL--2.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
+![Formats](https://img.shields.io/badge/formats-CLAP%20%7C%20VST3%20%7C%20AU-blue.svg)
 ![Status](https://img.shields.io/badge/status-in%20development-yellow.svg)
 
 ## What is NINJAM?
@@ -43,11 +44,13 @@ This project ports the NINJAM client functionality into a cross-platform CLAP au
 
 ## Supported Hosts
 
-Any DAW that supports CLAP plugins, including:
-- [Bitwig Studio](https://www.bitwig.com/)
-- [REAPER](https://www.reaper.fm/)
-- [MultitrackStudio](https://www.multitrackstudio.com/)
-- [And many more...](https://github.com/free-audio/clap/wiki/Hosts)
+Works with any DAW that supports CLAP, VST3, or Audio Unit plugins:
+
+| Format | Hosts |
+|--------|-------|
+| **CLAP** | Bitwig Studio, REAPER, MultitrackStudio |
+| **VST3** | Ableton Live, Cubase, Logic Pro, FL Studio, REAPER |
+| **AU v2** | Logic Pro, GarageBand, MainStage (macOS only) |
 
 ## Building
 

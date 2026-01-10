@@ -1112,22 +1112,15 @@ static const clap_plugin_factory_t s_factory = {
 // Entry Point
 //------------------------------------------------------------------------------
 
-static bool entry_init(const char* path) {
+bool ninjam_entry_init(const char* path) {
     return true;
 }
 
-static void entry_deinit(void) {
+void ninjam_entry_deinit(void) {
 }
 
-static const void* entry_get_factory(const char* factory_id) {
+const void* ninjam_entry_get_factory(const char* factory_id) {
     if (strcmp(factory_id, CLAP_PLUGIN_FACTORY_ID) == 0)
         return &s_factory;
     return nullptr;
 }
-
-extern "C" CLAP_EXPORT const clap_plugin_entry_t clap_entry = {
-    .clap_version = CLAP_VERSION,
-    .init = entry_init,
-    .deinit = entry_deinit,
-    .get_factory = entry_get_factory
-};

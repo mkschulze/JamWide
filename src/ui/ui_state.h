@@ -6,7 +6,7 @@
 #include <vector>
 #include "ui/server_list_types.h"
 
-struct RemoteChannel {
+struct UiRemoteChannel {
     std::string name;
     int channel_index = -1;
     bool subscribed = true;
@@ -18,11 +18,11 @@ struct RemoteChannel {
     float vu_right = 0.0f;
 };
 
-struct RemoteUser {
+struct UiRemoteUser {
     std::string name;
     std::string address;
     bool mute = false;
-    std::vector<RemoteChannel> channels;
+    std::vector<UiRemoteChannel> channels;
 };
 
 struct UiState {
@@ -58,7 +58,7 @@ struct UiState {
     float master_vu_right = 0.0f;
 
     // Remote users
-    std::vector<RemoteUser> remote_users;
+    std::vector<UiRemoteUser> remote_users;
     bool users_dirty = false;
 
     // License dialog

@@ -14,7 +14,7 @@
 #include <vector>
 #include "ui/server_list_types.h"
 
-namespace ninjam {
+namespace jamwide {
 
 /**
  * Chat message received from server or other users.
@@ -71,6 +71,6 @@ using UiEvent = std::variant<
     ServerListEvent
 >;
 
-} // namespace ninjam
+} // namespace jamwide
 
 #endif // UI_EVENT_H

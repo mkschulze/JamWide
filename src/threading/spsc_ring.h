@@ -16,7 +16,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace ninjam {
+namespace jamwide {
 
 /**
  * Lock-free SPSC (Single-Producer Single-Consumer) ring buffer.
@@ -147,6 +147,6 @@ private:
     alignas(64) std::atomic<std::size_t> tail_;
 };
 
-} // namespace ninjam
+} // namespace jamwide
 
 #endif // SPSC_RING_H

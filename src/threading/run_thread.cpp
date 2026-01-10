@@ -7,7 +7,7 @@
 */
 
 #include "run_thread.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "core/njclient.h"
 #include "net/server_list.h"
 #include "debug/logging.h"
@@ -19,12 +19,12 @@
 #include <variant>
 #include <vector>
 
-namespace ninjam {
+namespace jamwide {
 
 namespace {
 
 void chat_callback(void* user_data, NJClient* client, const char** parms, int nparms) {
-    auto* plugin = static_cast<NinjamPlugin*>(user_data);
+    auto* plugin = static_cast<JamWidePlugin*>(user_data);
     if (!plugin || nparms < 1) {
         return;
     }
@@ -111,7 +111,7 @@ void chat_callback(void* user_data, NJClient* client, const char** parms, int np
 
 int license_callback(void* user_data, const char* license_text) {
     NLOG("[License] license_callback called\n");
-    auto* plugin = static_cast<NinjamPlugin*>(user_data);
+    auto* plugin = static_cast<JamWidePlugin*>(user_data);
     if (!plugin) {
         NLOG("[License] ERROR: plugin is null!\n");
         return 0;
@@ -150,7 +150,7 @@ int license_callback(void* user_data, const char* license_text) {
     return response > 0 ? 1 : 0;
 }
 
-void setup_callbacks(NinjamPlugin* plugin) {
+void setup_callbacks(JamWidePlugin* plugin) {
     if (!plugin) {
         return;
     }
@@ -164,7 +164,7 @@ void setup_callbacks(NinjamPlugin* plugin) {
     plugin->client->LicenseAgreement_User = plugin;
 }
 
-void process_commands(NinjamPlugin* plugin,
+void process_commands(JamWidePlugin* plugin,
                       ServerListFetcher& server_list,
                       std::vector<UiCommand>& client_cmds) {
     if (!plugin) {
@@ -186,7 +186,7 @@ void process_commands(NinjamPlugin* plugin,
     });
 }
 
-void execute_client_commands(NinjamPlugin* plugin,
+void execute_client_commands(JamWidePlugin* plugin,
                              NJClient* client,
                              std::vector<UiCommand>& client_cmds) {
     if (!plugin || !client) {
@@ -266,7 +266,7 @@ void execute_client_commands(NinjamPlugin* plugin,
  * Main run thread function.
  * Continuously calls NJClient::Run() while plugin is active.
  */
-void run_thread_func(std::shared_ptr<NinjamPlugin> plugin) {
+void run_thread_func(std::shared_ptr<JamWidePlugin> plugin) {
     if (!plugin) {
         return;
     }
@@ -394,8 +394,8 @@ void run_thread_func(std::shared_ptr<NinjamPlugin> plugin) {
 
 } // anonymous namespace
 
-void run_thread_start(NinjamPlugin* plugin,
-                      std::shared_ptr<NinjamPlugin> keepalive) {
+void run_thread_start(JamWidePlugin* plugin,
+                      std::shared_ptr<JamWidePlugin> keepalive) {
     if (!plugin || !keepalive) {
         return;
     }
@@ -408,7 +408,7 @@ void run_thread_start(NinjamPlugin* plugin,
     plugin->run_thread = std::thread(run_thread_func, std::move(keepalive));
 }
 
-void run_thread_stop(NinjamPlugin* plugin) {
+void run_thread_stop(JamWidePlugin* plugin) {
     // Signal shutdown
     plugin->shutdown.store(true, std::memory_order_release);
     
@@ -427,4 +427,4 @@ void run_thread_stop(NinjamPlugin* plugin) {
     }
 }
 
-} // namespace ninjam
+} // namespace jamwide

@@ -1,13 +1,13 @@
 /*
-    NINJAM CLAP Plugin - ninjam_plugin.h
+    JamWide Plugin - jamwide_plugin.h
     Main plugin instance structure
     
-    Copyright (C) 2024 NINJAM CLAP Contributors
+    Copyright (C) 2024-2026 JamWide Contributors
     Licensed under GPLv2+
 */
 
-#ifndef NINJAM_PLUGIN_H
-#define NINJAM_PLUGIN_H
+#ifndef JAMWIDE_PLUGIN_H
+#define JAMWIDE_PLUGIN_H
 
 #include <atomic>
 #include <mutex>
@@ -25,7 +25,7 @@
 // Forward declarations
 class NJClient;
 
-namespace ninjam {
+namespace jamwide {
 
 struct GuiContext;
 
@@ -33,7 +33,7 @@ struct GuiContext;
  * Main plugin instance structure.
  * One instance per CLAP plugin instance.
  */
-struct NinjamPlugin {
+struct JamWidePlugin {
     // CLAP references
     const clap_plugin_t* clap_plugin{nullptr};
     const clap_host_t* host{nullptr};
@@ -113,41 +113,41 @@ struct NinjamPlugin {
 /**
  * Create a new plugin instance.
  */
-NinjamPlugin* ninjam_plugin_create(const clap_plugin_t* clap_plugin,
+JamWidePlugin* jamwide_plugin_create(const clap_plugin_t* clap_plugin,
                                    const clap_host_t* host);
 
 /**
  * Destroy a plugin instance.
  */
-void ninjam_plugin_destroy(NinjamPlugin* plugin);
+void jamwide_plugin_destroy(JamWidePlugin* plugin);
 
 /**
  * Activate the plugin (called when added to audio graph).
  */
-bool ninjam_plugin_activate(NinjamPlugin* plugin, double sample_rate,
+bool jamwide_plugin_activate(JamWidePlugin* plugin, double sample_rate,
                             uint32_t min_frames, uint32_t max_frames);
 
 /**
  * Deactivate the plugin.
  */
-void ninjam_plugin_deactivate(NinjamPlugin* plugin);
+void jamwide_plugin_deactivate(JamWidePlugin* plugin);
 
 /**
  * Start audio processing.
  */
-bool ninjam_plugin_start_processing(NinjamPlugin* plugin);
+bool jamwide_plugin_start_processing(JamWidePlugin* plugin);
 
 /**
  * Stop audio processing.
  */
-void ninjam_plugin_stop_processing(NinjamPlugin* plugin);
+void jamwide_plugin_stop_processing(JamWidePlugin* plugin);
 
 /**
  * Process audio.
  */
-clap_process_status ninjam_plugin_process(NinjamPlugin* plugin,
+clap_process_status jamwide_plugin_process(JamWidePlugin* plugin,
                                           const clap_process_t* process);
 
-} // namespace ninjam
+} // namespace jamwide
 
-#endif // NINJAM_PLUGIN_H
+#endif // JAMWIDE_PLUGIN_H

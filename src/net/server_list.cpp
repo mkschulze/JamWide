@@ -8,7 +8,7 @@
 
 #include <cstdlib>
 
-namespace ninjam {
+namespace jamwide {
 
 namespace {
 
@@ -202,4 +202,4 @@ bool ServerListFetcher::parse_response(const std::string& data,
     return true;
 }
 
-} // namespace ninjam
+} // namespace jamwide

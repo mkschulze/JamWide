@@ -12,7 +12,7 @@
 #include "wdl/jnetlib/httpget.h"
 #include "ui/server_list_types.h"
 
-namespace ninjam {
+namespace jamwide {
 
 struct ServerListResult {
     std::vector<ServerListEntry> servers;
@@ -37,6 +37,6 @@ private:
     int reply_code_ = 0;
 };
 
-} // namespace ninjam
+} // namespace jamwide
 
 #endif // SERVER_LIST_H

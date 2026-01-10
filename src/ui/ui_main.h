@@ -9,14 +9,14 @@
 #ifndef UI_MAIN_H
 #define UI_MAIN_H
 
-namespace ninjam {
-struct NinjamPlugin;
+namespace jamwide {
+struct JamWidePlugin;
 }
 
 /**
  * Main UI render function - called every frame.
  * Renders the entire NINJAM plugin interface.
  */
-void ui_render_frame(ninjam::NinjamPlugin* plugin);
+void ui_render_frame(jamwide::JamWidePlugin* plugin);
 
 #endif // UI_MAIN_H

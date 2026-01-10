@@ -12,9 +12,9 @@
 #include <cstdint>
 #include <memory>
 
-namespace ninjam {
+namespace jamwide {
 
-struct NinjamPlugin;
+struct JamWidePlugin;
 
 /**
  * Abstract GUI context interface.
@@ -62,7 +62,7 @@ struct GuiContext {
     virtual void render() = 0;
 
 protected:
-    std::shared_ptr<NinjamPlugin> plugin_;
+    std::shared_ptr<JamWidePlugin> plugin_;
     double scale_ = 1.0;
     uint32_t width_ = 600;
     uint32_t height_ = 400;
@@ -70,13 +70,13 @@ protected:
 
 // Platform-specific factory functions
 #ifdef _WIN32
-GuiContext* create_gui_context_win32(std::shared_ptr<NinjamPlugin> plugin);
+GuiContext* create_gui_context_win32(std::shared_ptr<JamWidePlugin> plugin);
 #endif
 
 #ifdef __APPLE__
-GuiContext* create_gui_context_macos(std::shared_ptr<NinjamPlugin> plugin);
+GuiContext* create_gui_context_macos(std::shared_ptr<JamWidePlugin> plugin);
 #endif
 
-} // namespace ninjam
+} // namespace jamwide
 
 #endif // GUI_CONTEXT_H

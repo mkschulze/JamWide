@@ -8,7 +8,7 @@
 #include "ui_latency_guide.h"
 #include "ui_util.h"
 #include "threading/ui_command.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "core/njclient.h"
 #include "imgui.h"
 
@@ -29,7 +29,7 @@ int clamp_bitrate_index(int index) {
 
 } // namespace
 
-void ui_render_local_channel(ninjam::NinjamPlugin* plugin) {
+void ui_render_local_channel(jamwide::JamWidePlugin* plugin) {
     if (!plugin) return;
 
     auto& state = plugin->ui_state;
@@ -44,7 +44,7 @@ void ui_render_local_channel(ninjam::NinjamPlugin* plugin) {
     if (ImGui::InputText("Name##local", state.local_name_input,
                          sizeof(state.local_name_input))) {
         if (state.status == NJClient::NJC_STATUS_OK) {
-            ninjam::SetLocalChannelInfoCommand cmd;
+            jamwide::SetLocalChannelInfoCommand cmd;
             cmd.channel = 0;
             cmd.name = state.local_name_input;
             plugin->cmd_queue.try_push(std::move(cmd));
@@ -60,7 +60,7 @@ void ui_render_local_channel(ninjam::NinjamPlugin* plugin) {
                                       sizeof(kBitrateLabels[0])))) {
         if (state.status == NJClient::NJC_STATUS_OK) {
             const int bitrate = kBitrateValues[state.local_bitrate_index];
-            ninjam::SetLocalChannelInfoCommand cmd;
+            jamwide::SetLocalChannelInfoCommand cmd;
             cmd.channel = 0;
             cmd.name = state.local_name_input;
             cmd.set_bitrate = true;
@@ -73,7 +73,7 @@ void ui_render_local_channel(ninjam::NinjamPlugin* plugin) {
 
     if (ImGui::Checkbox("Transmit##local", &state.local_transmit)) {
         if (state.status == NJClient::NJC_STATUS_OK) {
-            ninjam::SetLocalChannelInfoCommand cmd;
+            jamwide::SetLocalChannelInfoCommand cmd;
             cmd.channel = 0;
             cmd.name = state.local_name_input;
             cmd.set_transmit = true;
@@ -86,7 +86,7 @@ void ui_render_local_channel(ninjam::NinjamPlugin* plugin) {
     if (ImGui::SliderFloat("Volume##local", &state.local_volume,
                            0.0f, 2.0f, "%.2f")) {
         if (state.status == NJClient::NJC_STATUS_OK) {
-            ninjam::SetLocalChannelMonitoringCommand cmd;
+            jamwide::SetLocalChannelMonitoringCommand cmd;
             cmd.channel = 0;
             cmd.set_volume = true;
             cmd.volume = state.local_volume;
@@ -100,7 +100,7 @@ void ui_render_local_channel(ninjam::NinjamPlugin* plugin) {
     if (ImGui::SliderFloat("Pan##local", &state.local_pan,
                            -1.0f, 1.0f, "%.2f")) {
         if (state.status == NJClient::NJC_STATUS_OK) {
-            ninjam::SetLocalChannelMonitoringCommand cmd;
+            jamwide::SetLocalChannelMonitoringCommand cmd;
             cmd.channel = 0;
             cmd.set_pan = true;
             cmd.pan = state.local_pan;
@@ -112,7 +112,7 @@ void ui_render_local_channel(ninjam::NinjamPlugin* plugin) {
 
     if (ImGui::Checkbox("M##local_mute", &state.local_mute)) {
         if (state.status == NJClient::NJC_STATUS_OK) {
-            ninjam::SetLocalChannelMonitoringCommand cmd;
+            jamwide::SetLocalChannelMonitoringCommand cmd;
             cmd.channel = 0;
             cmd.set_mute = true;
             cmd.mute = state.local_mute;
@@ -124,7 +124,7 @@ void ui_render_local_channel(ninjam::NinjamPlugin* plugin) {
 
     if (ImGui::Checkbox("S##local_solo", &state.local_solo)) {
         if (state.status == NJClient::NJC_STATUS_OK) {
-            ninjam::SetLocalChannelMonitoringCommand cmd;
+            jamwide::SetLocalChannelMonitoringCommand cmd;
             cmd.channel = 0;
             cmd.set_solo = true;
             cmd.solo = state.local_solo;

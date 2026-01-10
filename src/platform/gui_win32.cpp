@@ -9,7 +9,7 @@
 #ifdef _WIN32
 
 #include "gui_context.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "ui/ui_main.h"
 
 #include <d3d11.h>
@@ -24,11 +24,11 @@
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
     HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-namespace ninjam {
+namespace jamwide {
 
 class GuiContextWin32 : public GuiContext {
 public:
-    explicit GuiContextWin32(std::shared_ptr<NinjamPlugin> plugin)
+    explicit GuiContextWin32(std::shared_ptr<JamWidePlugin> plugin)
         : hwnd_(nullptr)
         , parent_hwnd_(nullptr)
         , device_(nullptr)
@@ -334,10 +334,10 @@ private:
     }
 };
 
-GuiContext* create_gui_context_win32(std::shared_ptr<NinjamPlugin> plugin) {
+GuiContext* create_gui_context_win32(std::shared_ptr<JamWidePlugin> plugin) {
     return new GuiContextWin32(std::move(plugin));
 }
 
-} // namespace ninjam
+} // namespace jamwide
 
 #endif // _WIN32

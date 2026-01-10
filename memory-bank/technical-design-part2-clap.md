@@ -10,7 +10,7 @@
 
 ```cpp
 #include <clap/clap.h>
-#include "ninjam_plugin.h"
+#include "jamwide_plugin.h"
 
 // Plugin descriptor
 static const clap_plugin_descriptor_t s_descriptor = {
@@ -90,10 +90,10 @@ CLAP_EXPORT const clap_plugin_entry_t clap_entry = {
 
 ## 2. Plugin Implementation
 
-### 2.1 Plugin Creation (`src/plugin/ninjam_plugin.cpp`)
+### 2.1 Plugin Creation (`src/plugin/jamwide_plugin.cpp`)
 
 ```cpp
-#include "ninjam_plugin.h"
+#include "jamwide_plugin.h"
 #include "clap_audio.h"
 #include "clap_params.h"
 #include "clap_state.h"
@@ -151,7 +151,7 @@ static const clap_plugin_t* create_plugin(const clap_plugin_factory_t* factory,
 
     // Allocate plugin instance
     auto* clap_plugin = new clap_plugin_t(s_plugin_class);
-    auto* plugin = new NinjamPlugin();
+    auto* plugin = new JamWidePlugin();
 
     plugin->clap_plugin = clap_plugin;
     plugin->clap_host = host;
@@ -165,7 +165,7 @@ static const clap_plugin_t* create_plugin(const clap_plugin_factory_t* factory,
 
 ```cpp
 static bool plugin_init(const clap_plugin_t* clap_plugin) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     // Initialize UI state defaults
     snprintf(plugin->ui_state.server_input,
@@ -179,7 +179,7 @@ static bool plugin_init(const clap_plugin_t* clap_plugin) {
 }
 
 static void plugin_destroy(const clap_plugin_t* clap_plugin) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     // Ensure teardown even if host skips deactivate()
     if (plugin->client) {
@@ -197,7 +197,7 @@ static bool plugin_activate(const clap_plugin_t* clap_plugin,
                             double sample_rate,
                             uint32_t min_frames,
                             uint32_t max_frames) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     plugin->sample_rate = sample_rate;
     plugin->max_frames = max_frames;
@@ -219,7 +219,7 @@ static bool plugin_activate(const clap_plugin_t* clap_plugin,
 }
 
 static void plugin_deactivate(const clap_plugin_t* clap_plugin) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     // Stop Run thread
     run_thread_stop(plugin);
@@ -238,13 +238,13 @@ static void plugin_deactivate(const clap_plugin_t* clap_plugin) {
 }
 
 static bool plugin_start_processing(const clap_plugin_t* clap_plugin) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
     plugin->audio_active.store(true, std::memory_order_release);
     return true;
 }
 
 static void plugin_stop_processing(const clap_plugin_t* clap_plugin) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
     plugin->audio_active.store(false, std::memory_order_release);
 }
 
@@ -287,7 +287,7 @@ static const void* plugin_get_extension(const clap_plugin_t* clap_plugin,
 
 ```cpp
 #include <clap/clap.h>
-#include "ninjam_plugin.h"
+#include "jamwide_plugin.h"
 
 static uint32_t audio_ports_count(const clap_plugin_t* plugin, bool is_input) {
     return 1;  // Single stereo port for both input and output
@@ -328,12 +328,12 @@ const clap_plugin_audio_ports_t s_audio_ports = {
 
 ## 4. Audio Processing
 
-### 4.1 Process Implementation (`src/plugin/ninjam_plugin.cpp`)
+### 4.1 Process Implementation (`src/plugin/jamwide_plugin.cpp`)
 
 ```cpp
 static clap_process_status plugin_process(const clap_plugin_t* clap_plugin,
                                           const clap_process_t* process) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     // Handle parameter events
     process_param_events(plugin, process->in_events);
@@ -426,7 +426,7 @@ static clap_process_status plugin_process(const clap_plugin_t* clap_plugin,
 ### 4.2 Parameter Event Processing
 
 ```cpp
-static void process_param_events(NinjamPlugin* plugin,
+static void process_param_events(JamWidePlugin* plugin,
                                  const clap_input_events_t* in_events) {
     if (!in_events) return;
 
@@ -474,7 +474,7 @@ static void process_param_events(NinjamPlugin* plugin,
 
 ```cpp
 #include <clap/clap.h>
-#include "ninjam_plugin.h"
+#include "jamwide_plugin.h"
 #include <cctype>
 #include <cstring>
 #include <cstdio>
@@ -544,7 +544,7 @@ static bool params_get_info(const clap_plugin_t* plugin,
 static bool params_get_value(const clap_plugin_t* clap_plugin,
                              clap_id param_id,
                              double* value) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     switch (param_id) {
         case PARAM_MASTER_VOLUME:
@@ -641,7 +641,7 @@ static bool params_text_to_value(const clap_plugin_t* plugin,
 static void params_flush(const clap_plugin_t* clap_plugin,
                          const clap_input_events_t* in,
                          const clap_output_events_t* out) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
     process_param_events(plugin, in);
 }
 
@@ -690,7 +690,7 @@ Uses a small single-header JSON parser (`picojson.h`) for strict parsing and typ
 
 ```cpp
 #include <clap/clap.h>
-#include "ninjam_plugin.h"
+#include "jamwide_plugin.h"
 #include "third_party/picojson.h"
 #include <string>
 
@@ -728,7 +728,7 @@ static std::string get_string(const picojson::object& obj,
 
 static bool state_save(const clap_plugin_t* clap_plugin,
                        const clap_ostream_t* stream) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     picojson::object root;
     root["version"] = picojson::value(1.0);
@@ -763,7 +763,7 @@ static bool state_save(const clap_plugin_t* clap_plugin,
 
 static bool state_load(const clap_plugin_t* clap_plugin,
                        const clap_istream_t* stream) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     // Read all data
     std::string data;
@@ -845,13 +845,13 @@ const clap_plugin_state_t s_state = {
 
 ```cpp
 #include <clap/clap.h>
-#include "ninjam_plugin.h"
+#include "jamwide_plugin.h"
 #include "platform/gui_context.h"
 
 #ifdef _WIN32
-extern GuiContext* create_gui_context_win32(NinjamPlugin* plugin);
+extern GuiContext* create_gui_context_win32(JamWidePlugin* plugin);
 #elif __APPLE__
-extern GuiContext* create_gui_context_macos(NinjamPlugin* plugin);
+extern GuiContext* create_gui_context_macos(JamWidePlugin* plugin);
 #endif
 
 static bool gui_is_api_supported(const clap_plugin_t* plugin,
@@ -881,7 +881,7 @@ static bool gui_get_preferred_api(const clap_plugin_t* plugin,
 static bool gui_create(const clap_plugin_t* clap_plugin,
                        const char* api,
                        bool is_floating) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     if (plugin->gui_created) return true;
 
@@ -900,7 +900,7 @@ static bool gui_create(const clap_plugin_t* clap_plugin,
 }
 
 static void gui_destroy(const clap_plugin_t* clap_plugin) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     if (plugin->gui_context) {
         delete plugin->gui_context;
@@ -912,7 +912,7 @@ static void gui_destroy(const clap_plugin_t* clap_plugin) {
 }
 
 static bool gui_set_scale(const clap_plugin_t* clap_plugin, double scale) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     if (plugin->gui_context) {
         plugin->gui_context->set_scale(scale);
@@ -923,7 +923,7 @@ static bool gui_set_scale(const clap_plugin_t* clap_plugin, double scale) {
 static bool gui_get_size(const clap_plugin_t* clap_plugin,
                          uint32_t* width,
                          uint32_t* height) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     *width = plugin->gui_width;
     *height = plugin->gui_height;
@@ -956,7 +956,7 @@ static bool gui_adjust_size(const clap_plugin_t* plugin,
 static bool gui_set_size(const clap_plugin_t* clap_plugin,
                          uint32_t width,
                          uint32_t height) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     plugin->gui_width = width;
     plugin->gui_height = height;
@@ -970,7 +970,7 @@ static bool gui_set_size(const clap_plugin_t* clap_plugin,
 
 static bool gui_set_parent(const clap_plugin_t* clap_plugin,
                            const clap_window_t* window) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     if (!plugin->gui_context) return false;
 
@@ -993,7 +993,7 @@ static void gui_suggest_title(const clap_plugin_t* plugin, const char* title) {
 }
 
 static bool gui_show(const clap_plugin_t* clap_plugin) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     if (!plugin->gui_context) return false;
 
@@ -1003,7 +1003,7 @@ static bool gui_show(const clap_plugin_t* clap_plugin) {
 }
 
 static bool gui_hide(const clap_plugin_t* clap_plugin) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     if (!plugin->gui_context) return false;
 
@@ -1038,7 +1038,7 @@ const clap_plugin_gui_t s_gui = {
 
 #include <cstdint>
 
-struct NinjamPlugin;
+struct JamWidePlugin;
 
 // Abstract GUI context interface
 struct GuiContext {
@@ -1052,7 +1052,7 @@ struct GuiContext {
     virtual void render() = 0;
 
 protected:
-    NinjamPlugin* plugin_ = nullptr;
+    JamWidePlugin* plugin_ = nullptr;
     double scale_ = 1.0;
     uint32_t width_ = 600;
     uint32_t height_ = 400;

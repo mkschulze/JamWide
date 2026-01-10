@@ -5,8 +5,8 @@
 
 #pragma once
 
-namespace ninjam {
-struct NinjamPlugin;
+namespace jamwide {
+struct JamWidePlugin;
 }
 
-void ui_render_chat(ninjam::NinjamPlugin* plugin);
+void ui_render_chat(jamwide::JamWidePlugin* plugin);

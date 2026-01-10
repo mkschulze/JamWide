@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add a real-time chat room to the NINJAM CLAP plugin, allowing users to communicate with other users on the same server. This is a core NINJAM feature used for coordination, greetings, and musical discussion during jam sessions.
+Add a real-time chat room to the JamWide plugin, allowing users to communicate with other users on the same server. This is a core NINJAM feature used for coordination, greetings, and musical discussion during jam sessions.
 
 ## Reference Implementation Analysis
 
@@ -111,7 +111,7 @@ bool show_chat = true;                  // Visibility toggle
 
 ### Lock-Free Queue
 ```cpp
-// In NinjamPlugin
+// In JamWidePlugin
 SpscRing<ChatMessage, 64> chat_queue;  // Network → UI (reuse existing lock-free ring)
 ```
 
@@ -125,7 +125,7 @@ SpscRing<ChatMessage, 64> chat_queue;  // Network → UI (reuse existing lock-fr
 | `src/ui/ui_chat.h` | **New** | Header for chat widget |
 | `src/ui/ui_chat.cpp` | **New** | Chat UI implementation (~200 lines) |
 | `src/ui/ui_main.cpp` | Modify | Poll queue, render chat (callback already set in run thread) |
-| `src/plugin/ninjam_plugin.h` | Modify | Add chat_queue |
+| `src/plugin/jamwide_plugin.h` | Modify | Add chat_queue |
 | `src/threading/run_thread.cpp` | Modify | Set up ChatMessage_Callback |
 | `src/threading/ui_command.h` | Modify | Add SendChatCommand variant |
 | `CMakeLists.txt` | Modify | Add new source files |
@@ -137,7 +137,7 @@ SpscRing<ChatMessage, 64> chat_queue;  // Network → UI (reuse existing lock-fr
 ### Step 1: Data Structures
 - Define `ChatMessage` struct
 - Add chat state to `UiState`
-- Add `chat_queue` to `NinjamPlugin`
+- Add `chat_queue` to `JamWidePlugin`
 
 ### Step 2: Callback Registration
 - Extend existing `setup_callbacks()` in `run_thread.cpp` to wire chat callback

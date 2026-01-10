@@ -4,7 +4,7 @@
 */
 
 #include "ui_chat.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "threading/ui_command.h"
 #include "core/njclient.h"
 #include "imgui.h"
@@ -45,7 +45,7 @@ std::string trim_left(std::string value) {
     return value.substr(pos);
 }
 
-bool parse_chat_input(const char* input, ninjam::SendChatCommand& cmd) {
+bool parse_chat_input(const char* input, jamwide::SendChatCommand& cmd) {
     if (!input || !*input) return false;
     std::string text = trim_left(input);
     if (text.empty()) return false;
@@ -123,7 +123,7 @@ std::string make_timestamp() {
 
 } // namespace
 
-void ui_render_chat(ninjam::NinjamPlugin* plugin) {
+void ui_render_chat(jamwide::JamWidePlugin* plugin) {
     if (!plugin) return;
 
     auto& state = plugin->ui_state;
@@ -186,7 +186,7 @@ void ui_render_chat(ninjam::NinjamPlugin* plugin) {
             }
             state.chat_scroll_to_bottom = true;
         } else {
-            ninjam::SendChatCommand cmd;
+            jamwide::SendChatCommand cmd;
             if (parse_chat_input(state.chat_input, cmd)) {
                 plugin->cmd_queue.try_push(std::move(cmd));
             } else {

@@ -5,7 +5,7 @@
 
 #include "ui_status.h"
 #include "build_number.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "core/njclient.h"
 #include "imgui.h"
 
@@ -21,7 +21,7 @@ float clamp01(float value) {
 
 } // namespace
 
-void ui_render_status_bar(ninjam::NinjamPlugin* plugin) {
+void ui_render_status_bar(jamwide::JamWidePlugin* plugin) {
     if (!plugin) return;
 
     const auto& state = plugin->ui_state;
@@ -73,7 +73,7 @@ void ui_render_status_bar(ninjam::NinjamPlugin* plugin) {
 
     float after_status_y = ImGui::GetCursorPosY();
     char build_label[16];
-    snprintf(build_label, sizeof(build_label), "r%d", NINJAM_BUILD_NUMBER);
+    snprintf(build_label, sizeof(build_label), "r%d", JAMWIDE_BUILD_NUMBER);
     ImVec2 build_size = ImGui::CalcTextSize(build_label);
     float right_x = ImGui::GetWindowContentRegionMax().x;
 

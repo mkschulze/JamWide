@@ -4,10 +4,10 @@
 */
 
 #include "ui_util.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "core/njclient.h"
 
-void ui_update_solo_state(ninjam::NinjamPlugin* plugin) {
+void ui_update_solo_state(jamwide::JamWidePlugin* plugin) {
     if (!plugin) return;
 
     bool any_solo_active = plugin->ui_state.local_solo;

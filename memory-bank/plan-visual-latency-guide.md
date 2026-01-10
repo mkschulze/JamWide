@@ -19,7 +19,7 @@ A real-time visual tool showing users where their audio transients land relative
 
 ### 1.1 Add Transient/Peak Detection
 
-**Files:** `src/plugin/ninjam_plugin.h`, `src/plugin/clap_entry.cpp` (audio thread)
+**Files:** `src/plugin/jamwide_plugin.h`, `src/plugin/clap_entry.cpp` (audio thread)
 
 - Simple peak/onset detection in the audio processing path (not Run thread)
 - Track when significant audio events occur relative to beat position
@@ -40,13 +40,13 @@ if (!gate_open && env < threshold * 0.6f) {
 ```
 
 **Precise integration (current code layout):**
-- Add a small `TransientDetector` state to `NinjamPlugin` (audio-thread owned).
+- Add a small `TransientDetector` state to `JamWidePlugin` (audio-thread owned).
 - Drive it inside `plugin_process()` in `src/plugin/clap_entry.cpp` right after `AudioProc()` returns.
 - Use `ui_snapshot` atomics for `bpm`, `bpi`, `interval_position`, `interval_length` to resync beat phase per block.
 
 Example mapping:
 ```cpp
-// NinjamPlugin (in src/plugin/ninjam_plugin.h)
+// JamWidePlugin (in src/plugin/jamwide_plugin.h)
 struct TransientDetector {
     float env = 0.0f;
     bool gate_open = true;
@@ -147,11 +147,11 @@ bool  show_latency_guide = true;   // toggle visibility
 ```cpp
 #pragma once
 
-namespace ninjam {
-class NinjamPlugin;
+namespace jamwide {
+class JamWidePlugin;
 }
 
-void ui_render_latency_guide(ninjam::NinjamPlugin* plugin);
+void ui_render_latency_guide(jamwide::JamWidePlugin* plugin);
 ```
 
 **New file:** `src/ui/ui_latency_guide.cpp`
@@ -256,7 +256,7 @@ float offset_ms = beat_offset * ms_per_beat;  // beat_offset is -0.5 to +0.5
 | `src/ui/ui_latency_guide.cpp` | **New** | Implementation (~150-200 lines) |
 | `src/ui/ui_local.cpp` | Modify | Add render call when connected |
 | `src/plugin/clap_entry.cpp` | Modify | Add transient detection in audio loop |
-| `src/plugin/ninjam_plugin.h` | Modify | Add transient detector state |
+| `src/plugin/jamwide_plugin.h` | Modify | Add transient detector state |
 | `CMakeLists.txt` | Modify | Add new source files to ninjam-ui target |
 
 ---

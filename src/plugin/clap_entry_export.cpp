@@ -1,10 +1,11 @@
 // CLAP entry export for clap-wrapper (clap-first builds)
+// JamWide Plugin
 
 #include <clap/clap.h>
 
-bool ninjam_entry_init(const char* path);
-void ninjam_entry_deinit(void);
-const void* ninjam_entry_get_factory(const char* factory_id);
+bool jamwide_entry_init(const char* path);
+void jamwide_entry_deinit(void);
+const void* jamwide_entry_get_factory(const char* factory_id);
 
 extern "C" {
 #ifdef __GNUC__
@@ -14,9 +15,9 @@ extern "C" {
 
 const CLAP_EXPORT struct clap_plugin_entry clap_entry = {
     CLAP_VERSION,
-    ninjam_entry_init,
-    ninjam_entry_deinit,
-    ninjam_entry_get_factory
+    jamwide_entry_init,
+    jamwide_entry_deinit,
+    jamwide_entry_get_factory
 };
 
 #ifdef __GNUC__

@@ -5,11 +5,11 @@
 
 #include "ui_master.h"
 #include "ui_meters.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "core/njclient.h"
 #include "imgui.h"
 
-void ui_render_master_panel(ninjam::NinjamPlugin* plugin) {
+void ui_render_master_panel(jamwide::JamWidePlugin* plugin) {
     if (!plugin) return;
 
     if (!ImGui::CollapsingHeader("Master", ImGuiTreeNodeFlags_DefaultOpen)) {

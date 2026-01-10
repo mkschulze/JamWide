@@ -1,4 +1,4 @@
-# NINJAM Plugin
+# JamWide
 
 A modern audio plugin client for [NINJAM](https://www.cockos.com/ninjam/) — the open-source, internet-based real-time collaboration software for musicians.
 
@@ -13,7 +13,7 @@ NINJAM (Novel Intervallic Network Jamming Architecture for Music) allows musicia
 
 ## About This Plugin
 
-This project ports the NINJAM client functionality into a cross-platform CLAP audio plugin, allowing you to:
+JamWide ports the NINJAM client functionality into a cross-platform CLAP audio plugin, allowing you to:
 
 - **Use NINJAM directly in your DAW** — Connect to jam sessions without leaving your production environment
 - **Route audio flexibly** — Use your DAW's mixer for monitoring and processing
@@ -74,17 +74,17 @@ Works with any DAW that supports CLAP, VST3, or Audio Unit plugins:
 
 ```bash
 # Clone the repository
-git clone --recursive https://github.com/mkschulze/ninjam-clap.git
-cd ninjam-clap
+git clone --recursive https://github.com/mkschulze/JamWide.git
+cd JamWide
 
 # Create build directory
 mkdir build && cd build
 
 # Configure (macOS) - Dev build with verbose logging
-cmake .. -DCMAKE_BUILD_TYPE=Release -DNINJAM_CLAP_DEV_BUILD=ON
+cmake .. -DCMAKE_BUILD_TYPE=Release -DJAMWIDE_DEV_BUILD=ON
 
 # Configure (macOS) - Production build with minimal logging  
-cmake .. -DCMAKE_BUILD_TYPE=Release -DNINJAM_CLAP_DEV_BUILD=OFF
+cmake .. -DCMAKE_BUILD_TYPE=Release -DJAMWIDE_DEV_BUILD=OFF
 
 # Configure (Windows with Visual Studio)
 cmake .. -G "Visual Studio 17 2022" -A x64
@@ -102,24 +102,24 @@ cmake --build . --config Release
 
 ### Output
 
-- **macOS**: `build/NINJAM.clap` (bundle)
-- **Windows**: `build/Release/NINJAM.clap` (DLL)
+- **macOS**: `build/JamWide.clap` (bundle)
+- **Windows**: `build/Release/JamWide.clap` (DLL)
 
 ## Installation
 
 ### macOS
-Copy `NINJAM.clap` to one of:
+Copy `JamWide.clap` to one of:
 - `~/Library/Audio/Plug-Ins/CLAP/` (user)
 - `/Library/Audio/Plug-Ins/CLAP/` (system-wide)
 
 ### Windows
-Copy `NINJAM.clap` to one of:
+Copy `JamWide.clap` to one of:
 - `%LOCALAPPDATA%\Programs\Common\CLAP\` (user)
 - `C:\Program Files\Common Files\CLAP\` (system-wide)
 
 ## Usage
 
-1. Load the NINJAM plugin on a track in your DAW
+1. Load the JamWide plugin on a track in your DAW
 2. Open the plugin GUI
 3. Enter a server address (e.g., `ninbot.com:2049`) or select from the list
 4. Enter your username and optional password
@@ -167,7 +167,7 @@ Copy `NINJAM.clap` to one of:
 ## Architecture
 
 ```
-ninjam-clap/
+JamWide/
 ├── src/
 │   ├── core/           # NJClient port (networking, audio decode/encode)
 │   ├── plugin/         # CLAP entry point and wrapper

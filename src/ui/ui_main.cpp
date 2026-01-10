@@ -7,7 +7,7 @@
 */
 
 #include "ui_main.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "core/njclient.h"
 #include "ui_status.h"
 #include "ui_connection.h"
@@ -21,13 +21,13 @@
 #include <chrono>
 #include <ctime>
 
-using namespace ninjam;
+using namespace jamwide;
 
 //------------------------------------------------------------------------------
 // UI Render Frame - Stub Implementation
 //------------------------------------------------------------------------------
 
-void ui_render_frame(NinjamPlugin* plugin) {
+void ui_render_frame(JamWidePlugin* plugin) {
     if (!plugin) {
         return;
     }

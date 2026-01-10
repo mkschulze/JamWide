@@ -1,4 +1,4 @@
-# Active Context - NINJAM CLAP Plugin
+# Active Context - JamWide Plugin
 
 ## Current Session Focus
 
@@ -46,9 +46,9 @@ cmake .. -DCMAKE_BUILD_TYPE=Release -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE
 cmake --build . --config Release
 
 # Output:
-# - NINJAM.clap (CLAP)
-# - NINJAM.vst3 (VST3)
-# - NINJAM.component (AU v2, macOS only)
+# - JamWide.clap (CLAP)
+# - JamWide.vst3 (VST3)
+# - JamWide.component (AU v2, macOS only)
 
 # Install locations (macOS):
 # ~/Library/Audio/Plug-Ins/CLAP/
@@ -115,17 +115,17 @@ cmake --build . --config Release
 ./install.sh
 
 # Current build: r67 (DEV BUILD)
-# Installs to: ~/Library/Audio/Plug-Ins/CLAP/NINJAM.clap
+# Installs to: ~/Library/Audio/Plug-Ins/CLAP/JamWide.clap
 ```
 
 ## Debug Logging
 
 ```bash
 # Watch live log
-tail -f /tmp/ninjam-clap.log
+tail -f /tmp/jamwide.log
 
 # Clear log before test
-: > /tmp/ninjam-clap.log
+: > /tmp/jamwide.log
 ```
 
 ## Test Server

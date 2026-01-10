@@ -4,7 +4,7 @@
 */
 
 #include "ui_latency_guide.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "imgui.h"
 #include <cmath>
 
@@ -57,7 +57,7 @@ ImU32 dot_color_for_offset_ms(float offset_ms) {
     return ImGui::GetColorU32(ImVec4(0.9f, 0.2f, 0.2f, 1.0f));
 }
 
-int effective_bpi(const ninjam::NinjamPlugin* plugin) {
+int effective_bpi(const jamwide::JamWidePlugin* plugin) {
     if (!plugin) return 4;
     int bpi = plugin->ui_snapshot.bpi.load(std::memory_order_relaxed);
     if (bpi <= 0) {
@@ -68,7 +68,7 @@ int effective_bpi(const ninjam::NinjamPlugin* plugin) {
 
 } // namespace
 
-void ui_render_latency_guide(ninjam::NinjamPlugin* plugin) {
+void ui_render_latency_guide(jamwide::JamWidePlugin* plugin) {
     if (!plugin) return;
 
     auto& state = plugin->ui_state;

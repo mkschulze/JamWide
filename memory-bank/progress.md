@@ -12,7 +12,7 @@
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Create `ninjam-clap/` directory structure | ✅ | `/Users/cell/dev/ninjam-clap/` |
+| Create `JamWide/` directory structure | ✅ | `/Users/cell/dev/JamWide/` |
 | Initialize git repository | ✅ | |
 | Add CLAP SDK submodule (`libs/clap`) | ✅ | v1.2.7 |
 | Add clap-helpers submodule (`libs/clap-helpers`) | ✅ | |
@@ -59,7 +59,7 @@
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Create `src/plugin/ninjam_plugin.h` | ✅ | Plugin instance struct (Part 1 Section 5) |
+| Create `src/plugin/jamwide_plugin.h` | ✅ | Plugin instance struct (Part 1 Section 5) |
 | Implement clap_entry.cpp | ✅ | Factory, descriptor (Part 2 Section 1) |
 | Implement plugin lifecycle | ✅ | init, destroy, activate, deactivate, start/stop_processing (Part 2 Section 2) |
 | Implement audio ports extension | ✅ | Stereo I/O (Part 2 Section 3) |
@@ -147,7 +147,7 @@
 |------|-------|
 | **Current Phase** | Phase 5 - Integration & Polish |
 | **Latest Build** | r90 (2026-01-10) DEV BUILD |
-| **GitHub** | https://github.com/mkschulze/ninjam-clap |
+| **GitHub** | https://github.com/mkschulze/JamWide |
 | **Latest Tag** | v0.90-chat |
 
 ### Recent Features (r85-r90)
@@ -167,7 +167,7 @@ Major refactor complete (r36) + confirmed working (r41+):
 - ✅ Snapshot pattern: Safe remote user data access
 - ✅ Shared_ptr keepalive: Plugin lifetime safety
 - ✅ Server list fetcher: Async HTTP via JNetLib (default URL: http://ninbot.com/serverlist)
-- ✅ Dev/Production build system with NINJAM_CLAP_DEV_BUILD option
+- ✅ Dev/Production build system with JAMWIDE_DEV_BUILD option
 - ⚠️ Connection stable on empty servers; crash when users are present
 
 ---
@@ -195,7 +195,7 @@ Major refactor complete (r36) + confirmed working (r41+):
 | | | ✅ Completed threading/sync plan |
 | | | ✅ Completed technical design (3 parts) |
 | | | ✅ Created progress.md |
-| 2026-01-06 | Phase 0 | ✅ Created project at `/Users/cell/dev/ninjam-clap/` |
+| 2026-01-06 | Phase 0 | ✅ Created project at `/Users/cell/dev/JamWide/` |
 | | | ✅ Added all submodules (clap, clap-helpers, imgui, libogg, libvorbis) |
 | | | ✅ Copied WDL files |
 | | | ✅ Created CMakeLists.txt, Info.plist.in |
@@ -207,7 +207,7 @@ Major refactor complete (r36) + confirmed working (r41+):
 | | | ✅ Created SpscRing<T,N> lock-free queue |
 | | | ✅ Created UiEvent variant types |
 | | | ✅ Created run_thread.h/cpp with adaptive sleep |
-| | | ✅ Created ninjam_plugin.h struct |
+| | | ✅ Created jamwide_plugin.h struct |
 | 2026-01-07 | Phase 1 Review | ✅ Code review by senior developer |
 | | | ✅ Created ui_state.h with UiState + UiAtomicSnapshot |
 | | | ✅ Implemented chat_callback and license_callback |
@@ -283,7 +283,7 @@ Major refactor complete (r36) + confirmed working (r41+):
 | | | ✅ BPM/BPI/Beat display working (120 BPM, 32 BPI) |
 | | | ✅ No crash on connection - race condition fixed! |
 | | | ✅ Created debug/logging.h with NLOG/NLOG_VERBOSE macros |
-| | | ✅ Added NINJAM_CLAP_DEV_BUILD cmake option |
+| | | ✅ Added JAMWIDE_DEV_BUILD cmake option |
 | | | ✅ Build r44 (DEV BUILD) verified stable |
 
 ---
@@ -314,7 +314,7 @@ Major refactor complete (r36) + confirmed working (r41+):
 |----------|---------|
 | [Functional Design](functional-design-clapNinjam.md) | Features, requirements, architecture overview |
 | [Threading & Sync Plan](plan-clapNinjamThreadingSync.md) | Thread roles, atomics, callbacks, license handling |
-| [Technical Design Part 1](technical-design-part1-core.md) | Project structure, CMake, NinjamPlugin struct, SpscRing |
+| [Technical Design Part 1](technical-design-part1-core.md) | Project structure, CMake, JamWidePlugin struct, SpscRing |
 | [Technical Design Part 2](technical-design-part2-clap.md) | CLAP entry, lifecycle, audio, params, state, GUI ext |
 | [Technical Design Part 3](technical-design-part3-ui.md) | Platform GUI layers, ImGui panels, VU meters |
 

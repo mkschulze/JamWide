@@ -6,11 +6,11 @@
 #ifndef UI_UTIL_H
 #define UI_UTIL_H
 
-namespace ninjam {
-struct NinjamPlugin;
+namespace jamwide {
+struct JamWidePlugin;
 }
 
 // Recompute any_solo_active based on local + remote channel flags.
-void ui_update_solo_state(ninjam::NinjamPlugin* plugin);
+void ui_update_solo_state(jamwide::JamWidePlugin* plugin);
 
 #endif // UI_UTIL_H

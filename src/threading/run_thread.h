@@ -11,9 +11,9 @@
 
 #include <memory>
 
-namespace ninjam {
+namespace jamwide {
 
-struct NinjamPlugin;
+struct JamWidePlugin;
 
 /**
  * Start the Run thread.
@@ -21,8 +21,8 @@ struct NinjamPlugin;
  * 
  * @param plugin Plugin instance
  */
-void run_thread_start(NinjamPlugin* plugin,
-                      std::shared_ptr<NinjamPlugin> keepalive);
+void run_thread_start(JamWidePlugin* plugin,
+                      std::shared_ptr<JamWidePlugin> keepalive);
 
 /**
  * Stop the Run thread.
@@ -31,8 +31,8 @@ void run_thread_start(NinjamPlugin* plugin,
  * 
  * @param plugin Plugin instance
  */
-void run_thread_stop(NinjamPlugin* plugin);
+void run_thread_stop(JamWidePlugin* plugin);
 
-} // namespace ninjam
+} // namespace jamwide
 
 #endif // RUN_THREAD_H

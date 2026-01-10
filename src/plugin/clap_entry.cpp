@@ -1,5 +1,5 @@
 // CLAP Entry Point - Phase 2 Full Implementation
-// NINJAM CLAP Plugin
+// JamWide Plugin
 
 #include <clap/clap.h>
 #include <algorithm>
@@ -9,13 +9,13 @@
 #include <memory>
 #include <mutex>
 
-#include "ninjam_plugin.h"
+#include "jamwide_plugin.h"
 #include "core/njclient.h"
 #include "debug/logging.h"
 #include "threading/run_thread.h"
 #include "third_party/picojson.h"
 
-using namespace ninjam;
+using namespace jamwide;
 
 //------------------------------------------------------------------------------
 // Forward Declarations
@@ -48,12 +48,12 @@ static const char* s_features[] = {
 
 static const clap_plugin_descriptor_t s_descriptor = {
     .clap_version = CLAP_VERSION,
-    .id = "com.ninjam.clap-client",
-    .name = "NINJAM",
-    .vendor = "NINJAM",
-    .url = "https://www.cockos.com/ninjam/",
-    .manual_url = "https://www.cockos.com/ninjam/",
-    .support_url = "https://www.cockos.com/ninjam/",
+    .id = "com.jamwide.client",
+    .name = "JamWide",
+    .vendor = "JamWide",
+    .url = "https://github.com/mkschulze/JamWide",
+    .manual_url = "https://github.com/mkschulze/JamWide",
+    .support_url = "https://github.com/mkschulze/JamWide",
     .version = "1.0.0",
     .description = "Real-time online music collaboration",
     .features = s_features
@@ -76,25 +76,25 @@ enum ParamId : clap_id {
 //------------------------------------------------------------------------------
 
 struct PluginInstance {
-    std::shared_ptr<NinjamPlugin> plugin;
+    std::shared_ptr<JamWidePlugin> plugin;
 };
 
 static PluginInstance* get_instance(const clap_plugin_t* plugin) {
     return static_cast<PluginInstance*>(plugin->plugin_data);
 }
 
-static NinjamPlugin* get_plugin(const clap_plugin_t* plugin) {
+static JamWidePlugin* get_plugin(const clap_plugin_t* plugin) {
     auto* instance = get_instance(plugin);
     return instance ? instance->plugin.get() : nullptr;
 }
 
-static std::shared_ptr<NinjamPlugin> get_plugin_shared(
+static std::shared_ptr<JamWidePlugin> get_plugin_shared(
         const clap_plugin_t* plugin) {
     auto* instance = get_instance(plugin);
     return instance ? instance->plugin : nullptr;
 }
 
-static void process_param_events(NinjamPlugin* plugin,
+static void process_param_events(JamWidePlugin* plugin,
                                  const clap_input_events_t* in_events) {
     if (!in_events) return;
 
@@ -1092,7 +1092,7 @@ static const clap_plugin_t* factory_create_plugin(
     // Allocate plugin instance
     auto* clap_plugin = new clap_plugin_t(s_plugin_template);
     auto* instance = new PluginInstance();
-    instance->plugin = std::make_shared<NinjamPlugin>();
+    instance->plugin = std::make_shared<JamWidePlugin>();
 
     auto* plugin = instance->plugin.get();
     plugin->clap_plugin = clap_plugin;
@@ -1112,14 +1112,14 @@ static const clap_plugin_factory_t s_factory = {
 // Entry Point
 //------------------------------------------------------------------------------
 
-bool ninjam_entry_init(const char* path) {
+bool jamwide_entry_init(const char* path) {
     return true;
 }
 
-void ninjam_entry_deinit(void) {
+void jamwide_entry_deinit(void) {
 }
 
-const void* ninjam_entry_get_factory(const char* factory_id) {
+const void* jamwide_entry_get_factory(const char* factory_id) {
     if (strcmp(factory_id, CLAP_PLUGIN_FACTORY_ID) == 0)
         return &s_factory;
     return nullptr;

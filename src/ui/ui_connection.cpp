@@ -5,7 +5,7 @@
 
 #include "ui_connection.h"
 #include "threading/ui_command.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "core/njclient.h"
 #include "imgui.h"
 #include <cstdio>
@@ -13,7 +13,7 @@
 static FILE* get_log_file() {
     static FILE* f = nullptr;
     if (!f) {
-        f = fopen("/tmp/ninjam-clap.log", "a");
+        f = fopen("/tmp/jamwide.log", "a");
         if (f) {
             fprintf(f, "\n=== NINJAM CLAP Session Started ===\n");
             fflush(f);
@@ -24,7 +24,7 @@ static FILE* get_log_file() {
 
 #define NLOG(...) do { FILE* f = get_log_file(); if (f) { fprintf(f, __VA_ARGS__); fflush(f); } } while(0)
 
-void ui_render_connection_panel(ninjam::NinjamPlugin* plugin) {
+void ui_render_connection_panel(jamwide::JamWidePlugin* plugin) {
     if (!plugin) return;
 
     auto& state = plugin->ui_state;
@@ -50,7 +50,7 @@ void ui_render_connection_panel(ninjam::NinjamPlugin* plugin) {
             NLOG("[UI] Connect button pressed! server='%s' user='%s'\n",
                     state.server_input, state.username_input);
 
-            ninjam::ConnectCommand cmd;
+            jamwide::ConnectCommand cmd;
             cmd.server = state.server_input;
             cmd.username = state.username_input;
             cmd.password = state.password_input;
@@ -62,7 +62,7 @@ void ui_render_connection_panel(ninjam::NinjamPlugin* plugin) {
         }
     } else {
         if (ImGui::Button("Disconnect")) {
-            ninjam::DisconnectCommand cmd;
+            jamwide::DisconnectCommand cmd;
             if (!plugin->cmd_queue.try_push(std::move(cmd))) {
                 state.connection_error = "Disconnect request queue full";
             }

@@ -93,7 +93,7 @@ Create a cross-platform CLAP audio plugin that enables musicians to collaborate 
 │  │                        │                            │   │  │
 │  │              ┌─────────┴─────────┐                  │   │  │
 │  │              │  Plugin Instance  │                  │   │  │
-│  │              │  (NinjamPlugin)   │                  │   │  │
+│  │              │  (JamWidePlugin)   │                  │   │  │
 │  │              └───────────────────┘                  │   │  │
 │  │                                                     │   │  │
 │  └─────────────────────────────────────────────────────────┘  │
@@ -122,7 +122,7 @@ Create a cross-platform CLAP audio plugin that enables musicians to collaborate 
 - Plugin ID: `com.ninjam.clap-client`
 
 #### 4.1.2 Plugin Implementation (`clap_plugin.cpp`)
-- Create/destroy `NinjamPlugin` instance
+- Create/destroy `JamWidePlugin` instance
 - Implement CLAP plugin interface:
   - `init()` / `destroy()`
   - `activate()` / `deactivate()`

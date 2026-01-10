@@ -10,7 +10,7 @@
 
 ```cpp
 #include "gui_context.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "ui/ui_main.h"
 
 #include <d3d11.h>
@@ -27,7 +27,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
 
 class GuiContextWin32 : public GuiContext {
 public:
-    explicit GuiContextWin32(NinjamPlugin* plugin)
+    explicit GuiContextWin32(JamWidePlugin* plugin)
         : hwnd_(nullptr)
         , parent_hwnd_(nullptr)
         , device_(nullptr)
@@ -295,7 +295,7 @@ private:
     }
 };
 
-GuiContext* create_gui_context_win32(NinjamPlugin* plugin) {
+GuiContext* create_gui_context_win32(JamWidePlugin* plugin) {
     return new GuiContextWin32(plugin);
 }
 ```
@@ -304,7 +304,7 @@ GuiContext* create_gui_context_win32(NinjamPlugin* plugin) {
 
 ```objc
 #include "gui_context.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "ui/ui_main.h"
 
 #import <Cocoa/Cocoa.h>
@@ -316,13 +316,13 @@ GuiContext* create_gui_context_win32(NinjamPlugin* plugin) {
 #include "imgui_impl_metal.h"
 
 @interface NinjamView : MTKView
-@property (nonatomic, assign) NinjamPlugin* plugin;
+@property (nonatomic, assign) JamWidePlugin* plugin;
 @property (nonatomic, strong) id<MTLCommandQueue> commandQueue;
 @end
 
 @implementation NinjamView
 
-- (instancetype)initWithFrame:(NSRect)frame plugin:(NinjamPlugin*)plugin {
+- (instancetype)initWithFrame:(NSRect)frame plugin:(JamWidePlugin*)plugin {
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     self = [super initWithFrame:frame device:device];
 
@@ -423,7 +423,7 @@ GuiContext* create_gui_context_win32(NinjamPlugin* plugin) {
 
 class GuiContextMacOS : public GuiContext {
 public:
-    explicit GuiContextMacOS(NinjamPlugin* plugin)
+    explicit GuiContextMacOS(JamWidePlugin* plugin)
         : view_(nil)
     {
         plugin_ = plugin;
@@ -484,7 +484,7 @@ private:
     NinjamView* view_;
 };
 
-extern "C" GuiContext* create_gui_context_macos(NinjamPlugin* plugin) {
+extern "C" GuiContext* create_gui_context_macos(JamWidePlugin* plugin) {
     return new GuiContextMacOS(plugin);
 }
 ```
@@ -498,10 +498,10 @@ extern "C" GuiContext* create_gui_context_macos(NinjamPlugin* plugin) {
 ```cpp
 #pragma once
 
-struct NinjamPlugin;
+struct JamWidePlugin;
 
 // Main UI render function - called every frame
-void ui_render_frame(NinjamPlugin* plugin);
+void ui_render_frame(JamWidePlugin* plugin);
 ```
 
 ### 2.2 UI Snapshot (`src/ui/ui_state.h`)
@@ -559,19 +559,19 @@ plugin->ui_snapshot.beat_position.store(beat_pos, std::memory_order_relaxed);
 
 ```cpp
 #include "ui_main.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "build_number.h"
 #include "imgui.h"
 
 // Forward declarations
-void ui_render_status_bar(NinjamPlugin* plugin);
-void ui_render_connection_panel(NinjamPlugin* plugin);
-void ui_render_local_channel(NinjamPlugin* plugin);
-void ui_render_master_panel(NinjamPlugin* plugin);
-void ui_render_remote_channels(NinjamPlugin* plugin);
-void ui_render_license_dialog(NinjamPlugin* plugin);
+void ui_render_status_bar(JamWidePlugin* plugin);
+void ui_render_connection_panel(JamWidePlugin* plugin);
+void ui_render_local_channel(JamWidePlugin* plugin);
+void ui_render_master_panel(JamWidePlugin* plugin);
+void ui_render_remote_channels(JamWidePlugin* plugin);
+void ui_render_license_dialog(JamWidePlugin* plugin);
 
-void ui_render_frame(NinjamPlugin* plugin) {
+void ui_render_frame(JamWidePlugin* plugin) {
     // 1. Drain event queue (lock-free)
     plugin->ui_queue.drain([&](UiEvent&& event) {
         std::visit([&](auto&& e) {
@@ -657,14 +657,14 @@ void ui_render_frame(NinjamPlugin* plugin) {
 ### 3.1 Implementation (`src/ui/ui_status.cpp`)
 
 ```cpp
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "threading/ui_command.h"
 #include "core/njclient.h"
 #include "ui_meters.h"
 #include "ui_util.h"
 #include "imgui.h"
 
-void ui_render_status_bar(NinjamPlugin* plugin) {
+void ui_render_status_bar(JamWidePlugin* plugin) {
     auto& state = plugin->ui_state;
 
     // Connection indicator
@@ -740,12 +740,12 @@ void ui_render_status_bar(NinjamPlugin* plugin) {
 ### 4.1 Implementation (`src/ui/ui_connection.cpp`)
 
 ```cpp
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "threading/ui_command.h"
 #include "core/njclient.h"
 #include "imgui.h"
 
-void ui_render_connection_panel(NinjamPlugin* plugin) {
+void ui_render_connection_panel(JamWidePlugin* plugin) {
     auto& state = plugin->ui_state;
 
     if (ImGui::CollapsingHeader("Connection", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -817,7 +817,7 @@ void ui_render_connection_panel(NinjamPlugin* plugin) {
 ### 5.1 Implementation (`src/ui/ui_local.cpp`)
 
 ```cpp
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "imgui.h"
 
 static const char* bitrate_labels[] = {
@@ -825,7 +825,7 @@ static const char* bitrate_labels[] = {
 };
 static const int bitrate_values[] = { 32, 64, 96, 128, 192, 256 };
 
-void ui_render_local_channel(NinjamPlugin* plugin) {
+void ui_render_local_channel(JamWidePlugin* plugin) {
     auto& state = plugin->ui_state;
 
     if (!ImGui::CollapsingHeader("Local Channel", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -940,7 +940,7 @@ void ui_render_local_channel(NinjamPlugin* plugin) {
     ImGui::Unindent();
 }
 
-void ui_update_solo_state(NinjamPlugin* plugin) {
+void ui_update_solo_state(JamWidePlugin* plugin) {
     bool any_solo_active = plugin->ui_state.local_solo;
 
     std::unique_lock<std::mutex> lock(plugin->client_mutex);
@@ -975,10 +975,10 @@ void ui_update_solo_state(NinjamPlugin* plugin) {
 ### 6.1 Implementation (`src/ui/ui_master.cpp`)
 
 ```cpp
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "imgui.h"
 
-void ui_render_master_panel(NinjamPlugin* plugin) {
+void ui_render_master_panel(JamWidePlugin* plugin) {
     auto& state = plugin->ui_state;
 
     if (ImGui::CollapsingHeader("Master", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1056,12 +1056,12 @@ Remote user data is read directly from NJClient under `client_mutex`
 (ReaNINJAM-style). UI sends mutations back via `cmd_queue`.
 
 ```cpp
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "threading/ui_command.h"
 #include "core/njclient.h"
 #include "imgui.h"
 
-void ui_render_remote_channels(NinjamPlugin* plugin) {
+void ui_render_remote_channels(JamWidePlugin* plugin) {
     if (!plugin) return;
 
     int status = plugin->ui_state.status;
@@ -1164,10 +1164,10 @@ void ui_render_remote_channels(NinjamPlugin* plugin) {
 ### 8.1 Implementation (`src/ui/ui_license.cpp`)
 
 ```cpp
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "imgui.h"
 
-void ui_render_license_dialog(NinjamPlugin* plugin) {
+void ui_render_license_dialog(JamWidePlugin* plugin) {
     auto& state = plugin->ui_state;
 
     ImGui::OpenPopup("Server License Agreement");
@@ -1339,8 +1339,8 @@ Part 3 covers:
 
 | File | Purpose |
 |------|---------|
-| `src/plugin/ninjam_plugin.h` | Plugin instance struct |
-| `src/plugin/ninjam_plugin.cpp` | Plugin lifecycle |
+| `src/plugin/jamwide_plugin.h` | Plugin instance struct |
+| `src/plugin/jamwide_plugin.cpp` | Plugin lifecycle |
 | `src/plugin/clap_entry.cpp` | CLAP entry point |
 | `src/plugin/clap_audio.cpp` | Audio ports extension |
 | `src/plugin/clap_params.cpp` | Parameters extension |
@@ -1374,8 +1374,8 @@ Part 3 covers:
 
 ```bash
 # Clone and setup
-git clone --recursive https://github.com/your-org/ninjam-clap.git
-cd ninjam-clap
+git clone --recursive https://github.com/your-org/JamWide.git
+cd JamWide
 
 # Configure
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -1384,18 +1384,18 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 
 # Output location
-# Windows: build/Release/NINJAM.clap
-# macOS: build/NINJAM.clap/
+# Windows: build/Release/JamWide.clap
+# macOS: build/JamWide.clap/
 ```
 
 ### 13.2 Testing
 
 ```bash
 # Run clap-validator
-clap-validator build/NINJAM.clap
+clap-validator build/JamWide.clap
 
 # Manual DAW testing
-# 1. Copy NINJAM.clap to DAW's CLAP folder
+# 1. Copy JamWide.clap to DAW's CLAP folder
 # 2. Scan for new plugins
 # 3. Insert on track
 # 4. Open UI

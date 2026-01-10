@@ -7,7 +7,7 @@
 ## 1. Project Structure
 
 ```
-ninjam-clap/
+JamWide/
 ├── CMakeLists.txt                    # Root build configuration
 ├── cmake/
 │   └── ClapPlugin.cmake              # CLAP bundle helpers
@@ -19,8 +19,8 @@ ninjam-clap/
 │   └── libvorbis/                    # Vorbis codec (git submodule)
 ├── src/
 │   ├── plugin/
-│   │   ├── ninjam_plugin.h           # Plugin instance struct
-│   │   ├── ninjam_plugin.cpp         # Plugin implementation
+│   │   ├── jamwide_plugin.h           # Plugin instance struct
+│   │   ├── jamwide_plugin.cpp         # Plugin implementation
 │   │   ├── clap_entry.cpp            # clap_plugin_entry export
 │   │   ├── clap_audio.cpp            # Audio ports extension
 │   │   ├── clap_params.cpp           # Parameters extension
@@ -93,15 +93,15 @@ ninjam-clap/
 
 ```cmake
 cmake_minimum_required(VERSION 3.20)
-project(ninjam-clap VERSION 1.0.0 LANGUAGES C CXX)
+project(JamWide VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if(APPLE)
-    option(NINJAM_CLAP_UNIVERSAL "Build universal binary (arm64 + x86_64)" ON)
-    if(NINJAM_CLAP_UNIVERSAL)
+    option(JAMWIDE_UNIVERSAL "Build universal binary (arm64 + x86_64)" ON)
+    if(JAMWIDE_UNIVERSAL)
         if(NOT DEFINED CMAKE_OSX_ARCHITECTURES OR CMAKE_OSX_ARCHITECTURES STREQUAL "")
             set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures" FORCE)
         endif()
@@ -109,7 +109,7 @@ if(APPLE)
 endif()
 
 # Options
-option(NINJAM_CLAP_BUILD_TESTS "Build tests" OFF)
+option(JAMWIDE_BUILD_TESTS "Build tests" OFF)
 
 # Submodules
 add_subdirectory(libs/clap EXCLUDE_FROM_ALL)
@@ -175,8 +175,8 @@ target_include_directories(njclient PUBLIC src/core)
 target_link_libraries(njclient PUBLIC wdl vorbis vorbisenc ogg)
 
 # Main plugin
-add_library(ninjam-clap MODULE
-    src/plugin/ninjam_plugin.cpp
+add_library(JamWide MODULE
+    src/plugin/jamwide_plugin.cpp
     src/plugin/clap_entry.cpp
     src/plugin/clap_audio.cpp
     src/plugin/clap_params.cpp
@@ -191,20 +191,20 @@ add_library(ninjam-clap MODULE
     src/ui/ui_license.cpp
     src/ui/ui_meters.cpp
 )
-target_include_directories(ninjam-clap PRIVATE
+target_include_directories(JamWide PRIVATE
     src
     src/third_party
 )
 
 # Platform-specific GUI sources
 if(WIN32)
-    target_sources(ninjam-clap PRIVATE src/platform/gui_win32.cpp)
-    target_link_libraries(ninjam-clap PRIVATE d3d11 dxgi)
+    target_sources(JamWide PRIVATE src/platform/gui_win32.cpp)
+    target_link_libraries(JamWide PRIVATE d3d11 dxgi)
 elseif(APPLE)
-    target_sources(ninjam-clap PRIVATE src/platform/gui_macos.mm)
+    target_sources(JamWide PRIVATE src/platform/gui_macos.mm)
 endif()
 
-target_link_libraries(ninjam-clap PRIVATE
+target_link_libraries(JamWide PRIVATE
     clap
     clap-helpers
     njclient
@@ -212,7 +212,7 @@ target_link_libraries(ninjam-clap PRIVATE
 )
 
 # CLAP bundle setup
-set_target_properties(ninjam-clap PROPERTIES
+set_target_properties(JamWide PROPERTIES
     BUNDLE TRUE
     BUNDLE_EXTENSION clap
     PREFIX ""
@@ -220,14 +220,14 @@ set_target_properties(ninjam-clap PROPERTIES
 )
 
 if(APPLE)
-    set_target_properties(ninjam-clap PROPERTIES
+    set_target_properties(JamWide PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/resources/Info.plist.in
     )
 endif()
 
 # Install
-install(TARGETS ninjam-clap
+install(TARGETS JamWide
     LIBRARY DESTINATION lib/clap
     BUNDLE DESTINATION lib/clap
 )
@@ -344,7 +344,7 @@ When multiple locks are needed, acquire in this order:
 
 ## 4. Data Structures
 
-### 4.1 Plugin Instance (`src/plugin/ninjam_plugin.h`)
+### 4.1 Plugin Instance (`src/plugin/jamwide_plugin.h`)
 
 ```cpp
 #pragma once
@@ -391,7 +391,7 @@ using UiEvent = std::variant<
 >;
 
 // Main plugin instance
-struct NinjamPlugin {
+struct JamWidePlugin {
     // CLAP plugin handle (back-reference)
     const clap_plugin_t* clap_plugin = nullptr;
     const clap_host_t* host = nullptr;
@@ -445,15 +445,15 @@ struct NinjamPlugin {
 };
 
 // Plugin lifecycle functions
-NinjamPlugin* ninjam_plugin_create(const clap_plugin_t* clap_plugin,
+JamWidePlugin* jamwide_plugin_create(const clap_plugin_t* clap_plugin,
                                     const clap_host_t* host);
-void ninjam_plugin_destroy(NinjamPlugin* plugin);
-bool ninjam_plugin_activate(NinjamPlugin* plugin, double sample_rate,
+void jamwide_plugin_destroy(JamWidePlugin* plugin);
+bool jamwide_plugin_activate(JamWidePlugin* plugin, double sample_rate,
                             uint32_t min_frames, uint32_t max_frames);
-void ninjam_plugin_deactivate(NinjamPlugin* plugin);
-bool ninjam_plugin_start_processing(NinjamPlugin* plugin);
-void ninjam_plugin_stop_processing(NinjamPlugin* plugin);
-clap_process_status ninjam_plugin_process(NinjamPlugin* plugin,
+void jamwide_plugin_deactivate(JamWidePlugin* plugin);
+bool jamwide_plugin_start_processing(JamWidePlugin* plugin);
+void jamwide_plugin_stop_processing(JamWidePlugin* plugin);
+clap_process_status jamwide_plugin_process(JamWidePlugin* plugin,
                                           const clap_process_t* process);
 ```
 
@@ -767,25 +767,25 @@ decoder->Open(...);
 ```cpp
 #pragma once
 
-struct NinjamPlugin;
+struct JamWidePlugin;
 
 // Start the Run thread (called from activate)
-void run_thread_start(NinjamPlugin* plugin);
+void run_thread_start(JamWidePlugin* plugin);
 
 // Stop the Run thread (called from deactivate)
-void run_thread_stop(NinjamPlugin* plugin);
+void run_thread_stop(JamWidePlugin* plugin);
 ```
 
 ### 6.2 Implementation (`src/threading/run_thread.cpp`)
 
 ```cpp
 #include "run_thread.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include <chrono>
 
 namespace {
 
-void run_thread_func(NinjamPlugin* plugin) {
+void run_thread_func(JamWidePlugin* plugin) {
     while (!plugin->shutdown.load(std::memory_order_acquire)) {
         // Always call Run() regardless of connection state
         // This allows Run() to process connection attempts
@@ -813,12 +813,12 @@ void run_thread_func(NinjamPlugin* plugin) {
 
 }  // namespace
 
-void run_thread_start(NinjamPlugin* plugin) {
+void run_thread_start(JamWidePlugin* plugin) {
     plugin->shutdown.store(false, std::memory_order_release);
     plugin->run_thread = std::thread(run_thread_func, plugin);
 }
 
-void run_thread_stop(NinjamPlugin* plugin) {
+void run_thread_stop(JamWidePlugin* plugin) {
     // Signal shutdown
     plugin->shutdown.store(true, std::memory_order_release);
 
@@ -843,13 +843,13 @@ void run_thread_stop(NinjamPlugin* plugin) {
 ### 7.1 Callback Setup
 
 ```cpp
-// In ninjam_plugin.cpp, during activate:
+// In jamwide_plugin.cpp, during activate:
 
 static void chat_callback(void* user_data, NJClient* client,
                           const char** parms, int nparms);
 static int license_callback(void* user_data, const char* license_text);
 
-void setup_callbacks(NinjamPlugin* plugin) {
+void setup_callbacks(JamWidePlugin* plugin) {
     plugin->client->ChatMessage_Callback = chat_callback;
     plugin->client->ChatMessage_User = plugin;
 
@@ -863,7 +863,7 @@ void setup_callbacks(NinjamPlugin* plugin) {
 ```cpp
 static void chat_callback(void* user_data, NJClient* client,
                           const char** parms, int nparms) {
-    auto* plugin = static_cast<NinjamPlugin*>(user_data);
+    auto* plugin = static_cast<JamWidePlugin*>(user_data);
 
     if (nparms < 1) return;
 
@@ -881,7 +881,7 @@ static void chat_callback(void* user_data, NJClient* client,
 
 ```cpp
 static int license_callback(void* user_data, const char* license_text) {
-    auto* plugin = static_cast<NinjamPlugin*>(user_data);
+    auto* plugin = static_cast<JamWidePlugin*>(user_data);
 
     // Store license in dedicated slot (guaranteed delivery)
     {

@@ -1086,7 +1086,7 @@ int NJClient::Run() // nonzero if sleep ok
 
               // Log auth state
               {
-                FILE* lf = fopen("/tmp/ninjam-clap.log", "a");
+                FILE* lf = fopen("/tmp/jamwide.log", "a");
                 if (lf) {
                   fprintf(lf, "[NJClient] Auth challenge received\n");
                   fprintf(lf, "[NJClient]   user='%s' pass_len=%d\n", m_user.Get(), (int)strlen(m_pass.Get()));
@@ -1104,7 +1104,7 @@ int NJClient::Run() // nonzero if sleep ok
                   license_result = LicenseAgreementCallback(LicenseAgreement_User,cha.license_agreement);
                 }
                 {
-                  FILE* lf = fopen("/tmp/ninjam-clap.log", "a");
+                  FILE* lf = fopen("/tmp/jamwide.log", "a");
                   if (lf) {
                     fprintf(lf, "[NJClient]   license callback returned: %d\n", license_result);
                     fclose(lf);
@@ -1118,7 +1118,7 @@ int NJClient::Run() // nonzero if sleep ok
               m_netcon->SetKeepAlive(m_connection_keepalive);
               
               {
-                FILE* lf = fopen("/tmp/ninjam-clap.log", "a");
+                FILE* lf = fopen("/tmp/jamwide.log", "a");
                 if (lf) {
                   fprintf(lf, "[NJClient]   client_caps=%d (bit0=license_accepted)\n", repl.client_caps);
                   fclose(lf);
@@ -2017,7 +2017,7 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
       int mask = user ? user->chanpresentmask : 0;
       int out_idx = user ? user->channels[0].out_chan_index : -1;
       int flags = user ? user->channels[0].flags : 0;
-      FILE* lf = fopen("/tmp/ninjam-clap.log", "a");
+      FILE* lf = fopen("/tmp/jamwide.log", "a");
       if (lf)
       {
         fprintf(lf, "[NJClient][AudioProc] users=%d mask=0x%x out_idx=%d flags=%d\n",

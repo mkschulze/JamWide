@@ -5,7 +5,7 @@
 
 #include "ui_server_browser.h"
 #include "threading/ui_command.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "imgui.h"
 
 #include <cstdio>
@@ -25,7 +25,7 @@ void format_server_address(const ServerListEntry& entry,
 
 } // namespace
 
-void ui_render_server_browser(ninjam::NinjamPlugin* plugin) {
+void ui_render_server_browser(jamwide::JamWidePlugin* plugin) {
     if (!plugin) return;
 
     auto& state = plugin->ui_state;
@@ -40,7 +40,7 @@ void ui_render_server_browser(ninjam::NinjamPlugin* plugin) {
                      sizeof(state.server_list_url));
 
     if (ImGui::Button("Refresh")) {
-        ninjam::RequestServerListCommand cmd;
+        jamwide::RequestServerListCommand cmd;
         cmd.url = state.server_list_url;
         if (!plugin->cmd_queue.try_push(std::move(cmd))) {
             state.server_list_error = "Server list request queue full";

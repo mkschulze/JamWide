@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# NINJAM CLAP Release Script
+# JamWide Release Script
 # Automatically generates commit summary, commits, builds, tags, and pushes to GitHub
 #
 
@@ -16,9 +16,9 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Get current build number
-BUILD_NUM=$(grep -o 'NINJAM_BUILD_NUMBER [0-9]*' src/build_number.h | awk '{print $2}')
+BUILD_NUM=$(grep -o 'JAMWIDE_BUILD_NUMBER [0-9]*' src/build_number.h | awk '{print $2}')
 
-echo -e "${YELLOW}=== NINJAM CLAP Release Script ===${NC}"
+echo -e "${YELLOW}=== JamWide Release Script ===${NC}"
 echo ""
 
 # Function to generate commit message from changes
@@ -132,7 +132,7 @@ echo -e "${YELLOW}Building...${NC}"
 ./install.sh
 
 # Get new build number after install
-NEW_BUILD_NUM=$(grep -o 'NINJAM_BUILD_NUMBER [0-9]*' src/build_number.h | awk '{print $2}')
+NEW_BUILD_NUM=$(grep -o 'JAMWIDE_BUILD_NUMBER [0-9]*' src/build_number.h | awk '{print $2}')
 TAG_NAME="v0.${NEW_BUILD_NUM}"
 
 echo ""
@@ -170,4 +170,4 @@ fi
 echo ""
 echo -e "${GREEN}=== Release Complete ===${NC}"
 echo -e "Build: r${NEW_BUILD_NUM}"
-echo -e "Installed to: ~/Library/Audio/Plug-Ins/CLAP/NINJAM.clap"
+echo -e "Installed to: ~/Library/Audio/Plug-Ins/CLAP/JamWide.clap"

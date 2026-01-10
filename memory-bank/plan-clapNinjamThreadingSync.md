@@ -112,7 +112,7 @@ Non-MVP `config_*` fields remain non-atomic and must only be read/written under 
 #include <variant>
 #include <optional>
 
-struct NinjamPlugin {
+struct JamWidePlugin {
     NJClient* client = nullptr;
 
     // Threading
@@ -261,7 +261,7 @@ License uses a dedicated atomic flag + mutex-protected string, **not** the SPSC 
 ### Callback Setup
 
 ```cpp
-void setup_callbacks(NinjamPlugin* plugin) {
+void setup_callbacks(JamWidePlugin* plugin) {
     plugin->client->ChatMessage_Callback = chat_callback;
     plugin->client->ChatMessage_User = plugin;
 
@@ -275,7 +275,7 @@ void setup_callbacks(NinjamPlugin* plugin) {
 ```cpp
 void chat_callback(void* user_data, NJClient* client,
                    const char** parms, int nparms) {
-    auto* plugin = static_cast<NinjamPlugin*>(user_data);
+    auto* plugin = static_cast<JamWidePlugin*>(user_data);
 
     if (nparms < 1) return;
 
@@ -293,7 +293,7 @@ void chat_callback(void* user_data, NJClient* client,
 
 ```cpp
 int license_callback(void* user_data, const char* license_text) {
-    auto* plugin = static_cast<NinjamPlugin*>(user_data);
+    auto* plugin = static_cast<JamWidePlugin*>(user_data);
 
     // Store license text in dedicated slot (guaranteed delivery)
     {
@@ -331,7 +331,7 @@ int license_callback(void* user_data, const char* license_text) {
 ### Run Thread (Always Ticks)
 
 ```cpp
-void run_thread_func(NinjamPlugin* plugin) {
+void run_thread_func(JamWidePlugin* plugin) {
     while (!plugin->shutdown.load(std::memory_order_acquire)) {
 
         // Always call Run() - handles all states including disconnected,
@@ -359,7 +359,7 @@ void run_thread_func(NinjamPlugin* plugin) {
 ```cpp
 clap_process_status process(const clap_plugin* clap_plugin,
                             const clap_process* process) {
-    auto* plugin = static_cast<NinjamPlugin*>(clap_plugin->plugin_data);
+    auto* plugin = static_cast<JamWidePlugin*>(clap_plugin->plugin_data);
 
     // Read transport (lock-free)
     bool is_playing = false;
@@ -412,7 +412,7 @@ clap_process_status process(const clap_plugin* clap_plugin,
 ### UI Thread
 
 ```cpp
-void ui_render_frame(NinjamPlugin* plugin) {
+void ui_render_frame(JamWidePlugin* plugin) {
     // 1. Drain event queue (lock-free, for chat/status/user events)
     plugin->ui_queue.drain([&](UiEvent&& event) {
         std::visit([&](auto&& e) { handle_event(plugin, std::move(e)); }, std::move(event));
@@ -439,7 +439,7 @@ void ui_render_frame(NinjamPlugin* plugin) {
     }
 }
 
-void render_local_channel(NinjamPlugin* plugin) {
+void render_local_channel(JamWidePlugin* plugin) {
     // Volume slider - writes atomic directly (no lock needed)
     float vol = plugin->client->config_mastervolume.load(std::memory_order_relaxed);
     if (ImGui::SliderFloat("Master", &vol, 0.0f, 2.0f)) {
@@ -465,7 +465,7 @@ void render_local_channel(NinjamPlugin* plugin) {
     }
 }
 
-void render_remote_channels(NinjamPlugin* plugin) {
+void render_remote_channels(JamWidePlugin* plugin) {
     // ReaNINJAM-style: read NJClient getters under client_mutex.
     std::unique_lock<std::mutex> lock(plugin->client_mutex);
     NJClient* client = plugin->client.get();
@@ -482,7 +482,7 @@ void render_remote_channels(NinjamPlugin* plugin) {
     }
 }
 
-void render_license_dialog(NinjamPlugin* plugin) {
+void render_license_dialog(JamWidePlugin* plugin) {
     ImGui::OpenPopup("Server License");
 
     if (ImGui::BeginPopupModal("Server License", nullptr,

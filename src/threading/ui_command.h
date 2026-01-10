@@ -9,7 +9,7 @@
 #include <string>
 #include <variant>
 
-namespace ninjam {
+namespace jamwide {
 
 struct ConnectCommand {
     std::string server;
@@ -83,6 +83,6 @@ using UiCommand = std::variant<
     SendChatCommand
 >;
 
-} // namespace ninjam
+} // namespace jamwide
 
 #endif // UI_COMMAND_H

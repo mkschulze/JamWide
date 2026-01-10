@@ -6,10 +6,10 @@
 #ifndef UI_LOCAL_H
 #define UI_LOCAL_H
 
-namespace ninjam {
-struct NinjamPlugin;
+namespace jamwide {
+struct JamWidePlugin;
 }
 
-void ui_render_local_channel(ninjam::NinjamPlugin* plugin);
+void ui_render_local_channel(jamwide::JamWidePlugin* plugin);
 
 #endif // UI_LOCAL_H

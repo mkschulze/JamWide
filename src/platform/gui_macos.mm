@@ -7,7 +7,7 @@
 */
 
 #include "gui_context.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "ui/ui_main.h"
 
 #import <Cocoa/Cocoa.h>
@@ -20,7 +20,7 @@
 #include "imgui_impl_osx.h"
 #include "imgui_impl_metal.h"
 
-using namespace ninjam;
+using namespace jamwide;
 
 //------------------------------------------------------------------------------
 // NinjamView - MTKView subclass for Metal rendering
@@ -28,12 +28,12 @@ using namespace ninjam;
 
 @interface NinjamView : MTKView {
 @public
-    std::shared_ptr<NinjamPlugin> plugin_;
+    std::shared_ptr<JamWidePlugin> plugin_;
 }
 @property (nonatomic, strong) id<MTLCommandQueue> commandQueue;
 @property (nonatomic, assign) ImGuiContext* imguiContext;
 - (instancetype)initWithFrame:(NSRect)frame
-                        plugin:(std::shared_ptr<NinjamPlugin>)plugin;
+                        plugin:(std::shared_ptr<JamWidePlugin>)plugin;
 - (void)clearPlugin;
 @end
 
@@ -49,7 +49,7 @@ using namespace ninjam;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame
-                        plugin:(std::shared_ptr<NinjamPlugin>)plugin {
+                        plugin:(std::shared_ptr<JamWidePlugin>)plugin {
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     self = [super initWithFrame:frame device:device];
 
@@ -224,11 +224,11 @@ using namespace ninjam;
 // GuiContextMacOS - Platform implementation
 //------------------------------------------------------------------------------
 
-namespace ninjam {
+namespace jamwide {
 
 class GuiContextMacOS : public GuiContext {
 public:
-    explicit GuiContextMacOS(std::shared_ptr<NinjamPlugin> plugin)
+    explicit GuiContextMacOS(std::shared_ptr<JamWidePlugin> plugin)
         : view_(nil)
     {
         plugin_ = std::move(plugin);
@@ -296,8 +296,8 @@ private:
     NinjamView* view_;
 };
 
-GuiContext* create_gui_context_macos(std::shared_ptr<NinjamPlugin> plugin) {
+GuiContext* create_gui_context_macos(std::shared_ptr<JamWidePlugin> plugin) {
     return new GuiContextMacOS(std::move(plugin));
 }
 
-} // namespace ninjam
+} // namespace jamwide

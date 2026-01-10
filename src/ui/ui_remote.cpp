@@ -7,11 +7,11 @@
 #include "ui_meters.h"
 #include "ui_util.h"
 #include "threading/ui_command.h"
-#include "plugin/ninjam_plugin.h"
+#include "plugin/jamwide_plugin.h"
 #include "core/njclient.h"
 #include "imgui.h"
 
-void ui_render_remote_channels(ninjam::NinjamPlugin* plugin) {
+void ui_render_remote_channels(jamwide::JamWidePlugin* plugin) {
     if (!plugin) return;
 
     const int status = plugin->ui_state.status;
@@ -57,7 +57,7 @@ void ui_render_remote_channels(ninjam::NinjamPlugin* plugin) {
 
         ImGui::SameLine();
         if (ImGui::Checkbox("M##user", &user_mute)) {
-            ninjam::SetUserStateCommand cmd;
+            jamwide::SetUserStateCommand cmd;
             cmd.user_index = u;
             cmd.set_mute = true;
             cmd.mute = user_mute;
@@ -91,7 +91,7 @@ void ui_render_remote_channels(ninjam::NinjamPlugin* plugin) {
                 ImGui::PushID(channel_index);
 
                 if (ImGui::Checkbox("##sub", &subscribed)) {
-                    ninjam::SetUserChannelStateCommand cmd;
+                    jamwide::SetUserChannelStateCommand cmd;
                     cmd.user_index = u;
                     cmd.channel_index = channel_index;
                     cmd.set_sub = true;
@@ -106,7 +106,7 @@ void ui_render_remote_channels(ninjam::NinjamPlugin* plugin) {
                 ImGui::SetNextItemWidth(120.0f);
                 if (ImGui::SliderFloat("##vol", &volume,
                                        0.0f, 2.0f, "%.2f")) {
-                    ninjam::SetUserChannelStateCommand cmd;
+                    jamwide::SetUserChannelStateCommand cmd;
                     cmd.user_index = u;
                     cmd.channel_index = channel_index;
                     cmd.set_vol = true;
@@ -118,7 +118,7 @@ void ui_render_remote_channels(ninjam::NinjamPlugin* plugin) {
                 ImGui::SetNextItemWidth(80.0f);
                 if (ImGui::SliderFloat("##pan", &pan,
                                        -1.0f, 1.0f, "%.2f")) {
-                    ninjam::SetUserChannelStateCommand cmd;
+                    jamwide::SetUserChannelStateCommand cmd;
                     cmd.user_index = u;
                     cmd.channel_index = channel_index;
                     cmd.set_pan = true;
@@ -128,7 +128,7 @@ void ui_render_remote_channels(ninjam::NinjamPlugin* plugin) {
 
                 ImGui::SameLine();
                 if (ImGui::Checkbox("M##chan_mute", &mute)) {
-                    ninjam::SetUserChannelStateCommand cmd;
+                    jamwide::SetUserChannelStateCommand cmd;
                     cmd.user_index = u;
                     cmd.channel_index = channel_index;
                     cmd.set_mute = true;
@@ -138,7 +138,7 @@ void ui_render_remote_channels(ninjam::NinjamPlugin* plugin) {
 
                 ImGui::SameLine();
                 if (ImGui::Checkbox("S##chan_solo", &solo)) {
-                    ninjam::SetUserChannelStateCommand cmd;
+                    jamwide::SetUserChannelStateCommand cmd;
                     cmd.user_index = u;
                     cmd.channel_index = channel_index;
                     cmd.set_solo = true;

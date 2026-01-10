@@ -6,10 +6,10 @@
 #ifndef UI_REMOTE_H
 #define UI_REMOTE_H
 
-namespace ninjam {
-struct NinjamPlugin;
+namespace jamwide {
+struct JamWidePlugin;
 }
 
-void ui_render_remote_channels(ninjam::NinjamPlugin* plugin);
+void ui_render_remote_channels(jamwide::JamWidePlugin* plugin);
 
 #endif // UI_REMOTE_H

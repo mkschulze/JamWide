@@ -150,7 +150,7 @@ const void* plugin_get_extension(const clap_plugin_t* plugin, const char* id) {
 ```cpp
 clap_process_status plugin_process(const clap_plugin_t* plugin,
                                     const clap_process_t* process) {
-    auto* p = static_cast<NinjamPlugin*>(plugin->plugin_data);
+    auto* p = static_cast<JamWidePlugin*>(plugin->plugin_data);
 
     // 1. Sync params from host events
     sync_params_from_events(p, process->in_events);
@@ -275,7 +275,7 @@ if (ImGui::Button("Connect")) {
 ### 4.2 Classes/Structs
 
 ```cpp
-struct NinjamPlugin;     // Main plugin instance
+struct JamWidePlugin;     // Main plugin instance
 struct UiState;          // UI-only state
 struct RemoteUser;       // Data struct
 struct RemoteChannel;    // Data struct
@@ -292,8 +292,8 @@ static bool plugin_init(const clap_plugin_t* plugin);
 static void plugin_destroy(const clap_plugin_t* plugin);
 
 // UI render functions
-void ui_render_frame(NinjamPlugin* plugin);
-void ui_render_status_bar(NinjamPlugin* plugin);
+void ui_render_frame(JamWidePlugin* plugin);
+void ui_render_status_bar(JamWidePlugin* plugin);
 
 // Helper functions
 static ImU32 get_vu_color(float level);
@@ -327,7 +327,7 @@ float local_volume;
 
 ```cpp
 // Callback pushes error to UI
-void on_disconnect(NinjamPlugin* p, int code) {
+void on_disconnect(JamWidePlugin* p, int code) {
     std::string msg = get_error_message(code);
     p->ui_queue.try_push(StatusChangedEvent{NJC_STATUS_DISCONNECTED, msg});
 }
@@ -370,11 +370,11 @@ endif()
 
 ```
 # Windows
-NINJAM.clap/
+JamWide.clap/
 └── NINJAM.dll
 
 # macOS
-NINJAM.clap/
+JamWide.clap/
 ├── Contents/
 │   ├── Info.plist
 │   └── MacOS/
@@ -388,7 +388,7 @@ NINJAM.clap/
 ### 7.1 clap-validator
 
 ```bash
-clap-validator build/NINJAM.clap
+clap-validator build/JamWide.clap
 ```
 
 Must pass all checks before release.
@@ -487,7 +487,7 @@ When input isn't working in a hosted plugin:
 | Block on UI response while holding `client_mutex` or `state_mutex` | Release lock(s), then wait with timeout |
 | Use same mutex name for different data | NJClient fixed: both m_users_cs+m_remotechannel_rd_mutex |
 | Save password to state | Keep in memory only, clear on disconnect |
-| Use globals for instance data | Store in NinjamPlugin struct |
+| Use globals for instance data | Store in JamWidePlugin struct |
 | Call NJClient API from audio thread | Only call AudioProc() |
 | Hold multiple locks | Single lock at a time (except NJClient internal pair) |
 | Allocate memory in audio thread | Pre-allocate buffers |
@@ -590,10 +590,10 @@ Run thread held raw pointer to plugin. If host destroyed plugin while thread run
 ### 12.2 Solution
 ```cpp
 // run_thread.h
-void run_thread_start(NinjamPlugin* plugin, std::shared_ptr<NinjamPlugin> keepalive);
+void run_thread_start(JamWidePlugin* plugin, std::shared_ptr<JamWidePlugin> keepalive);
 
 // run_thread.cpp
-void run_thread_func(std::shared_ptr<NinjamPlugin> plugin) {
+void run_thread_func(std::shared_ptr<JamWidePlugin> plugin) {
     while (!plugin->shutdown.load()) {
         // ... work with plugin->client, etc.
     }
@@ -604,7 +604,7 @@ void run_thread_func(std::shared_ptr<NinjamPlugin> plugin) {
 ```
 Host owns plugin instance (via CLAP descriptor)
   ↓
-Plugin factory creates shared_ptr<NinjamPlugin>
+Plugin factory creates shared_ptr<JamWidePlugin>
   ↓
 Run thread holds shared_ptr copy (keepalive)
   ↓

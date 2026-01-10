@@ -66,6 +66,12 @@ struct RequestServerListCommand {
     std::string url;
 };
 
+struct SendChatCommand {
+    std::string type;   // "MSG", "PRIVMSG", "TOPIC"
+    std::string target; // for PRIVMSG
+    std::string text;
+};
+
 using UiCommand = std::variant<
     ConnectCommand,
     DisconnectCommand,
@@ -73,7 +79,8 @@ using UiCommand = std::variant<
     SetLocalChannelMonitoringCommand,
     SetUserStateCommand,
     SetUserChannelStateCommand,
-    RequestServerListCommand
+    RequestServerListCommand,
+    SendChatCommand
 >;
 
 } // namespace ninjam

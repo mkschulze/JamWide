@@ -29,20 +29,83 @@ void chat_callback(void* user_data, NJClient* client, const char** parms, int np
         return;
     }
 
-    ChatMessageEvent event;
-    event.type = parms[0] ? parms[0] : "";
-    event.user = (nparms > 1 && parms[1]) ? parms[1] : "";
-    event.text = (nparms > 2 && parms[2]) ? parms[2] : "";
+    const std::string type = parms[0] ? parms[0] : "";
+    const std::string user = (nparms > 1 && parms[1]) ? parms[1] : "";
+    const std::string text = (nparms > 2 && parms[2]) ? parms[2] : "";
 
-    const bool is_topic = (event.type == "TOPIC");
-    const std::string topic_text = event.text;
+    ChatMessage message;
 
-    plugin->ui_queue.try_push(std::move(event));
+    if (type == "TOPIC") {
+        if (nparms > 2) {
+            std::string line;
+            if (!user.empty()) {
+                if (!text.empty()) {
+                    line = user + " sets topic to: " + text;
+                } else {
+                    line = user + " removes topic.";
+                }
+            } else {
+                if (!text.empty()) {
+                    line = "Topic is: " + text;
+                } else {
+                    line = "No topic is set.";
+                }
+            }
+            message.type = ChatMessageType::Topic;
+            message.sender = user;
+            message.content = line;
+            plugin->chat_queue.try_push(std::move(message));
+        }
 
-    if (is_topic) {
         TopicChangedEvent topic_event;
-        topic_event.topic = topic_text;
+        topic_event.topic = text;
         plugin->ui_queue.try_push(std::move(topic_event));
+        return;
+    }
+
+    if (type == "MSG") {
+        if (!user.empty() && !text.empty()) {
+            if (text.rfind("/me ", 0) == 0) {
+                std::string action = text.substr(3);
+                std::size_t pos = action.find_first_not_of(' ');
+                if (pos != std::string::npos) {
+                    action = action.substr(pos);
+                }
+                message.type = ChatMessageType::Action;
+                message.sender = user;
+                message.content = action;
+            } else {
+                message.type = ChatMessageType::Message;
+                message.sender = user;
+                message.content = text;
+            }
+            plugin->chat_queue.try_push(std::move(message));
+        }
+        return;
+    }
+
+    if (type == "PRIVMSG") {
+        if (!user.empty() && !text.empty()) {
+            message.type = ChatMessageType::PrivateMessage;
+            message.sender = user;
+            message.content = text;
+            plugin->chat_queue.try_push(std::move(message));
+        }
+        return;
+    }
+
+    if (type == "JOIN" || type == "PART") {
+        if (!user.empty()) {
+            message.type = (type == "JOIN")
+                ? ChatMessageType::Join
+                : ChatMessageType::Part;
+            message.sender = user;
+            message.content = user + (type == "JOIN"
+                ? " has joined the server"
+                : " has left the server");
+            plugin->chat_queue.try_push(std::move(message));
+        }
+        return;
     }
 }
 
@@ -135,10 +198,17 @@ void execute_client_commands(NinjamPlugin* plugin,
         std::visit([&](auto&& c) {
             using T = std::decay_t<decltype(c)>;
             if constexpr (std::is_same_v<T, ConnectCommand>) {
+                // For public servers (no password), prefix username with "anonymous:"
+                // This is required by NINJAM server protocol for anonymous logins
+                std::string effective_user = c.username;
+                if (c.password.empty() && 
+                    effective_user.rfind("anonymous", 0) != 0) {
+                    effective_user = "anonymous:" + c.username;
+                }
                 NLOG("[RunThread] Executing ConnectCommand: server='%s' user='%s'\n",
-                     c.server.c_str(), c.username.c_str());
+                     c.server.c_str(), effective_user.c_str());
                 client->Connect(c.server.c_str(),
-                                c.username.c_str(),
+                                effective_user.c_str(),
                                 c.password.c_str());
             } else if constexpr (std::is_same_v<T, DisconnectCommand>) {
                 NLOG("[RunThread] Executing DisconnectCommand\n");
@@ -173,6 +243,17 @@ void execute_client_commands(NinjamPlugin* plugin,
                     c.set_pan, c.pan,
                     c.set_mute, c.mute,
                     c.set_solo, c.solo);
+            } else if constexpr (std::is_same_v<T, SendChatCommand>) {
+                if (!c.type.empty() && !c.text.empty()) {
+                    if (c.type == "PRIVMSG") {
+                        client->ChatMessage_Send(c.type.c_str(),
+                                                 c.target.c_str(),
+                                                 c.text.c_str());
+                    } else {
+                        client->ChatMessage_Send(c.type.c_str(),
+                                                 c.text.c_str());
+                    }
+                }
             } else {
                 // RequestServerListCommand handled earlier.
             }

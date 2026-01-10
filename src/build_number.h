@@ -1,2 +1,2 @@
 #pragma once
-#define NINJAM_BUILD_NUMBER 87
+#define NINJAM_BUILD_NUMBER 90

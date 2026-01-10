@@ -26,8 +26,26 @@ struct UiRemoteUser {
     std::vector<UiRemoteChannel> channels;
 };
 
+enum class ChatMessageType {
+    Message,
+    PrivateMessage,
+    Topic,
+    Join,
+    Part,
+    Action,
+    System
+};
+
+struct ChatMessage {
+    ChatMessageType type{ChatMessageType::Message};
+    std::string sender;
+    std::string content;
+    std::string timestamp;
+};
+
 struct UiState {
     static constexpr int kLatencyHistorySize = 16;
+    static constexpr int kChatHistorySize = 100;
     // Connection
     char server_input[256] = "";
     char username_input[64] = "";
@@ -59,6 +77,13 @@ struct UiState {
     std::array<float, kLatencyHistorySize> latency_history{};
     int latency_history_index = 0;
     int latency_history_count = 0;
+
+    std::array<ChatMessage, kChatHistorySize> chat_history{};
+    int chat_history_index = 0;
+    int chat_history_count = 0;
+    char chat_input[512] = "";
+    bool chat_scroll_to_bottom = false;
+    bool show_chat = true;
 
     // Master
     float master_vu_left = 0.0f;

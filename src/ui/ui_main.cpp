@@ -11,12 +11,15 @@
 #include "core/njclient.h"
 #include "ui_status.h"
 #include "ui_connection.h"
+#include "ui_chat.h"
 #include "ui_local.h"
 #include "ui_master.h"
 #include "ui_remote.h"
 #include "ui_server_browser.h"
 #include "debug/logging.h"
 #include "imgui.h"
+#include <chrono>
+#include <ctime>
 
 using namespace ninjam;
 
@@ -49,6 +52,10 @@ void ui_render_frame(NinjamPlugin* plugin) {
                     plugin->ui_state.latency_history.fill(0.0f);
                     plugin->ui_state.latency_history_index = 0;
                     plugin->ui_state.latency_history_count = 0;
+                    plugin->ui_state.chat_history.fill(ChatMessage{});
+                    plugin->ui_state.chat_history_index = 0;
+                    plugin->ui_state.chat_history_count = 0;
+                    plugin->ui_state.chat_scroll_to_bottom = false;
                 }
             }
             else if constexpr (std::is_same_v<T, UserInfoChangedEvent>) {
@@ -67,6 +74,34 @@ void ui_render_frame(NinjamPlugin* plugin) {
                 plugin->ui_state.server_list_loading = false;
             }
         }, std::move(event));
+    });
+
+    auto make_timestamp = []() -> std::string {
+        auto now = std::chrono::system_clock::now();
+        std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        std::tm tm_buf{};
+#if defined(_WIN32)
+        localtime_s(&tm_buf, &now_time);
+#else
+        localtime_r(&now_time, &tm_buf);
+#endif
+        char buf[6] = {};
+        if (std::strftime(buf, sizeof(buf), "%H:%M", &tm_buf)) {
+            return std::string(buf);
+        }
+        return {};
+    };
+
+    plugin->chat_queue.drain([&](ChatMessage&& msg) {
+        msg.timestamp = make_timestamp();
+        plugin->ui_state.chat_history[plugin->ui_state.chat_history_index] =
+            std::move(msg);
+        plugin->ui_state.chat_history_index =
+            (plugin->ui_state.chat_history_index + 1) % UiState::kChatHistorySize;
+        if (plugin->ui_state.chat_history_count < UiState::kChatHistorySize) {
+            plugin->ui_state.chat_history_count++;
+        }
+        plugin->ui_state.chat_scroll_to_bottom = true;
     });
 
     // Check for license prompt (dedicated slot)
@@ -134,6 +169,8 @@ void ui_render_frame(NinjamPlugin* plugin) {
     ui_render_connection_panel(plugin);
     ImGui::Separator();
     ui_render_server_browser(plugin);
+    ImGui::Separator();
+    ui_render_chat(plugin);
     ImGui::Separator();
     ui_render_master_panel(plugin);
     ImGui::Separator();

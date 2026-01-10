@@ -55,6 +55,7 @@ struct NinjamPlugin {
     
     // UI event queue (Run → UI)
     SpscRing<UiEvent, 256> ui_queue;
+    SpscRing<ChatMessage, 128> chat_queue;
 
     // UI command queue (UI → Run)
     SpscRing<UiCommand, 256> cmd_queue;

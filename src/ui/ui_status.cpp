@@ -66,7 +66,9 @@ void ui_render_status_bar(ninjam::NinjamPlugin* plugin) {
         progress = clamp01(progress);
 
         ImGui::SameLine();
+        ImGui::PushID("status_progress");
         ImGui::ProgressBar(progress, ImVec2(100.0f, 0.0f), "");
+        ImGui::PopID();
     }
 
     float after_status_y = ImGui::GetCursorPosY();

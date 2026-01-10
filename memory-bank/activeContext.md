@@ -2,11 +2,11 @@
 
 ## Current Session Focus
 
-**Date:** 2026-01-08  
+**Date:** 2026-01-10  
 **Phase:** 5 - Integration & Polish  
-**Status:** ⚠️ Connection working; crashes when joining servers with existing users (under investigation).
+**Status:** ✅ Stable - Chat, Timing Guide, and Anonymous Login working
 
-## Latest Build: r67 (DEV BUILD)
+## Latest Build: r90 (DEV BUILD)
 
 ### What's Working
 - ✅ Plugin loads in REAPER and Bitwig
@@ -14,19 +14,20 @@
 - ✅ Server browser fetches live server list
 - ✅ License agreement dialog
 - ✅ BPM/BPI/Beat display updates in real-time
-- ✅ Remote users list shows active users without crash
-- ⚠️ Crash possible on Disconnect (fix in progress)
+- ✅ Remote users list shows active users
+- ✅ Chat room with message history and timestamps
+- ✅ Visual timing guide with beat grid and transient dots
+- ✅ Anonymous login (auto-prefix for public servers)
 - ✅ Dev/Production build toggle
 
-### Recent Fixes (r45-r66)
+### Recent Fixes (r85-r90)
 | Issue | Fix |
 |-------|-----|
-| Race in NJClient access | Added `client_mutex` to serialize all NJClient API calls |
-| License dialog deadlock | License callback releases `client_mutex` while waiting |
-| Remote user UI crash | Removed snapshot path; UI reads NJClient directly under `client_mutex` |
-| Disconnect crash | Lock `m_users_cs` + `m_remotechannel_rd_mutex` in `Disconnect()`, pre-clear cached_status |
-| Server list URL | Default set to `http://ninbot.com/serverlist` |
-| Verbose log spam | Added NLOG_VERBOSE for dev builds only |
+| Anonymous login rejected | Auto-prefix "anonymous:" when password empty |
+| Timing guide no dots | Move transient detection before AudioProc |
+| ImGui ID collisions | Add ##suffix pattern and PushID wrappers |
+| Build errors | Fix namespace issues (ninjam::SendChatCommand) |
+| Variable ordering | Fix label_col used before declaration |
 
 ## Build System
 
@@ -39,6 +40,9 @@ cmake .. -DNINJAM_CLAP_DEV_BUILD=OFF
 
 # Quick install
 ./install.sh
+
+# Full release workflow (commit, build, push, tag)
+./release.sh
 ```
 
 ### Logging Macros
@@ -47,62 +51,44 @@ cmake .. -DNINJAM_CLAP_DEV_BUILD=OFF
 | `NLOG(...)` | Always logs (errors, status changes) |
 | `NLOG_VERBOSE(...)` | Only in dev builds (per-frame debug) |
 
-## Recent Major Changes (r36-r54)
+## New Files Added (r85-r90)
 
-### Threading Architecture Overhaul
-Reworked the threading/ownership model to align with ReaNINJAM:
-
-1. **Command Queue Pattern** - UI sends commands, run thread executes
-2. **Client Mutex** - `client_mutex` serializes all NJClient API calls (except `AudioProc`)
-3. **ReaNINJAM-style UI Reads** - UI reads remote users directly from NJClient under `client_mutex`
-4. **Server List Fetcher** - Async HTTP via JNetLib with JSON parsing
-
-### New Files Added
 | File | Purpose |
 |------|---------|
-| `src/threading/ui_command.h` | Command variants for UI→Run thread |
-| `src/net/server_list.h/cpp` | Async server list fetcher (JNetLib + jsonparse) |
-| `src/ui/server_list_types.h` | ServerListEntry struct |
-| `src/ui/ui_server_browser.h/cpp` | Server browser panel |
-| `src/debug/logging.h` | NLOG/NLOG_VERBOSE macros |
+| `src/ui/ui_chat.cpp/h` | Chat room UI with message history |
+| `src/ui/ui_latency_guide.cpp/h` | Visual timing guide with beat grid |
+| `memory-bank/plan-chat-room.md` | Chat implementation plan |
+| `memory-bank/plan-visual-latency-guide.md` | Timing guide implementation plan |
+| `release.sh` | Automated release script |
 
-### Key Architectural Changes
-| Before | After |
-|--------|-------|
-| UI called NJClient methods directly | UI sends UiCommand to cmd_queue |
-| UI iterated `remote_users` unsafely | UI reads NJClient getters under `client_mutex` |
-| Raw pointer to plugin in run thread | `shared_ptr` keepalive |
-| No public server list | ServerListFetcher with HTTP GET |
-| NJClient accessed under state_mutex | NJClient accessed under client_mutex |
+## Key Architectural Features
 
-## Debugging Journey Summary
-
-The plugin was crashing after successful connection. Root causes identified:
-
-1. **Race condition**: Remote user access during `Run()` updates
-2. **Lifetime issue**: Plugin destroyed while run thread still held raw pointer
-3. **Snapshot path crash**: Removed snapshot conversion in favor of direct NJClient reads
-
-Addressed via architectural refactor; remaining crashes appear tied to multi-user servers.
+| Feature | Description |
+|---------|-------------|
+| **Command Queue** | UI sends UiCommand to run thread via cmd_queue |
+| **Chat Queue** | Run thread pushes ChatMessage to UI via chat_queue |
+| **Transient Detection** | Audio thread detects peaks for timing guide |
+| **Anonymous Login** | Auto-prefix "anonymous:" for public server compatibility |
 
 ## Priority Actions for Next Session
 
-1. **End-to-end audio test** - Connect when other musicians are online
-2. **Test audio transmit/receive** - Verify encoding/decoding works
-3. **Test metronome** - Verify sync with server BPM/BPI
+1. **Timing guide polish** - Add tooltips, reset button, color-coded dots per offset
+2. **End-to-end audio test** - Connect when other musicians are online
+3. **Test audio transmit/receive** - Verify encoding/decoding works
 4. **State persistence test** - Save project, reload, verify settings
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/threading/run_thread.cpp` | Main network thread - processes commands, calls Run(), updates UI snapshot |
+| `src/threading/run_thread.cpp` | Main network thread - processes commands, handles chat, anonymous login |
 | `src/threading/ui_command.h` | UiCommand variant types (UI→Run thread) |
+| `src/ui/ui_chat.cpp` | Chat room panel with message history |
+| `src/ui/ui_latency_guide.cpp` | Visual timing guide with beat grid |
 | `src/ui/ui_remote.cpp` | Remote users panel reads NJClient under `client_mutex` |
-| `src/net/server_list.cpp` | HTTP server list fetcher |
-| `src/ui/ui_state.h` | Default server list URL |
+| `src/plugin/clap_entry.cpp` | Audio processing with transient detection |
 | `src/debug/logging.h` | Logging macros |
-| `CMakeLists.txt` | NINJAM_CLAP_DEV_BUILD option |
+| `release.sh` | Automated release workflow |
 
 ## Build Commands
 

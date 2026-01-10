@@ -148,14 +148,16 @@ Copy `NINJAM.clap` to one of:
 - [x] Connection to public NINJAM servers (ninbot.com, ninjamer.com, etc.)
 - [x] License agreement dialog
 - [x] Dev/Production build system with configurable logging
+- [x] Chat room with message history and timestamps
+- [x] Visual timing guide for beat alignment feedback
+- [x] Anonymous login support (auto-prefix for public servers)
 
 ### In Progress
 - [ ] Multi-instance support improvements
 - [ ] End-to-end audio testing with other musicians
-- [ ] Per-user mixing controls refinement
+- [ ] Timing guide polish (tooltips, color-coded dots)
 
 ### Planned
-- [ ] Chat integration
 - [ ] Linux support (X11/Wayland + OpenGL)
 - [ ] Windows testing and polish
 

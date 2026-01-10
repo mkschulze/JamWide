@@ -146,8 +146,16 @@
 | Item | Value |
 |------|-------|
 | **Current Phase** | Phase 5 - Integration & Polish |
-| **Latest Build** | r67 (2026-01-08) DEV BUILD |
+| **Latest Build** | r90 (2026-01-10) DEV BUILD |
 | **GitHub** | https://github.com/mkschulze/ninjam-clap |
+| **Latest Tag** | v0.90-chat |
+
+### Recent Features (r85-r90)
+- ✅ Visual timing guide with beat grid and transient dots
+- ✅ Chat room with message history, timestamps, and input field
+- ✅ Anonymous login fix (auto-prefix "anonymous:" for public servers)
+- ✅ ImGui ID collision fixes throughout UI
+- ✅ Release automation script (release.sh)
 | **Build Number** | r54+ (auto-incremented via install.sh) |
 | **Blockers** | Crash when joining servers with existing users |
 | **Next Action** | Investigate crash on multi-user servers |

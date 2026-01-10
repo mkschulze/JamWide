@@ -199,6 +199,18 @@ ImGuiWindowFlags flags =
     ImGuiWindowFlags_NoMove |
     ImGuiWindowFlags_NoCollapse;
 
+### 3.2 ImGui ID Hygiene
+
+Use `##` suffixes or `ImGui::PushID()` when repeating widgets in loops.
+
+Local checker:
+
+```bash
+python3 tools/check_imgui_ids.py
+```
+
+This flags unscoped widget labels that are not wrapped in `ImGui::PushID(...)`.
+
 ImGui::Begin("NINJAM", nullptr, flags);
 // ... content ...
 ImGui::End();

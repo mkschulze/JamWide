@@ -1,0 +1,49 @@
+# JamWide Website Configuration
+title: JamWide
+description: A modern NINJAM client as an audio plugin for your DAW
+url: "https://jamwide.audio"
+baseurl: ""
+
+# Theme
+remote_theme: pages-themes/minimal@v0.2.0
+plugins:
+  - jekyll-remote-theme
+
+# Custom settings
+show_downloads: true
+google_analytics:
+
+# Social
+github_username: mkschulze
+repository: mkschulze/JamWide
+
+# Build settings
+markdown: kramdown
+highlighter: rouge
+
+# Exclude from processing
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - README.md
+  - LICENSE
+
+# Navigation
+nav:
+  - title: Home
+    url: /
+  - title: Features
+    url: /features
+  - title: Download
+    url: /download
+  - title: Documentation
+    url: /documentation
+  - title: FAQ
+    url: /faq
+
+# Defaults
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default

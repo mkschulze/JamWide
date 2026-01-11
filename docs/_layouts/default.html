@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% if page.title %}{{ page.title }} | {% endif %}{{ site.title }}</title>
+  <meta name="description" content="{{ site.description }}">
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="{{ '/assets/images/favicon.svg' | relative_url }}">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+  
+  <!-- Open Graph -->
+  <meta property="og:title" content="{% if page.title %}{{ page.title }} | {% endif %}{{ site.title }}">
+  <meta property="og:description" content="{{ site.description }}">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="{{ page.url | absolute_url }}">
+  <meta property="og:image" content="{{ '/assets/images/screenshot-main.png' | absolute_url }}">
+  
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{% if page.title %}{{ page.title }} | {% endif %}{{ site.title }}">
+  <meta name="twitter:description" content="{{ site.description }}">
+</head>
+<body>
+  <div class="wrapper">
+    <header>
+      <h1><a href="{{ '/' | relative_url }}">{{ site.title }}</a></h1>
+      <p>{{ site.description }}</p>
+      
+      <nav>
+        {% for item in site.nav %}
+          <a href="{{ item.url | relative_url }}"{% if page.url == item.url %} class="active"{% endif %}>
+            {{ item.title }}
+          </a>
+        {% endfor %}
+      </nav>
+      
+      {% if site.show_downloads %}
+      <p class="view">
+        <a href="https://github.com/{{ site.repository }}">View on GitHub</a>
+      </p>
+      {% endif %}
+    </header>
+    
+    <section>
+      {{ content }}
+    </section>
+    
+    <footer>
+      <p>
+        <small>
+          JamWide is open source software under the <a href="https://github.com/{{ site.repository }}/blob/main/LICENSE">GPL-2.0 license</a>.
+        </small>
+      </p>
+      <p>
+        <small>
+          NINJAM is Copyright © <a href="https://www.cockos.com/">Cockos Incorporated</a>.
+        </small>
+      </p>
+    </footer>
+  </div>
+</body>
+</html>

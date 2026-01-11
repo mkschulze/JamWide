@@ -238,15 +238,15 @@ NINJAM and the original client code are Copyright © Cockos Incorporated.
 
 - [Cockos](https://www.cockos.com/) for creating NINJAM and making it open source
 - [WDL](https://www.cockos.com/wdl/) library by Cockos
-- The [CLAP](https://clap.audio) team for the excellent plugin API
+- The [CLAP](https://cleveraudio.org/) team for the excellent plugin API
 - [Omar Cornut](https://github.com/ocornut) for Dear ImGui
 
 ## See Also
 
 - [NINJAM Official Site](https://www.cockos.com/ninjam/)
 - [NINJAM Server List](https://ninbot.com/)
-- [CLAP Audio Plugin Standard](https://clap.audio)
-- [ReaNINJAM](https://www.reaper.fm/ninjam.php) — Original REAPER extension
+- [CLAP Audio Plugin Standard](https://cleveraudio.org/)
+- [ReaNINJAM](https://github.com/justinfrankel/ninjam) — Original REAPER extension
 
 ---
 

@@ -4,7 +4,8 @@ title: Home
 ---
 
 <div class="hero">
-  <h1>🎸 JamWide</h1>
+  <img src="assets/images/favicon.svg" alt="JamWide Logo" class="logo">
+  <h1>JamWide</h1>
   <p class="tagline">Jam with musicians worldwide — right inside your DAW</p>
   
   <p class="dev-warning">⚠️ <strong>Early Development</strong> — Not yet ready for production use</p>

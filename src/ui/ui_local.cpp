@@ -41,6 +41,8 @@ void ui_render_local_channel(jamwide::JamWidePlugin* plugin) {
 
     ImGui::Indent();
 
+    // Row 1: Name input
+    ImGui::SetNextItemWidth(200.0f);
     if (ImGui::InputText("Name##local", state.local_name_input,
                          sizeof(state.local_name_input))) {
         if (state.status == NJClient::NJC_STATUS_OK) {
@@ -53,8 +55,8 @@ void ui_render_local_channel(jamwide::JamWidePlugin* plugin) {
 
     ImGui::SameLine();
 
-    ImGui::SetNextItemWidth(120.0f);
-    if (ImGui::Combo("Bitrate##local", &state.local_bitrate_index,
+    ImGui::SetNextItemWidth(100.0f);
+    if (ImGui::Combo("##bitrate_local", &state.local_bitrate_index,
                      kBitrateLabels,
                      static_cast<int>(sizeof(kBitrateLabels) /
                                       sizeof(kBitrateLabels[0])))) {
@@ -71,7 +73,7 @@ void ui_render_local_channel(jamwide::JamWidePlugin* plugin) {
 
     ImGui::SameLine();
 
-    if (ImGui::Checkbox("Transmit##local", &state.local_transmit)) {
+    if (ImGui::Checkbox("Transmit", &state.local_transmit)) {
         if (state.status == NJClient::NJC_STATUS_OK) {
             jamwide::SetLocalChannelInfoCommand cmd;
             cmd.channel = 0;
@@ -82,6 +84,7 @@ void ui_render_local_channel(jamwide::JamWidePlugin* plugin) {
         }
     }
 
+    // Row 2: Volume, Pan, Mute, Solo
     ImGui::SetNextItemWidth(160.0f);
     if (ImGui::SliderFloat("Volume##local", &state.local_volume,
                            0.0f, 2.0f, "%.2f")) {

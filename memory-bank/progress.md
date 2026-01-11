@@ -1,11 +1,25 @@
-# CLAP NINJAM Client - Implementation Progress
+# JamWide - Implementation Progress
 
 **Project Start:** January 2026  
-**Current Build:** r97  
-**Target Platforms:** Windows 10+ (MSVC/Clang), macOS 10.15+ (Xcode/Clang)  
+**Current Build:** r108 (v0.108)  
+**Status:** Beta - macOS tested, Windows testing pending  
+**Target Platforms:** Windows 10+ (MSVC), macOS 10.15+ (Xcode/Clang)  
 **Plugin Formats:** CLAP, VST3, Audio Unit v2 (via clap-wrapper)  
 **UI Framework:** Dear ImGui (Metal on macOS, D3D11 on Windows)  
-**Language:** C++20 (std::variant/std::optional + designated initializers)
+**Language:** C++20 (std::variant/std::optional + designated initializers)  
+**CI/CD:** GitHub Actions (Windows + macOS builds on tag push)
+
+---
+
+## Release History
+
+| Version | Date | Highlights |
+|---------|------|------------|
+| v0.108 | 2026-01-12 | UI: Transmit toggle visible |
+| v0.107 | 2026-01-11 | Fix: License dialog single-click |
+| v0.106 | 2026-01-11 | Default 256 kbps audio quality |
+| v0.105 | 2026-01-11 | Server browser with usernames |
+| v0.104 | 2026-01-11 | AU window 800x1200, setFrameSize |
 
 ---
 

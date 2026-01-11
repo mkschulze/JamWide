@@ -2,62 +2,49 @@
 
 ## Current Session Focus
 
-**Date:** 2026-01-11  
-**Phase:** 5 - Integration & Polish  
-**Status:** ✅ Multi-format build working (CLAP, VST3, AU v2)
+**Date:** 2026-01-12  
+**Phase:** 6 - Beta Release  
+**Status:** ⚠️ Beta - macOS tested, Windows testing pending
 
-## Latest Build: r97 (DEV BUILD)
+## Latest Build: r108
 
 ### What's Working
-- ✅ Plugin loads in REAPER and Bitwig
-- ✅ **Multi-format builds**: CLAP, VST3, Audio Unit v2 (macOS)
-- ✅ Connection to public NINJAM servers (ninbot.com, ninjamer.com)
-- ✅ Server browser fetches live server list
-- ✅ License agreement dialog
-- ✅ BPM/BPI/Beat display updates in real-time
-- ✅ Remote users list shows active users
+- ✅ Plugin loads in GarageBand, Logic Pro (AU), REAPER (CLAP/VST3)
+- ✅ **Multi-format builds**: CLAP, VST3, Audio Unit v2 (macOS + Windows)
+- ✅ **GitHub Actions CI/CD**: Automated builds for Windows and macOS
+- ✅ Connection to public NINJAM servers
+- ✅ Server browser with **live usernames** (autosong.ninjam.com)
+- ✅ License agreement dialog (single-click fix)
+- ✅ BPM/BPI display and voting via chat
+- ✅ Remote users with volume/pan/mute/solo
 - ✅ Chat room with message history and timestamps
-- ✅ **Improved Timing Guide** with color zones and clearer display
-- ✅ Anonymous login (auto-prefix for public servers)
-- ✅ Dev/Production build toggle
-- ✅ Windows keyboard/focus handling
+- ✅ Visual timing guide with color zones
+- ✅ VU meters for all channels
+- ✅ Default audio quality: 256 kbps (highest)
+- ✅ Anonymous login support
+- ✅ Window size 800x1200 for AU (Logic/GarageBand compatibility)
 
-### Recent Changes (r96-r97)
-| Change | Details |
-|--------|--------|
-| Timing Guide overhaul | Color zones (green/yellow/red), larger dots, cleaner labels |
-| Install script | Now installs all formats (CLAP, VST3, AU) |
+### Recent Changes (v0.105-v0.108)
+| Version | Change |
+|---------|--------|
+| v0.108 | UI: Transmit toggle now visible (layout fix) |
+| v0.107 | Fix: License dialog responds to single click |
+| v0.106 | Default audio quality: 256 kbps |
+| v0.105 | Server browser shows usernames from autosong.ninjam.com |
+| v0.104 | AU window size 800x1200, setFrameSize handler |
 
-### Previous Changes (r95-r96)
-| Change | Details |
-|--------|--------|
-| JamWide rename | Full rebrand from ninjam-clap |
-| Windows keyboard fixes | WS_TABSTOP, WM_GETDLGCODE, focus handling |
-| Windows UTF-8 | Proper file path handling via WDL |
-| Jesusonic disabled | Not needed for CLAP plugin |
+### Known Issues
+| Issue | Status |
+|-------|--------|
+| Bitwig Beta 11 plugin scan | Bitwig bug - localhost connection refused |
+| AU resize in Logic/GarageBand | Apple limitation - use fixed 800x1200 size |
 
-### Previous Fixes (r85-r90)
-| Issue | Fix |
-|-------|-----|
-| Anonymous login rejected | Auto-prefix "anonymous:" when password empty |
-| Timing guide no dots | Move transient detection before AudioProc |
-| ImGui ID collisions | Add ##suffix pattern and PushID wrappers |
+## CI/CD
 
-## Build System
-
-```bash
-# Configure with auto-download of VST3/AU SDKs
-cmake .. -DCMAKE_BUILD_TYPE=Release -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE
-
-# Build all formats
-cmake --build . --config Release
-
-# Output:
-# - JamWide.clap (CLAP)
-# - JamWide.vst3 (VST3)
-# - JamWide.component (AU v2, macOS only)
-
-# Install locations (macOS):
+GitHub Actions builds on every tag push:
+- **macOS**: Universal binary (x86_64 + arm64)
+- **Windows**: x64 with Visual Studio 2022
+- Artifacts uploaded to GitHub Releases
 # ~/Library/Audio/Plug-Ins/CLAP/
 # ~/Library/Audio/Plug-Ins/VST3/
 # ~/Library/Audio/Plug-Ins/Components/

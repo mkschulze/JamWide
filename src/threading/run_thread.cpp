@@ -336,8 +336,8 @@ void run_thread_func(std::shared_ptr<JamWidePlugin> plugin) {
                 std::lock_guard<std::mutex> state_lock(plugin->state_mutex);
                 const char* ch_name = plugin->ui_state.local_name_input[0] ? 
                                      plugin->ui_state.local_name_input : "Channel";
-                // Set default channel: stereo input (ch 0), 128kbps, transmit enabled
-                client->SetLocalChannelInfo(0, ch_name, true, 0|(1<<10), true, 128, true, true);
+                // Set default channel: stereo input (ch 0), 256kbps, transmit enabled
+                client->SetLocalChannelInfo(0, ch_name, true, 0|(1<<10), true, 256, true, true);
                 NLOG("[RunThread] Local channel 0 configured: name='%s'\n", ch_name);
             }
         }

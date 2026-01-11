@@ -64,7 +64,7 @@ struct UiState {
 
     // Local channel
     char local_name_input[64] = "Channel";
-    int local_bitrate_index = 1;  // 64 kbps
+    int local_bitrate_index = 5;  // 256 kbps (highest)
     bool local_transmit = true;
     float local_volume = 1.0f;
     float local_pan = 0.0f;

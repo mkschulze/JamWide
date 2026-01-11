@@ -11,6 +11,9 @@
 
 #ifdef _WIN32
 
+// winsock2.h must be included before windows.h to avoid conflicts
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <stdio.h>
 #include <time.h>

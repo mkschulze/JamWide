@@ -76,6 +76,8 @@ jobs:
       - name: Configure CMake
         run: |
           cmake -B build `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
             -DJAMWIDE_DEV_BUILD=OFF `
             -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE

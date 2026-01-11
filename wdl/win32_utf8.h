@@ -13,6 +13,9 @@ extern "C" {
 #endif
 
 #include <windows.h>
+// Include these for HDROP, LPOPENFILENAME etc when WIN32_LEAN_AND_MEAN is defined
+#include <shellapi.h>
+#include <commdlg.h>
 #include <sys/stat.h>
 #include <stdio.h>
 #include <time.h>

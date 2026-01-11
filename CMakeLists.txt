@@ -23,8 +23,7 @@ option(JAMWIDE_DEV_BUILD "Enable development build with verbose logging" ON)
 # Submodules
 add_subdirectory(libs/clap EXCLUDE_FROM_ALL)
 add_subdirectory(libs/clap-helpers EXCLUDE_FROM_ALL)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../clap-wrapper
-    ${CMAKE_BINARY_DIR}/clap-wrapper)
+add_subdirectory(libs/clap-wrapper EXCLUDE_FROM_ALL)
 
 # libogg
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)

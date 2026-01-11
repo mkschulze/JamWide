@@ -32,7 +32,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
             -DJAMWIDE_UNIVERSAL=ON \
-            -DJAMWIDE_DEV_BUILD=OFF
+            -DJAMWIDE_DEV_BUILD=OFF \
+            -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE
 
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }} -j $(sysctl -n hw.ncpu)
@@ -76,7 +77,8 @@ jobs:
         run: |
           cmake -B build `
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
-            -DJAMWIDE_DEV_BUILD=OFF
+            -DJAMWIDE_DEV_BUILD=OFF `
+            -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE
 
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }} -j $env:NUMBER_OF_PROCESSORS

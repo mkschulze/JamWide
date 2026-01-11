@@ -13,3 +13,6 @@
 [submodule "libs/libvorbis"]
 	path = libs/libvorbis
 	url = https://github.com/xiph/vorbis.git
+[submodule "libs/clap-wrapper"]
+	path = libs/clap-wrapper
+	url = https://github.com/free-audio/clap-wrapper.git

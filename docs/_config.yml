@@ -1,117 +1,47 @@
-# JamWide - NINJAM Client Plugin
-# Landing page configuration
+# JamWide Website Configuration
+title: JamWide
+description: A modern NINJAM client as an audio plugin for your DAW
+url: "https://jamwide.audio"
+baseurl: ""
 
-# Page title
-page_title: JamWide - NINJAM Client for Your DAW
+# No remote theme - using custom layout
+plugins: []
 
-# App Info (no iOS app, so manual config)
-ios_app_id: 
-ios_app_country: 
-appstore_link: 
-playstore_link: 
+# Custom settings
+show_downloads: true
+google_analytics:
 
-# Download links
-presskit_download_link: https://github.com/mkschulze/JamWide/releases/latest
-
-app_icon: assets/images/favicon.svg
-app_name: JamWide
-app_price: Free & Open Source
-app_description: Jam with musicians worldwide — right inside your DAW
-
-enable_smart_app_banner: false
-
-# Information About Yourself
-your_name: 
-your_link: https://github.com/mkschulze
-your_city: 
-email_address: 
-linkedin_username: 
-linkedin_company: 
-facebook_username: 
-instagram_username: 
-twitter_username: 
+# Social
 github_username: mkschulze
-youtube_username: 
-mastodon_link: 
+repository: mkschulze/JamWide
 
-# Feature List
-features:
-  - title: DAW Integration
-    description: Load as CLAP, VST3, or Audio Unit. Works in Ableton, Logic, REAPER, Bitwig, FL Studio and more.
-    fontawesome_icon_name: plug
-
-  - title: Real-Time Collaboration
-    description: Connect to any NINJAM server. Play with musicians anywhere in the world, regardless of distance.
-    fontawesome_icon_name: globe
-
-  - title: Flexible Audio Routing
-    description: Route any track to your jam session. Apply your favorite effects to incoming audio from other musicians.
-    fontawesome_icon_name: sliders-h
-
-  - title: Native Recording
-    description: Capture everything directly in your DAW's timeline. No external recording software needed.
-    fontawesome_icon_name: circle
-
-  - title: Built-in Chat
-    description: Communicate with other musicians in the session without leaving your DAW.
-    fontawesome_icon_name: comments
-
-  - title: Visual Timing Guide
-    description: Beat alignment feedback helps you stay in sync with the NINJAM interval system.
-    fontawesome_icon_name: music
-
-  - title: Server Browser
-    description: Browse and connect to public NINJAM servers with live user counts. Find active jam sessions instantly.
-    fontawesome_icon_name: list
-
-  - title: Cross-Platform
-    description: Works on macOS and Windows. Linux support coming soon.
-    fontawesome_icon_name: desktop
-
-# Theme Settings
-topbar_color: "#1d4ed8"
-topbar_transparency: 0.95
-topbar_title_color: "#ffffff"
-
-cover_image: assets/screenshot/screenshot-main.png
-cover_overlay_color: "#1e293b"
-cover_overlay_transparency: 0.85
-
-device_color: black
-
-body_background_color: "#ffffff"
-
-link_color: "#2563eb"
-
-app_title_color: "#ffffff"
-app_price_color: "#ffffff"
-app_description_color: "#ffffff"
-
-feature_title_color: "#000000"
-feature_text_color: "#666666"
-
-feature_icons_foreground_color: "#2563eb"
-feature_icons_background_color: "#e6e6e6"
-
-social_icons_foreground_color: "#666666"
-social_icons_background_color: "#e6e6e6"
-
-footer_text_color: "#666666"
-
-#####################################################
-### Jekyll Configuration. No need to touch this. ###
-#####################################################
-
-sass:
-  style: :compressed
-
-exclude:
-  - LICENSE
-  - README.md
-
-collections:
-  pages:
-    output: true
-    permalink: /:path/
-
+# Build settings
 markdown: kramdown
+highlighter: rouge
+
+# Exclude from processing
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - README.md
+  - LICENSE
+
+# Navigation
+nav:
+  - title: Home
+    url: /
+  - title: Features
+    url: /features
+  - title: Download
+    url: /download
+  - title: Documentation
+    url: /documentation
+  - title: FAQ
+    url: /faq
+
+# Defaults
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default

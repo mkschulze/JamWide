@@ -1,54 +1,62 @@
 <!DOCTYPE html>
-<html lang="en-us">
-
-{% include head.html %}
-
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% if page.title %}{{ page.title }} | {% endif %}{{ site.title }}</title>
+  <meta name="description" content="{{ site.description }}">
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="{{ '/assets/images/favicon.svg' | relative_url }}">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+  
+  <!-- Open Graph -->
+  <meta property="og:title" content="{% if page.title %}{{ page.title }} | {% endif %}{{ site.title }}">
+  <meta property="og:description" content="{{ site.description }}">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="{{ page.url | absolute_url }}">
+  <meta property="og:image" content="{{ '/assets/images/screenshot-main.png' | absolute_url }}">
+  
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{% if page.title %}{{ page.title }} | {% endif %}{{ site.title }}">
+  <meta name="twitter:description" content="{{ site.description }}">
+</head>
 <body>
-    <div class="imageWrapper">
-            <div class="headerBackground">
-                <div class="container">
-                    {% include header.html %}
-                    
-                    <div class="heroContent">
-                        <div class="appInfo">
-                            <div class="appIconShadow">
-                                <img class="appIconLarge" src="{{ site.app_icon | relative_url }}" alt="JamWide Logo">
-                            </div>
-                            <div class="appNamePriceContainer">
-                                <h1 class="appName">
-                                    {{ site.app_name }}
-                                </h1>
-                                <h2 class="appPrice">
-                                    {{ site.app_price }}
-                                </h2>
-                            </div>
-                            <div class="appDescriptionContainer">
-                                <p class="appDescription">
-                                    {{ site.app_description }}
-                                </p>
-                            </div>
-                            <div class="earlyDevWarning">
-                                ⚠️ <strong>Early Development</strong> — Not yet ready for production use
-                            </div>
-                            <div class="downloadButtonsContainer">
-                                <a class="downloadButton" href="{{ site.presskit_download_link }}">
-                                    <i class="fas fa-download"></i> Download
-                                </a>
-                                <a class="githubButton" href="https://github.com/{{ site.github_username }}/JamWide">
-                                    <i class="fab fa-github"></i> View on GitHub
-                                </a>
-                            </div>
-                        </div>
-                        
-                        <div class="screenshotPreview">
-                            <img src="assets/screenshot/screenshot-main.png" alt="JamWide Plugin Interface">
-                        </div>
-                    </div>
-                    
-                    {% include features.html %}
-                    {% include footer.html %}
-                </div>
-            </div>
-        </div>
+  <header class="site-header">
+    <div class="header-content">
+      <a href="{{ '/' | relative_url }}" class="site-title">
+        <img src="{{ '/assets/images/favicon.svg' | relative_url }}" alt="Logo" class="site-logo">
+        {{ site.title }}
+      </a>
+      <nav class="site-nav">
+        {% for item in site.nav %}
+          <a href="{{ item.url | relative_url }}"{% if page.url == item.url %} class="active"{% endif %}>
+            {{ item.title }}
+          </a>
+        {% endfor %}
+      </nav>
+    </div>
+  </header>
+  
+  <main class="site-content">
+    {{ content }}
+  </main>
+  
+  <footer class="site-footer">
+    <div class="footer-content">
+      <p>
+        JamWide is open source software under the <a href="https://github.com/{{ site.repository }}/blob/main/LICENSE">GPL-2.0 license</a>.
+      </p>
+      <p>
+        NINJAM is Copyright © <a href="https://www.cockos.com/">Cockos Incorporated</a>.
+      </p>
+      <p>
+        <a href="https://github.com/{{ site.repository }}">View on GitHub</a>
+      </p>
+    </div>
+  </footer>
 </body>
 </html>

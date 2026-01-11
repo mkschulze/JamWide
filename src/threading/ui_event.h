@@ -1,8 +1,8 @@
 /*
-    NINJAM CLAP Plugin - ui_event.h
+    JamWide Plugin - ui_event.h
     Event types for Run thread → UI thread communication
     
-    Copyright (C) 2024 NINJAM CLAP Contributors
+    Copyright (C) 2024 JamWide Contributors
     Licensed under GPLv2+
 */
 

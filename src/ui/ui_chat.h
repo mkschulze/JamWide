@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - ui_chat.h
+    JamWide Plugin - ui_chat.h
     Chat UI widget
 */
 

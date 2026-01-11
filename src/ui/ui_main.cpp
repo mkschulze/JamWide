@@ -1,8 +1,8 @@
 /*
-    NINJAM CLAP Plugin - ui_main.cpp
+    JamWide Plugin - ui_main.cpp
     Main UI render function - Phase 4 panel routing
     
-    Copyright (C) 2024 NINJAM CLAP Contributors
+    Copyright (C) 2024 JamWide Contributors
     Licensed under GPLv2+
 */
 
@@ -166,7 +166,7 @@ void ui_render_frame(JamWidePlugin* plugin) {
         ImGuiWindowFlags_NoCollapse |
         ImGuiWindowFlags_NoBringToFrontOnFocus;
 
-    ImGui::Begin("NINJAM", nullptr, flags);
+    ImGui::Begin("JamWide", nullptr, flags);
 
     ui_render_status_bar(plugin);
     ImGui::Separator();

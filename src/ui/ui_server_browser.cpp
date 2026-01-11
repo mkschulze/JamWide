@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - ui_server_browser.cpp
+    JamWide Plugin - ui_server_browser.cpp
     Public server list browser panel
 */
 

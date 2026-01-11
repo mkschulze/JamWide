@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - server_list_types.h
+    JamWide Plugin - server_list_types.h
     Shared types for public server list
 */
 

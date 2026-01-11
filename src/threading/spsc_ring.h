@@ -1,8 +1,8 @@
 /*
-    NINJAM CLAP Plugin - spsc_ring.h
+    JamWide Plugin - spsc_ring.h
     Lock-free Single-Producer Single-Consumer ring buffer
     
-    Copyright (C) 2024 NINJAM CLAP Contributors
+    Copyright (C) 2024 JamWide Contributors
     Licensed under GPLv2+
 */
 

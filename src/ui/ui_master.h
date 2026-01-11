@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - ui_master.h
+    JamWide Plugin - ui_master.h
     Master panel rendering
 */
 

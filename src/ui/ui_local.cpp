@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - ui_local.cpp
+    JamWide Plugin - ui_local.cpp
     Local channel panel rendering
 */
 

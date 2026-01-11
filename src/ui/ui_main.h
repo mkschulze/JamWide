@@ -1,8 +1,8 @@
 /*
-    NINJAM CLAP Plugin - ui_main.h
+    JamWide Plugin - ui_main.h
     Main UI render function
     
-    Copyright (C) 2024 NINJAM CLAP Contributors
+    Copyright (C) 2024 JamWide Contributors
     Licensed under GPLv2+
 */
 
@@ -15,7 +15,7 @@ struct JamWidePlugin;
 
 /**
  * Main UI render function - called every frame.
- * Renders the entire NINJAM plugin interface.
+ * Renders the entire JamWide plugin interface.
  */
 void ui_render_frame(jamwide::JamWidePlugin* plugin);
 

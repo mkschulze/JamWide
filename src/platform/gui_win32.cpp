@@ -1,8 +1,8 @@
 /*
-    NINJAM CLAP Plugin - gui_win32.cpp
+    JamWide Plugin - gui_win32.cpp
     Windows GUI implementation using Win32 + D3D11 + ImGui
     
-    Copyright (C) 2024 NINJAM CLAP Contributors
+    Copyright (C) 2024 JamWide Contributors
     Licensed under GPLv2+
 */
 
@@ -54,14 +54,14 @@ public:
         wc.style = CS_HREDRAW | CS_VREDRAW;
         wc.lpfnWndProc = wnd_proc_static;
         wc.hInstance = GetModuleHandle(nullptr);
-        wc.lpszClassName = L"NinjamClapGui";
+        wc.lpszClassName = L"JamWideGui";
         RegisterClassExW(&wc);
 
         // Create child window
         hwnd_ = CreateWindowExW(
             0,
-            L"NinjamClapGui",
-            L"NINJAM",
+            L"JamWideGui",
+            L"JamWide",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP,
             0, 0, static_cast<int>(width_), static_cast<int>(height_),
             parent_hwnd_,

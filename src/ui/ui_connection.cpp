@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - ui_connection.cpp
+    JamWide Plugin - ui_connection.cpp
     Connection panel rendering
 */
 
@@ -15,7 +15,7 @@ static FILE* get_log_file() {
     if (!f) {
         f = fopen("/tmp/jamwide.log", "a");
         if (f) {
-            fprintf(f, "\n=== NINJAM CLAP Session Started ===\n");
+            fprintf(f, "\n=== JamWide Session Started ===\n");
             fflush(f);
         }
     }

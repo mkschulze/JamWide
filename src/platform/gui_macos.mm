@@ -1,8 +1,8 @@
 /*
-    NINJAM CLAP Plugin - gui_macos.mm
+    JamWide Plugin - gui_macos.mm
     macOS GUI implementation using Cocoa + Metal + ImGui
     
-    Copyright (C) 2024 NINJAM CLAP Contributors
+    Copyright (C) 2024 JamWide Contributors
     Licensed under GPLv2+
 */
 

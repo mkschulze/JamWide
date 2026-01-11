@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - server_list.h
+    JamWide Plugin - server_list.h
     Public server list fetcher using JNetLib HTTP GET
 */
 

@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - ui_command.h
+    JamWide Plugin - ui_command.h
     Command types for UI thread → Run thread communication
 */
 

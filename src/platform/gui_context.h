@@ -1,8 +1,8 @@
 /*
-    NINJAM CLAP Plugin - gui_context.h
+    JamWide Plugin - gui_context.h
     Abstract GUI context interface for platform-specific rendering
     
-    Copyright (C) 2024 NINJAM CLAP Contributors
+    Copyright (C) 2024 JamWide Contributors
     Licensed under GPLv2+
 */
 

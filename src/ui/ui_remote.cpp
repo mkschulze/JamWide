@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - ui_remote.cpp
+    JamWide Plugin - ui_remote.cpp
     Remote channels panel rendering
 */
 

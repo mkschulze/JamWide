@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - ui_latency_guide.h
+    JamWide Plugin - ui_latency_guide.h
     Visual latency guide widget
 */
 

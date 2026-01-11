@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - ui_status.cpp
+    JamWide Plugin - ui_status.cpp
     Status bar rendering
 */
 

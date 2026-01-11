@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - server_list.cpp
+    JamWide Plugin - server_list.cpp
     Public server list fetcher implementation
 */
 

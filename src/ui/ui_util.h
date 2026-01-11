@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - ui_util.h
+    JamWide Plugin - ui_util.h
     Shared UI helper functions
 */
 

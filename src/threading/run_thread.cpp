@@ -1,8 +1,8 @@
 /*
-    NINJAM CLAP Plugin - run_thread.cpp
+    JamWide Plugin - run_thread.cpp
     Network thread implementation
     
-    Copyright (C) 2024 NINJAM CLAP Contributors
+    Copyright (C) 2024 JamWide Contributors
     Licensed under GPLv2+
 */
 

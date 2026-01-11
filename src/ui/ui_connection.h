@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - ui_connection.h
+    JamWide Plugin - ui_connection.h
     Connection panel rendering
 */
 

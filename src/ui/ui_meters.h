@@ -1,5 +1,5 @@
 /*
-    NINJAM CLAP Plugin - ui_meters.h
+    JamWide Plugin - ui_meters.h
     VU meter widget helpers
 */
 

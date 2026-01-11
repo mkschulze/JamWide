@@ -148,12 +148,23 @@ body {
 }
 
 /* Main content images - make screenshots larger */
-section > p > img {
+section > p > img[alt="JamWide Plugin Interface"] {
   max-width: 100%;
   width: 100%;
   border-radius: 0.5rem;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   margin: 1rem 0;
+}
+
+/* Badges - keep them small */
+section > p > img[src*="shields.io"],
+section > p > a > img[src*="shields.io"] {
+  width: auto;
+  height: 20px;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0.25rem 0.25rem 0.25rem 0;
+  vertical-align: middle;
 }
 
 /* Tables */

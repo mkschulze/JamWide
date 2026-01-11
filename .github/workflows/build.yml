@@ -90,14 +90,18 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifacts/windows
           
-          # Package CLAP
-          Compress-Archive -Path build/${{ env.BUILD_TYPE }}/JamWide.clap -DestinationPath artifacts/windows/JamWide-Windows-CLAP.zip
+          # Debug: Show what was built
+          Write-Host "=== Build output structure ==="
+          Get-ChildItem -Path build -Recurse -Include "*.clap","*.vst3" | Select-Object FullName
           
-          # Package VST3
+          # CLAP is in build/CLAP/Release/JamWide.clap
+          Compress-Archive -Path build/CLAP/${{ env.BUILD_TYPE }}/JamWide.clap -DestinationPath artifacts/windows/JamWide-Windows-CLAP.zip
+          
+          # VST3 is a folder bundle in build/Release/JamWide.vst3/
           Compress-Archive -Path build/${{ env.BUILD_TYPE }}/JamWide.vst3 -DestinationPath artifacts/windows/JamWide-Windows-VST3.zip
           
           # Create combined package
-          Compress-Archive -Path build/${{ env.BUILD_TYPE }}/JamWide.clap, build/${{ env.BUILD_TYPE }}/JamWide.vst3 -DestinationPath artifacts/windows/JamWide-Windows-All.zip
+          Compress-Archive -Path build/CLAP/${{ env.BUILD_TYPE }}/JamWide.clap, build/${{ env.BUILD_TYPE }}/JamWide.vst3 -DestinationPath artifacts/windows/JamWide-Windows-All.zip
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4

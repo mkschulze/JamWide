@@ -54,6 +54,11 @@ if(WIN32)
         ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
     )
     target_include_directories(imgui PUBLIC ${IMGUI_DIR}/backends)
+    target_link_libraries(imgui PUBLIC
+        d3d11
+        dxgi
+        d3dcompiler
+    )
 elseif(APPLE)
     target_sources(imgui PRIVATE
         ${IMGUI_DIR}/backends/imgui_impl_osx.mm

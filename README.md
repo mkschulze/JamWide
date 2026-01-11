@@ -7,7 +7,7 @@ A modern audio plugin client for [NINJAM](https://www.cockos.com/ninjam/) — th
 ![License](https://img.shields.io/badge/license-GPL--2.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
 ![Formats](https://img.shields.io/badge/formats-CLAP%20%7C%20VST3%20%7C%20AU-blue.svg)
-![Status](https://img.shields.io/badge/status-in%20development-yellow.svg)
+![Status](https://img.shields.io/badge/status-stable-green.svg)
 
 ## What is NINJAM?
 
@@ -28,21 +28,24 @@ JamWide ports the NINJAM client functionality into a cross-platform CLAP audio p
 - Connect to any NINJAM server
 - Real-time audio streaming with OGG/Vorbis encoding
 - Automatic BPM/BPI synchronization with the server
-- Local channel management
-- View connected users and their channels
+- BPM/BPI voting via chat commands
+- Local and remote channel management
+- Chat room with message history and timestamps
 
 ### Audio
-- Stereo input/output (expandable in future versions)
-- Master volume control with soft clipping
-- Per-channel gain adjustment
-- Configurable audio quality
+- Stereo input/output
+- Master and metronome volume/pan/mute controls
+- Per-channel volume, pan, mute, and solo
+- VU meters for all channels
+- Visual timing guide for beat alignment
+- Soft clipping on master output
 
 ### User Interface
 - Modern ImGui-based interface
-- Native look and feel (Metal on macOS, D3D11 on Windows)
-- Connection panel with server browser
-- Real-time status display
-- User/channel visualization
+- Native rendering (Metal on macOS, D3D11 on Windows)
+- Server browser with live user lists
+- Real-time status and connection display
+- Collapsible panels for all sections
 
 ## Supported Hosts
 
@@ -157,31 +160,24 @@ Copy `JamWide.vst3` to:
 
 ## Project Status
 
-🚧 **In Active Development** (Build r96+)
+✅ **Stable Release** (v1.0)
 
-### Completed
+### Features
 - [x] Core NJClient port (audio engine, networking)
-- [x] CLAP wrapper (audio processing, parameters, state)
-- [x] Platform GUI framework (macOS Metal, Windows D3D11)
-- [x] Full UI panels (status, connection, local, master, remote users)
-- [x] Server browser with live server list from ninbot.com
-- [x] Command queue architecture for thread-safe UI→Network communication
-- [x] Connection to public NINJAM servers (ninbot.com, ninjamer.com, etc.)
-- [x] License agreement dialog
-- [x] Dev/Production build system with configurable logging
-- [x] Chat room with message history and timestamps
-- [x] Visual timing guide for beat alignment feedback
-- [x] Anonymous login support (auto-prefix for public servers)
-- [x] Multi-format builds (CLAP, VST3, Audio Unit v2)
-- [x] Windows keyboard/focus handling fixes
+- [x] CLAP, VST3, and Audio Unit v2 plugin formats
+- [x] Platform GUI (macOS Metal, Windows D3D11)
+- [x] Full UI: status, connection, chat, local/remote channels, master controls
+- [x] Server browser with live user lists (autosong.ninjam.com)
+- [x] VU meters and visual timing guide
+- [x] BPM/BPI voting via chat
+- [x] Anonymous login support
+- [x] Thread-safe command queue architecture
+- [x] GitHub Actions CI/CD for Windows and macOS
 
-### In Progress
-- [ ] Multi-instance support improvements
-- [ ] End-to-end audio testing with other musicians
-
-### Planned
+### Future
 - [ ] Linux support (X11/Wayland + OpenGL)
-- [ ] Windows testing and polish
+- [ ] UI styling and graphics improvements
+- [ ] Per-channel receive toggle
 
 ## Architecture
 

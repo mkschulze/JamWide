@@ -96,26 +96,42 @@ cmake --build . --config Release
 ### Quick Install (macOS)
 
 ```bash
-# Build and install to ~/Library/Audio/Plug-Ins/CLAP/
+# Build and install all formats to user plugin folders
 ./install.sh
+# Installs to:
+# - ~/Library/Audio/Plug-Ins/CLAP/JamWide.clap
+# - ~/Library/Audio/Plug-Ins/VST3/JamWide.vst3
+# - ~/Library/Audio/Plug-Ins/Components/JamWide.component
 ```
 
 ### Output
 
-- **macOS**: `build/JamWide.clap` (bundle)
-- **Windows**: `build/Release/JamWide.clap` (DLL)
+After building:
+- `build/JamWide.clap` — CLAP plugin
+- `build/JamWide.vst3` — VST3 plugin
+- `build/JamWide.component` — Audio Unit v2 (macOS only)
 
 ## Installation
 
-### macOS
-Copy `JamWide.clap` to one of:
+### macOS (CLAP)
+Copy `JamWide.clap` to:
 - `~/Library/Audio/Plug-Ins/CLAP/` (user)
-- `/Library/Audio/Plug-Ins/CLAP/` (system-wide)
 
-### Windows
-Copy `JamWide.clap` to one of:
+### macOS (VST3)
+Copy `JamWide.vst3` to:
+- `~/Library/Audio/Plug-Ins/VST3/` (user)
+
+### macOS (Audio Unit)
+Copy `JamWide.component` to:
+- `~/Library/Audio/Plug-Ins/Components/` (user)
+
+### Windows (CLAP)
+Copy `JamWide.clap` to:
 - `%LOCALAPPDATA%\Programs\Common\CLAP\` (user)
-- `C:\Program Files\Common Files\CLAP\` (system-wide)
+
+### Windows (VST3)
+Copy `JamWide.vst3` to:
+- `%LOCALAPPDATA%\Programs\Common\VST3\` (user)
 
 ## Usage
 

@@ -2,11 +2,11 @@
 
 ## Current Session Focus
 
-**Date:** 2026-01-10  
+**Date:** 2026-01-11  
 **Phase:** 5 - Integration & Polish  
 **Status:** ✅ Multi-format build working (CLAP, VST3, AU v2)
 
-## Latest Build: r96 (DEV BUILD)
+## Latest Build: r97 (DEV BUILD)
 
 ### What's Working
 - ✅ Plugin loads in REAPER and Bitwig
@@ -17,12 +17,18 @@
 - ✅ BPM/BPI/Beat display updates in real-time
 - ✅ Remote users list shows active users
 - ✅ Chat room with message history and timestamps
-- ✅ Visual timing guide with beat grid and transient dots
+- ✅ **Improved Timing Guide** with color zones and clearer display
 - ✅ Anonymous login (auto-prefix for public servers)
 - ✅ Dev/Production build toggle
 - ✅ Windows keyboard/focus handling
 
-### Recent Changes (r95-r96)
+### Recent Changes (r96-r97)
+| Change | Details |
+|--------|--------|
+| Timing Guide overhaul | Color zones (green/yellow/red), larger dots, cleaner labels |
+| Install script | Now installs all formats (CLAP, VST3, AU) |
+
+### Previous Changes (r95-r96)
 | Change | Details |
 |--------|--------|
 | JamWide rename | Full rebrand from ninjam-clap |

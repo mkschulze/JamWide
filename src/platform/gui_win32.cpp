@@ -67,7 +67,8 @@ public:
 
         const bool is_key_msg =
             msg->message == WM_KEYDOWN || msg->message == WM_KEYUP ||
-            msg->message == WM_SYSKEYDOWN || msg->message == WM_SYSKEYUP ||
+            msg->message == WM_SYSKEYDOWN || msg->message == WM_SYSKEYUP;
+        const bool is_char_msg =
             msg->message == WM_CHAR || msg->message == WM_SYSCHAR;
 
         if (is_key_msg) {
@@ -76,6 +77,12 @@ public:
             // Route through the normal translation path so WM_CHAR is generated.
             TranslateMessage(&copy);
             DispatchMessageW(&copy);
+            msg->message = WM_NULL;
+            msg->wParam = 0;
+            msg->lParam = 0;
+        } else if (is_char_msg) {
+            // Suppress original WM_CHAR messages - our TranslateMessage already
+            // generates them from the redirected WM_KEYDOWN above
             msg->message = WM_NULL;
             msg->wParam = 0;
             msg->lParam = 0;

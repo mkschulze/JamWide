@@ -1,7 +1,7 @@
 # JamWide - Implementation Progress
 
 **Project Start:** January 2026  
-**Current Build:** r132 (v0.132)  
+**Current Build:** r133 (v0.133)  
 **Status:** ✅ Beta - Ready for user testing, approaching 1.0  
 **Target Platforms:** Windows 10+ (MSVC), macOS 10.15+ (Xcode/Clap)  
 **Plugin Formats:** CLAP, VST3, Audio Unit v2 (via clap-wrapper)  
@@ -9,7 +9,7 @@
 **Language:** C++20 (std::variant/std::optional + designated initializers)  
 **CI/CD:** GitHub Actions (Windows + macOS builds on tag push)  
 **Windows Build:** Visual Studio 2022+ (MSVC 19.30+), MSBuild-based, PowerShell install script, ✅ Keyboard focus fixed  
-**macOS Build:** ✅ REAPER keyboard hint, ✅ Chat focus retention
+**macOS Build:** ✅ REAPER keyboard hint, ✅ Chat focus retention, ✅ Solo crash fixed
 
 ---
 
@@ -17,6 +17,7 @@
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| v0.133 | 2026-01-14 | Fix: Solo crash (mutex deadlock), Windows keyboard duplication |
 | v0.132 | 2026-01-13 | macOS/REAPER keyboard hint, chat focus retention, UI polish |
 | v0.119 | 2026-01-12 | Windows: Keyboard focus fix (message hook) |
 | v0.117 | 2026-01-12 | Windows: Dummy EDIT control + IME support |
@@ -24,7 +25,6 @@
 | v0.107 | 2026-01-11 | Fix: License dialog single-click |
 | v0.106 | 2026-01-11 | Default 256 kbps audio quality |
 | v0.105 | 2026-01-11 | Server browser with usernames |
-| v0.104 | 2026-01-11 | AU window 800x1200, setFrameSize |
 
 ---
 

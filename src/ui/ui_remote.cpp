@@ -28,6 +28,9 @@ void ui_render_remote_channels(jamwide::JamWidePlugin* plugin) {
         return;
     }
 
+    bool solo_changed = false;
+
+    {
     std::unique_lock<std::mutex> client_lock(plugin->client_mutex);
     NJClient* client = plugin->client.get();
     if (!client) {
@@ -144,7 +147,7 @@ void ui_render_remote_channels(jamwide::JamWidePlugin* plugin) {
                     cmd.set_solo = true;
                     cmd.solo = solo;
                     plugin->cmd_queue.try_push(std::move(cmd));
-                    ui_update_solo_state(plugin);
+                    solo_changed = true;
                 }
 
                 ImGui::SameLine();
@@ -160,6 +163,12 @@ void ui_render_remote_channels(jamwide::JamWidePlugin* plugin) {
         }
 
         ImGui::PopID();
+    }
+
+    } // Release client_mutex before updating solo state
+
+    if (solo_changed) {
+        ui_update_solo_state(plugin);
     }
 
     ImGui::Unindent();

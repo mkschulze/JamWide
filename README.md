@@ -7,7 +7,7 @@ A modern audio plugin client for [NINJAM](https://www.cockos.com/ninjam/) — th
 ![License](https://img.shields.io/badge/license-GPL--2.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
 ![Formats](https://img.shields.io/badge/formats-CLAP%20%7C%20VST3%20%7C%20AU-blue.svg)
-![Version](https://img.shields.io/badge/version-v0.132-blue.svg)
+![Version](https://img.shields.io/badge/version-v0.133-blue.svg)
 ![Status](https://img.shields.io/badge/status-beta-yellow.svg)
 
 ## What is NINJAM?

@@ -8,7 +8,7 @@ title: Home
   <h1>JamWide</h1>
   <p class="tagline">Jam with musicians worldwide — right inside your DAW</p>
   
-  <p class="dev-warning">⚠️ <strong>Early Development</strong> — Not yet ready for production use</p>
+  <p class="beta-notice">🎸 <strong>Beta Release</strong> — Help us test before 1.0!</p>
   
   <p>
     <a href="/download" class="btn btn-primary">Download</a>

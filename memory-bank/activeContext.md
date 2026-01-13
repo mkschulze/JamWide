@@ -4,9 +4,9 @@
 
 **Date:** 2026-01-13  
 **Phase:** 6 - Beta Release  
-**Status:** 🔄 macOS keyboard input bug discovered (REAPER)
+**Status:** ✅ v0.132 Released - Approaching 1.0
 
-## Latest Build: r120
+## Latest Build: r132
 
 ### What's Working
 - ✅ Plugin loads in GarageBand, Logic Pro (AU), REAPER (CLAP/VST3) - macOS
@@ -14,6 +14,7 @@
 - ✅ **Multi-format builds**: CLAP, VST3, Audio Unit v2 (macOS + Windows)
 - ✅ **Windows build system**: Visual Studio 2022/2026, MSBuild, PowerShell install script
 - ✅ **Windows keyboard input**: Message hook + dummy EDIT control (spacebar/Caps Lock fixed)
+- ✅ **macOS/REAPER keyboard input**: Hint shown for "Send all keyboard input to plug-in"
 - ✅ **Windows IME support**: Japanese/Chinese/Korean keyboard input
 - ✅ **GitHub Actions CI/CD**: Automated builds for Windows and macOS
 - ✅ Connection to public NINJAM servers
@@ -21,30 +22,27 @@
 - ✅ License agreement dialog (single-click fix)
 - ✅ BPM/BPI display and voting via chat
 - ✅ Remote users with volume/pan/mute/solo
-- ✅ Chat room with message history and timestamps
+- ✅ Chat room with message history, timestamps, and focus retention
 - ✅ Visual timing guide with color zones
 - ✅ VU meters for all channels
 - ✅ Default audio quality: 256 kbps (highest)
 - ✅ Anonymous login support
 - ✅ Window size 800x1200 for AU (Logic/GarageBand compatibility)
 
-### Recent Changes (v0.117-v0.120)
+### Recent Changes (v0.119-v0.132)
 | Version | Change |
 |---------|--------|
+| v0.132 | macOS/REAPER: Keyboard hint, Chat focus retention, UI polish |
 | v0.120 | Pulled Windows bug fix, verified macOS build works |
 | v0.119 | Windows: Message hook prevents DAW accelerators during text input |
 | v0.117 | Windows: Dummy EDIT control + IME/focus forwarding + null guards |
 | v0.108 | UI: Transmit toggle now visible (layout fix) |
-| v0.107 | Fix: License dialog responds to single click |
 
 ### Known Issues
 | Issue | Platform | Status |
 |-------|----------|--------|
-| **Spacebar triggers transport instead of text input** | macOS (REAPER) | 🔴 Active - see plan-reaper-macos-input.md |
-| Spacebar works in GarageBand AU but not REAPER | macOS | REAPER intercepts keys at window level |
-| Bitwig Beta 11 plugin scan | macOS | Bitwig bug - localhost connection refused |
+| REAPER needs "Send all keyboard input" option | macOS | ✅ Documented with UI hint |
 | AU resize in Logic/GarageBand | macOS | Apple limitation - use fixed 800x1200 size |
-| `NinjamView` class not renamed to `JamWideView` | macOS | Low priority cleanup |
 
 ## CI/CD
 

@@ -1,14 +1,15 @@
 # JamWide - Implementation Progress
 
 **Project Start:** January 2026  
-**Current Build:** r119 (v0.119)  
-**Status:** ✅ Beta - macOS tested, Windows fully working  
+**Current Build:** r132 (v0.132)  
+**Status:** ✅ Beta - Ready for user testing, approaching 1.0  
 **Target Platforms:** Windows 10+ (MSVC), macOS 10.15+ (Xcode/Clap)  
 **Plugin Formats:** CLAP, VST3, Audio Unit v2 (via clap-wrapper)  
 **UI Framework:** Dear ImGui (Metal on macOS, D3D11 on Windows)  
 **Language:** C++20 (std::variant/std::optional + designated initializers)  
 **CI/CD:** GitHub Actions (Windows + macOS builds on tag push)  
-**Windows Build:** Visual Studio 2022+ (MSVC 19.30+), MSBuild-based, PowerShell install script, ✅ Keyboard focus fixed
+**Windows Build:** Visual Studio 2022+ (MSVC 19.30+), MSBuild-based, PowerShell install script, ✅ Keyboard focus fixed  
+**macOS Build:** ✅ REAPER keyboard hint, ✅ Chat focus retention
 
 ---
 
@@ -16,6 +17,7 @@
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| v0.132 | 2026-01-13 | macOS/REAPER keyboard hint, chat focus retention, UI polish |
 | v0.119 | 2026-01-12 | Windows: Keyboard focus fix (message hook) |
 | v0.117 | 2026-01-12 | Windows: Dummy EDIT control + IME support |
 | v0.108 | 2026-01-12 | UI: Transmit toggle visible |

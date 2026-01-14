@@ -49,9 +49,9 @@ JamWide packs the full NINJAM experience into a plugin you can use in any DAW.
 
 ## User Interface
 
-### 🖥️ Modern Design
-- Clean, intuitive ImGui-based interface
-- Native rendering (Metal on macOS, D3D11 on Windows)
+### 🖥️ Lightweight Interface
+- Clean, functional ImGui-based interface
+- Native GPU rendering (Metal on macOS, D3D11 on Windows)
 - Responsive layout that adapts to window size
 
 ### 📊 Status Display

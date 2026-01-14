@@ -8,7 +8,7 @@ title: Download
 Get the latest version of JamWide for your platform.
 
 > ⚠️ **Beta Release**  
-> JamWide is in beta. Tested and working on macOS. Windows build system is complete, but runtime testing is still in progress with known bugs. Expect issues and missing features. Feedback welcome!
+> JamWide is in beta. Tested and working on macOS and Windows. Expect some rough edges. Feedback welcome!
 
 ---
 

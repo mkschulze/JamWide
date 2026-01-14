@@ -1,8 +1,8 @@
 # JamWide - Implementation Progress
 
 **Project Start:** January 2026  
-**Current Build:** r133 (v0.133)  
-**Status:** ✅ Beta - Ready for user testing, approaching 1.0  
+**Current Build:** r135 (v0.135)
+**Status:** ✅ Beta - Ready for user testing, approaching 1.0
 **Target Platforms:** Windows 10+ (MSVC), macOS 10.15+ (Xcode/Clap)  
 **Plugin Formats:** CLAP, VST3, Audio Unit v2 (via clap-wrapper)  
 **UI Framework:** Dear ImGui (Metal on macOS, D3D11 on Windows)  
@@ -17,6 +17,7 @@
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| v0.135 | 2026-01-14 | Fix: Windows text input (simplified message hook) |
 | v0.133 | 2026-01-14 | Fix: Solo crash (mutex deadlock), Windows keyboard duplication |
 | v0.132 | 2026-01-13 | macOS/REAPER keyboard hint, chat focus retention, UI polish |
 | v0.119 | 2026-01-12 | Windows: Keyboard focus fix (message hook) |

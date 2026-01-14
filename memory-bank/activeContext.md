@@ -4,9 +4,9 @@
 
 **Date:** 2026-01-14  
 **Phase:** 6 - Beta Release  
-**Status:** ✅ v0.133 Released - Approaching 1.0
+**Status:** ✅ v0.135 Released - Approaching 1.0
 
-## Latest Build: r133
+## Latest Build: r135
 
 ### What's Working
 - ✅ Plugin loads in GarageBand, Logic Pro (AU), REAPER (CLAP/VST3) - macOS
@@ -29,14 +29,14 @@
 - ✅ Anonymous login support
 - ✅ Window size 800x1200 for AU (Logic/GarageBand compatibility)
 
-### Recent Changes (v0.119-v0.133)
+### Recent Changes (v0.117-v0.135)
 | Version | Change |
 |---------|--------|
+| v0.135 | Fix: Windows text input (simplified message hook routing) |
 | v0.133 | Fix: Solo crash (mutex deadlock), Windows keyboard duplication |
 | v0.132 | macOS/REAPER: Keyboard hint, Chat focus retention, UI polish |
 | v0.120 | Pulled Windows bug fix, verified macOS build works |
 | v0.119 | Windows: Message hook prevents DAW accelerators during text input |
-| v0.117 | Windows: Dummy EDIT control + IME/focus forwarding + null guards |
 
 ### Known Issues
 | Issue | Platform | Status |

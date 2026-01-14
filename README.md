@@ -1,6 +1,6 @@
 # JamWide
 
-A modern audio plugin client for [NINJAM](https://www.cockos.com/ninjam/) — the open-source, internet-based real-time collaboration software for musicians.
+A cross-platform audio plugin client for [NINJAM](https://www.cockos.com/ninjam/) — the open-source, internet-based real-time collaboration software for musicians.
 
 🌐 **Website:** [jamwide.audio](https://jamwide.audio)
 

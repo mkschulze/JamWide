@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🎉 First Stable Release
 
-JamWide 1.0 is the first stable release of the modern NINJAM client plugin.
+JamWide 1.0 is the first stable release of the NINJAM client plugin.
 
 ### Highlights
 - Full NINJAM protocol support (connect, transmit, receive audio)

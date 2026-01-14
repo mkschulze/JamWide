@@ -1,6 +1,6 @@
 # JamWide Website Configuration
 title: JamWide
-description: A modern NINJAM client as an audio plugin for your DAW
+description: A cross-platform NINJAM client as an audio plugin for your DAW
 url: "https://jamwide.audio"
 baseurl: ""
 

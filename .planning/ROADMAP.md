@@ -66,7 +66,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md -- NJClient ownership in processor, processBlock->AudioProc bridge, NinjamRunThread run loop with command queue
+- [x] 03-01-PLAN.md -- NJClient ownership in processor, processBlock->AudioProc bridge, NinjamRunThread run loop with command queue
 - [ ] 03-02-PLAN.md -- Minimal connect/disconnect editor UI, end-to-end audio verification
 
 ### Phase 4: Core UI Panels
@@ -160,7 +160,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 |-------|----------------|--------|-----------|
 | 1. FLAC Lossless Codec | 3/3 | Complete   | 2026-03-07 |
 | 2. JUCE Scaffolding | 2/2 | Complete   | 2026-03-07 |
-| 3. NJClient Audio Bridge | 0/2 | Not started | - |
+| 3. NJClient Audio Bridge | 1/2 | In progress | - |
 | 4. Core UI Panels | 0/? | Not started | - |
 | 5. Mixer UI and Channel Controls | 0/? | Not started | - |
 | 6. Multichannel Output Routing | 0/? | Not started | - |

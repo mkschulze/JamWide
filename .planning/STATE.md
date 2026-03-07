@@ -3,30 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-03-07T13:49:03.098Z"
-last_activity: 2026-03-07 -- Plan 02-02 complete (NinjamRunThread + CI/pluginval, 5min)
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-03-07T15:22:44Z"
+last_activity: 2026-03-07 -- Plan 03-01 complete (NJClient AudioProc bridge + run loop, 12min)
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
----
-
----
-gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-03-07T13:43:10Z"
-last_activity: 2026-03-07 -- Plan 02-02 complete (NinjamRunThread + CI/pluginval, 5min)
-progress:
-  total_phases: 7
-  completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
-  percent: 100
+  total_plans: 7
+  completed_plans: 6
 ---
 
 # Project State
@@ -36,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Phase 2: JUCE Scaffolding -- Complete (2/2 plans done)
+**Current focus:** Phase 3: NJClient Audio Bridge -- In Progress (1/2 plans done)
 
 ## Current Position
 
-Phase: 2 of 7 (JUCE Scaffolding) -- COMPLETE
-Plan: 2 of 2 in current phase (all complete)
-Status: Phase 02 complete -- ready for Phase 03 (NJClient Integration)
-Last activity: 2026-03-07 -- Plan 02-02 complete (NinjamRunThread + CI/pluginval, 5min)
+Phase: 3 of 7 (NJClient Audio Bridge)
+Plan: 1 of 2 in current phase
+Status: Plan 03-01 complete -- proceeding to 03-02 (Parameter binding + state)
+Last activity: 2026-03-07 -- Plan 03-01 complete (NJClient AudioProc bridge + run loop, 12min)
 
-Progress: [##########] 100%
+Progress: [########..] 86%
 
 ### Phase 1 Plans
 | Wave | Plan | Objective | Status |
@@ -60,12 +44,18 @@ Progress: [##########] 100%
 | 1 | 02-01 | JUCE 8.0.12 submodule + CMake + AudioProcessor + Editor | * Complete |
 | 1 | 02-02 | CI/pluginval + NinjamRunThread | * Complete |
 
+### Phase 3 Plans
+| Wave | Plan | Objective | Status |
+|------|------|-----------|--------|
+| 1 | 03-01 | NJClient AudioProc bridge + run loop + command dispatch | * Complete |
+| 1 | 03-02 | Parameter binding + state persistence | Pending |
+
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 8min
-- Total execution time: 0.70 hours
+- Total plans completed: 6
+- Average duration: 9min
+- Total execution time: 0.90 hours
 
 **By Phase:**
 
@@ -73,9 +63,10 @@ Progress: [##########] 100%
 |-------|-------|-------|----------|
 | 1 | 3/3 | 25min | 8min |
 | 2 | 2/2 | 17min | 9min |
+| 3 | 1/2 | 12min | 12min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (18min), 01-02 (4min), 01-03 (3min), 02-01 (12min), 02-02 (5min)
+- Last 5 plans: 01-02 (4min), 01-03 (3min), 02-01 (12min), 02-02 (5min), 03-01 (12min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -104,6 +95,11 @@ Recent decisions affecting current work:
 - NinjamRunThread uses wait(50) not Thread::sleep(50) for interruptible shutdown response (Plan 02-02)
 - AU and Standalone pluginval validation set to continue-on-error in CI (Plan 02-02)
 - juce-build.yml is separate from existing build.yml (CLAP release workflow) (Plan 02-02)
+- MAKE_NJ_FOURCC defined locally in processor .cpp (macro is private to njclient.cpp) (Plan 03-01)
+- AudioProc called without clientLock from processBlock (designed lock-free) (Plan 03-01)
+- License auto-accepted in Phase 3; Phase 4 adds proper UI dialog (Plan 03-01)
+- Chat callback set as no-op stub; Phase 4 adds chat UI (Plan 03-01)
+- inputScratch buffer with keepExisting=true for in-place AudioProc safety (Plan 03-01)
 
 ### Pending Todos
 
@@ -116,6 +112,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T13:43:10Z
-Stopped at: Completed 02-02-PLAN.md
-Resume with: /gsd:execute-phase 03 (start Phase 3: NJClient Integration)
+Last session: 2026-03-07T15:22:44Z
+Stopped at: Completed 03-01-PLAN.md
+Resume with: /gsd:execute-phase 03 (continue Phase 3: Plan 03-02)

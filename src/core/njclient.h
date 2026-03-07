@@ -131,6 +131,14 @@ public:
   std::atomic<bool>  config_mastermute{false};
   std::atomic<int>   config_play_prebuffer{8192}; // -1 means play instantly, 0 means play when full file is there
 
+  // Codec format selection (UI thread writes via SetEncoderFormat, Run thread reads at interval boundary)
+  std::atomic<unsigned int> m_encoder_fmt_requested{0};  // initialized in constructor
+  unsigned int m_encoder_fmt_active = 0;  // only accessed by Run thread
+  unsigned int m_encoder_fmt_prev = 0;    // previous format for chat notification
+
+  void SetEncoderFormat(unsigned int fourcc);
+  unsigned int GetEncoderFormat() const { return m_encoder_fmt_requested.load(std::memory_order_relaxed); }
+
   // Non-atomic config fields (require state_mutex)
   int   config_debug_level;
   int config_remote_autochan; // 1=auto-assign by channel, 2=auto-assign by user

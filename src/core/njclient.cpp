@@ -35,6 +35,7 @@
 #include "../wdl/win32_utf8.h"
 
 #define NJ_ENCODER_FMT_TYPE MAKE_NJ_FOURCC('O','G','G','v')
+#define NJ_ENCODER_FMT_FLAC MAKE_NJ_FOURCC('F','L','A','C')
 
 #ifdef REANINJAM
 #define WDL_VORBIS_INTERFACE_ONLY
@@ -43,6 +44,8 @@
 #define VorbisEncoderInterface I_NJEncoder
 #define VorbisDecoderInterface I_NJDecoder
 #include "../wdl/vorbisencdec.h"
+#include "../wdl/flacencdec.h"
+
 #undef VorbisEncoderInterface
 #undef VorbisDecoderInterface
 
@@ -81,6 +84,9 @@
   #define CreateNJEncoder(srate,ch,br,id) ((I_NJEncoder *)new VorbisEncoder(srate,ch,br,id))
   #define CreateNJDecoder() ((I_NJDecoder *)new VorbisDecoder)
 #endif
+
+#define CreateFLACEncoder(srate,ch,br,id) ((I_NJEncoder *)new FlacEncoder(srate,ch,br,id))
+#define CreateFLACDecoder() ((I_NJDecoder *)new FlacDecoder)
 
 
 #define SESSION_CHUNK_SIZE 2.0
@@ -592,6 +598,9 @@ NJClient::NJClient()
   config_masterpan.store(0.0f, std::memory_order_relaxed);
   config_mastermute.store(false, std::memory_order_relaxed);
   config_play_prebuffer.store(DEFAULT_CONFIG_PREBUFFER, std::memory_order_relaxed);
+  m_encoder_fmt_requested.store(NJ_ENCODER_FMT_FLAC, std::memory_order_relaxed);
+  m_encoder_fmt_active = NJ_ENCODER_FMT_FLAC;
+  m_encoder_fmt_prev = 0;
   config_remote_autochan = config_remote_autochan_nch = 0;
 
   LicenseAgreement_User=0;
@@ -1564,7 +1573,20 @@ int NJClient::Run() // nonzero if sleep ok
         // encode data
         if (!lc->m_enc)
         {
-          lc->m_enc = CreateNJEncoder(m_srate,lc->m_enc_nch_used=block_nch,lc->m_enc_bitrate_used = lc->bitrate+(block_nch>1?lc->bitrate/3:0),WDL_RNG_int32());
+          m_encoder_fmt_active = m_encoder_fmt_requested.load(std::memory_order_relaxed);
+          if (m_encoder_fmt_active == NJ_ENCODER_FMT_FLAC)
+            lc->m_enc = CreateFLACEncoder(m_srate,lc->m_enc_nch_used=block_nch,lc->m_enc_bitrate_used = lc->bitrate+(block_nch>1?lc->bitrate/3:0),WDL_RNG_int32());
+          else
+            lc->m_enc = CreateNJEncoder(m_srate,lc->m_enc_nch_used=block_nch,lc->m_enc_bitrate_used = lc->bitrate+(block_nch>1?lc->bitrate/3:0),WDL_RNG_int32());
+
+          // Send chat notification when codec changes
+          if (m_encoder_fmt_prev != 0 && m_encoder_fmt_active != m_encoder_fmt_prev) {
+            const char* codec_name = (m_encoder_fmt_active == NJ_ENCODER_FMT_FLAC) ? "FLAC lossless" : "Vorbis compressed";
+            char msg[128];
+            snprintf(msg, sizeof(msg), "/me switched to %s", codec_name);
+            ChatMessage_Send("MSG", msg);
+          }
+          m_encoder_fmt_prev = m_encoder_fmt_active;
         }
 
         if (lc->m_need_header)
@@ -1577,7 +1599,7 @@ int NJClient::Run() // nonzero if sleep ok
             if (!(lc->flags&4)) writeLog("local %s %d%s\n",guidstr,lc->channel_idx,(lc->flags&2)?"v":"");
             if (config_savelocalaudio>0)
             {
-              lc->m_curwritefile.Open(this,NJ_ENCODER_FMT_TYPE,false);
+              lc->m_curwritefile.Open(this,m_encoder_fmt_active,false);
               if (lc->m_wavewritefile) delete lc->m_wavewritefile;
               lc->m_wavewritefile=0;
               if (config_savelocalaudio>1)
@@ -1601,7 +1623,7 @@ int NJClient::Run() // nonzero if sleep ok
             mpb_client_upload_interval_begin cuib;
             cuib.chidx=lc->channel_idx;
             memcpy(cuib.guid,lc->m_curwritefile.guid,sizeof(cuib.guid));
-            cuib.fourcc=NJ_ENCODER_FMT_TYPE;
+            cuib.fourcc=m_encoder_fmt_active;
             cuib.estsize=0;
             delete lc->m_enc_header_needsend;
             lc->m_enc_header_needsend=cuib.build();
@@ -1750,6 +1772,11 @@ int NJClient::Run() // nonzero if sleep ok
           delete lc->m_enc;
           lc->m_enc=0;
         }
+        if (lc->m_enc && m_encoder_fmt_active != m_encoder_fmt_requested.load(std::memory_order_relaxed))
+        {
+          delete lc->m_enc;
+          lc->m_enc=0;
+        }
         lc->m_need_header=true;
         lc->m_curwritefile_writelen=0.0;
 
@@ -1778,9 +1805,9 @@ DecodeState *NJClient::start_decode(unsigned char *guid, int chanflags, unsigned
   memcpy(newstate->guid,guid,sizeof(newstate->guid));
 
 
-  // todo: make plug-in system to allow encoders to add types allowed
-  // todo: with a preference for 'fourcc' if specified
-  unsigned int types[]={MAKE_NJ_FOURCC('O','G','G','v')}; // only types we understand
+  // Supported codec types for file probing and network decode
+  unsigned int types[]={NJ_ENCODER_FMT_FLAC, MAKE_NJ_FOURCC('O','G','G','v')};
+  unsigned int matched_type = 0;
 
   if (!newstate->decode_buf)
   {
@@ -1797,12 +1824,18 @@ DecodeState *NJClient::start_decode(unsigned char *guid, int chanflags, unsigned
       type_to_string(types[x],tmp);
       s.Append(tmp);
       newstate->decode_fp=fopenUTF8(s.Get(),"rb");
+      if (newstate->decode_fp) matched_type = types[x];
     }
   }
 
   if (newstate->decode_fp||newstate->decode_buf)
   {
-    newstate->decode_codec= CreateNJDecoder();
+    // For network streams, use the fourcc from the message; for files, use the matched type
+    unsigned int codec_type = newstate->decode_buf ? fourcc : matched_type;
+    if (codec_type == NJ_ENCODER_FMT_FLAC)
+      newstate->decode_codec = CreateFLACDecoder();
+    else
+      newstate->decode_codec = CreateNJDecoder();
     // run some decoding
 
     if (newstate->decode_codec)
@@ -1838,6 +1871,12 @@ void NJClient::ChatMessage_Send(const char *parm1, const char *parm2, const char
     m.parms[4]=parm5;
     m_netcon->Send(m.build());
   }
+}
+
+void NJClient::SetEncoderFormat(unsigned int fourcc)
+{
+  if (fourcc == NJ_ENCODER_FMT_FLAC || fourcc == NJ_ENCODER_FMT_TYPE)
+    m_encoder_fmt_requested.store(fourcc, std::memory_order_relaxed);
 }
 
 void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int outnch, int len, int srate, int offset, int justmonitor, bool isPlaying, bool isSeek, double cursessionpos)

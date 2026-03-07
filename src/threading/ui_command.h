@@ -72,6 +72,10 @@ struct SendChatCommand {
     std::string text;
 };
 
+struct SetEncoderFormatCommand {
+    unsigned int fourcc = 0;  // NJ_ENCODER_FMT_FLAC or MAKE_NJ_FOURCC('O','G','G','v')
+};
+
 using UiCommand = std::variant<
     ConnectCommand,
     DisconnectCommand,
@@ -80,7 +84,8 @@ using UiCommand = std::variant<
     SetUserStateCommand,
     SetUserChannelStateCommand,
     RequestServerListCommand,
-    SendChatCommand
+    SendChatCommand,
+    SetEncoderFormatCommand
 >;
 
 } // namespace jamwide

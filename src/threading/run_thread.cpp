@@ -254,6 +254,9 @@ void execute_client_commands(JamWidePlugin* plugin,
                                                  c.text.c_str());
                     }
                 }
+            } else if constexpr (std::is_same_v<T, SetEncoderFormatCommand>) {
+                NLOG("[RunThread] Executing SetEncoderFormatCommand: fourcc=0x%08x\n", c.fourcc);
+                client->SetEncoderFormat(c.fourcc);
             } else {
                 // RequestServerListCommand handled earlier.
             }

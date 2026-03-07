@@ -9,8 +9,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Audio Codec
 
-- [ ] **CODEC-01**: User can send audio using FLAC lossless encoding
-- [ ] **CODEC-02**: User can receive and decode FLAC audio from other participants
+- [x] **CODEC-01**: User can send audio using FLAC lossless encoding
+- [x] **CODEC-02**: User can receive and decode FLAC audio from other participants
 - [ ] **CODEC-03**: User can switch between FLAC and Vorbis via UI toggle
 - [ ] **CODEC-04**: Codec switch applies at interval boundary (no mid-interval glitches)
 - [ ] **CODEC-05**: Default codec is FLAC (user can switch to Vorbis for bandwidth-constrained sessions)
@@ -108,8 +108,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CODEC-01 | Phase 1 | Pending |
-| CODEC-02 | Phase 1 | Pending |
+| CODEC-01 | Phase 1 | Complete |
+| CODEC-02 | Phase 1 | Complete |
 | CODEC-03 | Phase 1 | Pending |
 | CODEC-04 | Phase 1 | Pending |
 | CODEC-05 | Phase 1 | Pending |

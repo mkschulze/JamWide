@@ -12,8 +12,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **CODEC-01**: User can send audio using FLAC lossless encoding
 - [x] **CODEC-02**: User can receive and decode FLAC audio from other participants
 - [ ] **CODEC-03**: User can switch between FLAC and Vorbis via UI toggle
-- [ ] **CODEC-04**: Codec switch applies at interval boundary (no mid-interval glitches)
-- [ ] **CODEC-05**: Default codec is FLAC (user can switch to Vorbis for bandwidth-constrained sessions)
+- [x] **CODEC-04**: Codec switch applies at interval boundary (no mid-interval glitches)
+- [x] **CODEC-05**: Default codec is FLAC (user can switch to Vorbis for bandwidth-constrained sessions)
 
 ### JUCE Migration
 
@@ -111,8 +111,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CODEC-01 | Phase 1 | Complete |
 | CODEC-02 | Phase 1 | Complete |
 | CODEC-03 | Phase 1 | Pending |
-| CODEC-04 | Phase 1 | Pending |
-| CODEC-05 | Phase 1 | Pending |
+| CODEC-04 | Phase 1 | Complete |
+| CODEC-05 | Phase 1 | Complete |
 | JUCE-01 | Phase 2 | Pending |
 | JUCE-02 | Phase 2 | Pending |
 | JUCE-03 | Phase 3 | Pending |

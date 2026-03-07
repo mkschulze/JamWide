@@ -36,7 +36,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md -- libFLAC submodule, CMake integration, FlacEncoder/FlacDecoder classes
-- [ ] 01-02-PLAN.md -- NJClient FLAC encode/decode paths, format state, command queue, chat notification
+- [x] 01-02-PLAN.md -- NJClient FLAC encode/decode paths, format state, command queue, chat notification
 - [ ] 01-03-PLAN.md -- Codec selection UI, sender/receiver indicators, recording toggle, end-to-end verification
 
 ### Phase 2: JUCE Scaffolding
@@ -140,7 +140,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. FLAC Lossless Codec | 1/3 | In Progress | - |
+| 1. FLAC Lossless Codec | 2/3 | In Progress | - |
 | 2. JUCE Scaffolding | 0/? | Not started | - |
 | 3. NJClient Audio Bridge | 0/? | Not started | - |
 | 4. Core UI Panels | 0/? | Not started | - |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-PLAN.md
+stopped_at: Completed 01-02-PLAN.md
 last_updated: "2026-03-07"
-last_activity: 2026-03-07 -- Plan 01-01 complete (FlacEncoder/FlacDecoder + libFLAC)
+last_activity: 2026-03-07 -- Plan 01-02 complete (NJClient FLAC integration, 4min)
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 33
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -26,35 +26,35 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 ## Current Position
 
 Phase: 1 of 7 (FLAC Lossless Codec)
-Plan: 1 of 3 in current phase
-Status: Executing -- Plan 01-01 complete, Plan 01-02 next
-Last activity: 2026-03-07 -- Plan 01-01 complete (FlacEncoder/FlacDecoder + libFLAC, 18min)
+Plan: 2 of 3 in current phase
+Status: Executing -- Plan 01-02 complete, Plan 01-03 next
+Last activity: 2026-03-07 -- Plan 01-02 complete (NJClient FLAC integration, 4min)
 
-Progress: [###.......] 33%
+Progress: [#######...] 67%
 
 ### Phase 1 Plans
 | Wave | Plan | Objective | Status |
 |------|------|-----------|--------|
 | 1 | 01-01 | libFLAC submodule + CMake + FlacEncoder/FlacDecoder + tests | * Complete |
-| 2 | 01-02 | NJClient FLAC encode/decode, format state, SPSC command, chat notify | ○ Pending |
-| 3 | 01-03 | Codec selection UI, indicators, recording toggle | ○ Pending |
+| 2 | 01-02 | NJClient FLAC encode/decode, format state, SPSC command, chat notify | * Complete |
+| 3 | 01-03 | Codec selection UI, indicators, recording toggle | o Pending |
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 18min
-- Total execution time: 0.3 hours
+- Total plans completed: 2
+- Average duration: 11min
+- Total execution time: 0.37 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1 | 1/3 | 18min | 18min |
+| 1 | 2/3 | 22min | 11min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (18min)
-- Trend: Starting
+- Last 5 plans: 01-01 (18min), 01-02 (4min)
+- Trend: Accelerating
 
 *Updated after each plan completion*
 
@@ -70,6 +70,8 @@ Recent decisions affecting current work:
 - Research deliverables (video, OSC, MCP) grouped with Phase 7 DAW Sync since they inform the same domain
 - Encoder/decoder scale factor uses 32767 (2^15 - 1) for symmetric float-int16 conversion (Plan 01-01)
 - Decoder loops process_single() until ABORT/END_OF_STREAM because libFLAC buffers read data internally (Plan 01-01)
+- Include flacencdec.h within VorbisEncoderInterface macro scope so FlacEncoder/FlacDecoder resolve to I_NJEncoder/I_NJDecoder (Plan 01-02)
+- Decoder dispatch uses fourcc from message for network streams, matched file type for disk files (Plan 01-02)
 
 ### Pending Todos
 
@@ -83,5 +85,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 01-01-PLAN.md
-Resume with: /gsd:execute-phase 1 (continues with Plan 01-02)
+Stopped at: Completed 01-02-PLAN.md
+Resume with: /gsd:execute-phase 1 (continues with Plan 01-03)

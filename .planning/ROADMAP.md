@@ -63,11 +63,11 @@ Plans:
   2. User's microphone/instrument audio is encoded and sent to other participants
   3. Both Vorbis and FLAC codecs work through the JUCE audio bridge
   4. Closing and reopening the plugin editor window does not interrupt audio or network connection
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md -- NJClient ownership in processor, processBlock->AudioProc bridge, NinjamRunThread run loop with command queue
+- [ ] 03-02-PLAN.md -- Minimal connect/disconnect editor UI, end-to-end audio verification
 
 ### Phase 4: Core UI Panels
 **Goal**: Users can connect, chat, browse servers, and manage codec settings entirely through the JUCE UI (no Dear ImGui)
@@ -160,7 +160,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 |-------|----------------|--------|-----------|
 | 1. FLAC Lossless Codec | 3/3 | Complete   | 2026-03-07 |
 | 2. JUCE Scaffolding | 2/2 | Complete   | 2026-03-07 |
-| 3. NJClient Audio Bridge | 0/? | Not started | - |
+| 3. NJClient Audio Bridge | 0/2 | Not started | - |
 | 4. Core UI Panels | 0/? | Not started | - |
 | 5. Mixer UI and Channel Controls | 0/? | Not started | - |
 | 6. Multichannel Output Routing | 0/? | Not started | - |

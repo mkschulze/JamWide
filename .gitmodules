@@ -19,3 +19,9 @@
 [submodule "libs/libflac"]
 	path = libs/libflac
 	url = https://github.com/xiph/flac.git
+[submodule "libs/juce"]
+	path = libs/juce
+	url = https://github.com/juce-framework/JUCE.git
+[submodule "libs/clap-juce-extensions"]
+	path = libs/clap-juce-extensions
+	url = https://github.com/free-audio/clap-juce-extensions.git

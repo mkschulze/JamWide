@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 
 class JamWideJuceProcessor;
+class NJClient;
 
 /**
  * NinjamRunThread -- juce::Thread subclass that runs the NJClient::Run() loop.
@@ -10,8 +11,11 @@ class JamWideJuceProcessor;
  * stopped and destroyed in releaseResources(). Destructor has a safety-net
  * stopThread() call in case releaseResources() was not invoked by the host.
  *
- * Phase 2: Skeleton only -- proves lifecycle management works.
- * Phase 3: Will add NJClient::Run() call and command queue processing.
+ * The run loop:
+ *   1. Drains cmd_queue from Processor and dispatches commands under clientLock
+ *   2. Calls NJClient::Run() under clientLock for network I/O
+ *   3. Tracks status changes and sets up default local channel on connect
+ *   4. Adaptive sleep: 20ms connected, 50ms disconnected
  */
 class NinjamRunThread : public juce::Thread
 {
@@ -22,6 +26,8 @@ public:
     void run() override;
 
 private:
+    void processCommands(NJClient* client);
+
     JamWideJuceProcessor& processor;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NinjamRunThread)

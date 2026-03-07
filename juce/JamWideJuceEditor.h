@@ -17,7 +17,7 @@ private:
     void onConnectClicked();
     bool isConnected() const;
 
-    JamWideJuceProcessor& processor;
+    JamWideJuceProcessor& processorRef;
 
     juce::Label serverLabel;
     juce::TextEditor serverField;

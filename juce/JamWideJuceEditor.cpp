@@ -2,7 +2,7 @@
 #include "core/njclient.h"
 
 JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
-    : AudioProcessorEditor(p), processor(p)
+    : AudioProcessorEditor(p), processorRef(p)
 {
     setSize(800, 600);
 
@@ -65,7 +65,7 @@ void JamWideJuceEditor::onConnectClicked()
     if (isConnected())
     {
         jamwide::DisconnectCommand cmd;
-        processor.cmd_queue.try_push(std::move(cmd));
+        processorRef.cmd_queue.try_push(std::move(cmd));
         connectButton.setButtonText("Connect");
     }
     else
@@ -74,21 +74,21 @@ void JamWideJuceEditor::onConnectClicked()
         cmd.server = serverField.getText().toStdString();
         cmd.username = usernameField.getText().toStdString();
         cmd.password = "";  // Public servers, no password
-        processor.cmd_queue.try_push(std::move(cmd));
+        processorRef.cmd_queue.try_push(std::move(cmd));
         connectButton.setButtonText("Disconnect");
     }
 }
 
 bool JamWideJuceEditor::isConnected() const
 {
-    if (auto* client = processor.getClient())
+    if (auto* client = processorRef.getClient())
         return client->cached_status.load(std::memory_order_acquire) == NJClient::NJC_STATUS_OK;
     return false;
 }
 
 void JamWideJuceEditor::timerCallback()
 {
-    auto* client = processor.getClient();
+    auto* client = processorRef.getClient();
     if (!client) return;
 
     int status = client->cached_status.load(std::memory_order_acquire);

@@ -17,8 +17,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### JUCE Migration
 
-- [ ] **JUCE-01**: Plugin builds as VST3 and AU using JUCE AudioProcessor
-- [ ] **JUCE-02**: Standalone application mode works with audio device selection
+- [x] **JUCE-01**: Plugin builds as VST3 and AU using JUCE AudioProcessor
+- [x] **JUCE-02**: Standalone application mode works with audio device selection
 - [ ] **JUCE-03**: NJClient audio processing integrated via processBlock()
 - [ ] **JUCE-04**: NJClient Run() thread operates via juce::Thread
 - [ ] **JUCE-05**: All UI rebuilt as JUCE Components (no Dear ImGui)
@@ -145,8 +145,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CODEC-03 | Phase 1 | Complete |
 | CODEC-04 | Phase 1 | Complete |
 | CODEC-05 | Phase 1 | Complete |
-| JUCE-01 | Phase 2 | Pending |
-| JUCE-02 | Phase 2 | Pending |
+| JUCE-01 | Phase 2 | Complete |
+| JUCE-02 | Phase 2 | Complete |
 | JUCE-03 | Phase 3 | Pending |
 | JUCE-04 | Phase 2 | Pending |
 | JUCE-05 | Phase 4 | Pending |

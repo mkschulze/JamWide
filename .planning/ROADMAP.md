@@ -159,7 +159,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. FLAC Lossless Codec | 3/3 | Complete   | 2026-03-07 |
-| 2. JUCE Scaffolding | 0/2 | Not started | - |
+| 2. JUCE Scaffolding | 1/2 | In Progress | - |
 | 3. NJClient Audio Bridge | 0/? | Not started | - |
 | 4. Core UI Panels | 0/? | Not started | - |
 | 5. Mixer UI and Channel Controls | 0/? | Not started | - |

@@ -48,11 +48,11 @@ Plans:
   2. Standalone application launches with audio device selection and produces no audio (empty processor)
   3. NinjamRunThread starts and stops cleanly with the plugin lifecycle (no zombie threads on unload)
   4. Multi-bus output layout is declared at construction (even though routing is not yet wired)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md -- JUCE 8.0.12 submodule, CMake integration, AudioProcessor with multi-bus layout, minimal Editor
+- [ ] 02-02-PLAN.md -- NinjamRunThread (juce::Thread), processor lifecycle wiring, GitHub Actions CI with pluginval
 
 ### Phase 3: NJClient Audio Bridge
 **Goal**: Users can connect to a NINJAM server and hear audio flowing end-to-end through the JUCE plugin or standalone app
@@ -141,7 +141,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. FLAC Lossless Codec | 3/3 | Complete   | 2026-03-07 |
-| 2. JUCE Scaffolding | 0/? | Not started | - |
+| 2. JUCE Scaffolding | 0/2 | Not started | - |
 | 3. NJClient Audio Bridge | 0/? | Not started | - |
 | 4. Core UI Panels | 0/? | Not started | - |
 | 5. Mixer UI and Channel Controls | 0/? | Not started | - |

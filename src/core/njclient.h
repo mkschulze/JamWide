@@ -192,6 +192,7 @@ public:
   void GetRemoteUsersSnapshot(std::vector<RemoteUserInfo>& out);
 
   float GetUserChannelPeak(int useridx, int channelidx, int whichch=-1);
+  unsigned int GetUserChannelCodec(int useridx, int channelidx);
   double GetUserSessionPos(int useridx, time_t *lastupdatetime, double *maxlen);
   const char *GetUserChannelState(int useridx, int channelidx, bool *sub=0, float *vol=0, float *pan=0, bool *mute=0, bool *solo=0, int *outchannel=0, int *flags=0);
   void SetUserChannelState(int useridx, int channelidx, bool setsub, bool sub, bool setvol, float vol, bool setpan, float pan, bool setmute, bool mute, bool setsolo, bool solo, bool setoutch=false, int outchannel=0);

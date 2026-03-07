@@ -298,6 +298,7 @@ class RemoteUser_Channel
     DecodeState *next_ds[2]; // prepared by main thread, for audio thread
 
     double decode_peak_vol[2];
+    unsigned int codec_fourcc;  // FOURCC of currently active codec on this channel
 
     double curds_lenleft;
 
@@ -2928,6 +2929,17 @@ float NJClient::GetUserChannelPeak(int useridx, int channelidx, int whichch)
 
 }
 
+unsigned int NJClient::GetUserChannelCodec(int useridx, int channelidx)
+{
+  WDL_MutexLock lock(&m_users_cs);
+  WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
+
+  if (useridx<0 || useridx>=m_remoteusers.GetSize()||channelidx<0||channelidx>=MAX_USER_CHANNELS) return 0;
+  RemoteUser *user=m_remoteusers.Get(useridx);
+  if (!(user->chanpresentmask & (1u<<channelidx))) return 0;
+  return user->channels[channelidx].codec_fourcc;
+}
+
 float NJClient::GetLocalChannelPeak(int ch, int whichch)
 {
   WDL_MutexLock lock(&m_locchan_cs);
@@ -3154,7 +3166,7 @@ void NJClient::SetWorkDir(char *path)
 }
 
 
-RemoteUser_Channel::RemoteUser_Channel() : volume(0.25f), pan(0.0f), out_chan_index(0), flags(0), dump_samples(0), ds(NULL)
+RemoteUser_Channel::RemoteUser_Channel() : volume(0.25f), pan(0.0f), out_chan_index(0), flags(0), dump_samples(0), ds(NULL), codec_fourcc(0)
 {
   decode_peak_vol[0]=decode_peak_vol[1]=0.0;
   memset(next_ds,0,sizeof(next_ds));
@@ -3357,6 +3369,9 @@ void RemoteDownload::startPlaying(int force)
         DecodeState *tmp=m_parent->start_decode(guid,theuser->channels[chidx].flags,m_fourcc,m_decbuf);
 
 //        OutputDebugString(tmp?"started new decde\n":"tried to start new decode\n");
+
+        // Record the codec FOURCC on the channel for UI display
+        theuser->channels[chidx].codec_fourcc = m_fourcc;
 
         DecodeState *tmp2;
         int useidx=!!theuser->channels[chidx].next_ds[0];

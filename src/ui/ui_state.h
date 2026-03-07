@@ -17,6 +17,7 @@ struct UiRemoteChannel {
     bool solo = false;
     float vu_left = 0.0f;
     float vu_right = 0.0f;
+    unsigned int codec_fourcc = 0;  // FOURCC from incoming messages (0 = unknown)
 };
 
 struct UiRemoteUser {
@@ -65,11 +66,13 @@ struct UiState {
     // Local channel
     char local_name_input[64] = "Channel";
     int local_bitrate_index = 5;  // 256 kbps (highest)
+    int local_codec_index = 0;   // 0=FLAC (default per CODEC-05), 1=Vorbis
     bool local_transmit = true;
     float local_volume = 1.0f;
     float local_pan = 0.0f;
     bool local_mute = false;
     bool local_solo = false;
+    bool recording_enabled = false;  // Maps to config_savelocalaudio
     float local_vu_left = 0.0f;
     float local_vu_right = 0.0f;
     float transient_threshold = 0.12f;

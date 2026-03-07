@@ -2,8 +2,12 @@
 #include <JuceHeader.h>
 #include <memory>
 
+#include "threading/spsc_ring.h"
+#include "threading/ui_command.h"
+
 class JamWideJuceEditor;
 class NinjamRunThread;
+class NJClient;
 
 class JamWideJuceProcessor : public juce::AudioProcessor
 {
@@ -39,9 +43,18 @@ public:
 
     static constexpr int currentStateVersion = 1;
 
+    NJClient* getClient() { return client.get(); }
+    juce::CriticalSection& getClientLock() { return clientLock; }
+
     juce::AudioProcessorValueTreeState apvts;
+    jamwide::SpscRing<jamwide::UiCommand, 256> cmd_queue;
 
 private:
+    std::unique_ptr<NJClient> client;
+    juce::CriticalSection clientLock;
+    juce::AudioBuffer<float> inputScratch;
+    double storedSampleRate = 48000.0;
+
     std::unique_ptr<NinjamRunThread> runThread;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(JamWideJuceProcessor)

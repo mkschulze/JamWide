@@ -1,6 +1,11 @@
 #include "JamWideJuceProcessor.h"
 #include "JamWideJuceEditor.h"
 #include "NinjamRunThread.h"
+#include "core/njclient.h"
+
+#ifndef MAKE_NJ_FOURCC
+#define MAKE_NJ_FOURCC(A,B,C,D) ((A) | ((B)<<8) | ((C)<<16) | ((D)<<24))
+#endif
 
 //==============================================================================
 JamWideJuceProcessor::JamWideJuceProcessor()
@@ -30,13 +35,23 @@ JamWideJuceProcessor::JamWideJuceProcessor()
         .withOutput("Remote 16", juce::AudioChannelSet::stereo(), false)),
       apvts(*this, nullptr, "Parameters", createParameterLayout())
 {
+    client = std::make_unique<NJClient>();
+
+    auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                       .getChildFile("JamWide");
+    tempDir.createDirectory();
+    client->SetWorkDir(const_cast<char*>(tempDir.getFullPathName().toRawUTF8()));
+
+    client->SetEncoderFormat(MAKE_NJ_FOURCC('F','L','A','C'));
+    client->config_autosubscribe = 1;
 }
 
 JamWideJuceProcessor::~JamWideJuceProcessor()
 {
-    // Safety net: ensure runThread is stopped even if releaseResources() was not called.
-    // unique_ptr destruction invokes NinjamRunThread destructor which calls stopThread(5000).
+    // Order matters: runThread must stop before client is destroyed,
+    // because the run loop accesses client via getClient().
     runThread.reset();
+    client.reset();
 }
 
 //==============================================================================
@@ -63,11 +78,11 @@ JamWideJuceProcessor::createParameterLayout()
 }
 
 //==============================================================================
-void JamWideJuceProcessor::prepareToPlay(double /*sampleRate*/, int /*samplesPerBlock*/)
+void JamWideJuceProcessor::prepareToPlay(double sampleRate, int /*samplesPerBlock*/)
 {
-    // Phase 3 will set up NJClient sample rate and buffer size here
+    storedSampleRate = sampleRate;
 
-    // Start the NinjamRun thread for NJClient::Run() loop (Phase 3 fills in the body)
+    // Start the NinjamRun thread for NJClient::Run() loop
     runThread = std::make_unique<NinjamRunThread>(*this);
     runThread->startThread(juce::Thread::Priority::normal);
 }
@@ -88,10 +103,59 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 {
     juce::ScopedNoDenormals noDenormals;
 
-    // Phase 2: produce silence on all outputs
-    // Phase 3 will integrate NJClient::AudioProc here
-    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-        buffer.clear(ch, 0, buffer.getNumSamples());
+    const int numSamples = buffer.getNumSamples();
+    const int totalChannels = buffer.getNumChannels();
+
+    // Sync APVTS parameters to NJClient atomics
+    if (client)
+    {
+        client->config_mastervolume.store(
+            *apvts.getRawParameterValue("masterVol"),
+            std::memory_order_relaxed);
+        client->config_mastermute.store(
+            *apvts.getRawParameterValue("masterMute") >= 0.5f,
+            std::memory_order_relaxed);
+        client->config_metronome.store(
+            *apvts.getRawParameterValue("metroVol"),
+            std::memory_order_relaxed);
+        client->config_metronome_mute.store(
+            *apvts.getRawParameterValue("metroMute") >= 0.5f,
+            std::memory_order_relaxed);
+    }
+
+    // Call AudioProc when connected
+    if (client && client->cached_status.load(std::memory_order_acquire)
+                  == NJClient::NJC_STATUS_OK)
+    {
+        // In-place buffer safety: copy input to scratch before AudioProc
+        // (AudioProc may write to outbuf which is the same buffer object)
+        const int nch = juce::jmin(2, totalChannels);
+        inputScratch.setSize(2, numSamples, false, false, true);
+        for (int ch = 0; ch < nch; ++ch)
+            inputScratch.copyFrom(ch, 0, buffer, ch, 0, numSamples);
+        // Zero any scratch channels beyond what buffer provides
+        for (int ch = nch; ch < 2; ++ch)
+            inputScratch.clear(ch, 0, numSamples);
+
+        float* inPtrs[2] = { inputScratch.getWritePointer(0),
+                              inputScratch.getWritePointer(1) };
+        float* outPtrs[2] = { buffer.getWritePointer(0),
+                               totalChannels > 1 ? buffer.getWritePointer(1)
+                                                 : buffer.getWritePointer(0) };
+
+        client->AudioProc(inPtrs, 2, outPtrs, 2, numSamples,
+                          static_cast<int>(storedSampleRate));
+
+        // Clear any remaining output channels beyond stereo
+        for (int ch = 2; ch < totalChannels; ++ch)
+            buffer.clear(ch, 0, numSamples);
+
+        return;
+    }
+
+    // Not connected: silence all outputs
+    for (int ch = 0; ch < totalChannels; ++ch)
+        buffer.clear(ch, 0, numSamples);
 }
 
 //==============================================================================

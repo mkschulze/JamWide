@@ -1,7 +1,7 @@
 # Requirements: JamWide
 
 **Defined:** 2026-03-07
-**Core Value:** Musicians can jam together online with lossless audio quality and per-user mixing — in any DAW or standalone.
+**Core Value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
 
 ## v1 Requirements
 
@@ -108,47 +108,47 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CODEC-01 | — | Pending |
-| CODEC-02 | — | Pending |
-| CODEC-03 | — | Pending |
-| CODEC-04 | — | Pending |
-| CODEC-05 | — | Pending |
-| JUCE-01 | — | Pending |
-| JUCE-02 | — | Pending |
-| JUCE-03 | — | Pending |
-| JUCE-04 | — | Pending |
-| JUCE-05 | — | Pending |
-| JUCE-06 | — | Pending |
-| UI-01 | — | Pending |
-| UI-02 | — | Pending |
-| UI-03 | — | Pending |
-| UI-04 | — | Pending |
-| UI-05 | — | Pending |
-| UI-06 | — | Pending |
-| UI-07 | — | Pending |
-| UI-08 | — | Pending |
-| UI-09 | — | Pending |
-| MOUT-01 | — | Pending |
-| MOUT-02 | — | Pending |
-| MOUT-03 | — | Pending |
-| MOUT-04 | — | Pending |
-| MOUT-05 | — | Pending |
-| SYNC-01 | — | Pending |
-| SYNC-02 | — | Pending |
-| SYNC-03 | — | Pending |
-| SYNC-04 | — | Pending |
-| SYNC-05 | — | Pending |
-| REC-01 | — | Pending |
-| REC-02 | — | Pending |
-| RES-01 | — | Pending |
-| RES-02 | — | Pending |
-| RES-03 | — | Pending |
+| CODEC-01 | Phase 1 | Pending |
+| CODEC-02 | Phase 1 | Pending |
+| CODEC-03 | Phase 1 | Pending |
+| CODEC-04 | Phase 1 | Pending |
+| CODEC-05 | Phase 1 | Pending |
+| JUCE-01 | Phase 2 | Pending |
+| JUCE-02 | Phase 2 | Pending |
+| JUCE-03 | Phase 3 | Pending |
+| JUCE-04 | Phase 2 | Pending |
+| JUCE-05 | Phase 4 | Pending |
+| JUCE-06 | Phase 5 | Pending |
+| UI-01 | Phase 4 | Pending |
+| UI-02 | Phase 4 | Pending |
+| UI-03 | Phase 4 | Pending |
+| UI-04 | Phase 5 | Pending |
+| UI-05 | Phase 5 | Pending |
+| UI-06 | Phase 5 | Pending |
+| UI-07 | Phase 4 | Pending |
+| UI-08 | Phase 5 | Pending |
+| UI-09 | Phase 4 | Pending |
+| MOUT-01 | Phase 6 | Pending |
+| MOUT-02 | Phase 6 | Pending |
+| MOUT-03 | Phase 6 | Pending |
+| MOUT-04 | Phase 6 | Pending |
+| MOUT-05 | Phase 6 | Pending |
+| SYNC-01 | Phase 7 | Pending |
+| SYNC-02 | Phase 7 | Pending |
+| SYNC-03 | Phase 7 | Pending |
+| SYNC-04 | Phase 7 | Pending |
+| SYNC-05 | Phase 7 | Pending |
+| REC-01 | Phase 1 | Pending |
+| REC-02 | Phase 1 | Pending |
+| RES-01 | Phase 7 | Pending |
+| RES-02 | Phase 7 | Pending |
+| RES-03 | Phase 7 | Pending |
 
 **Coverage:**
 - v1 requirements: 35 total
-- Mapped to phases: 0
-- Unmapped: 35 ⚠️
+- Mapped to phases: 35
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-07*
-*Last updated: 2026-03-07 after initial definition*
+*Last updated: 2026-03-07 after roadmap creation*

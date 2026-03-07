@@ -12,7 +12,7 @@ JamWide evolves from a working NINJAM client into a full JUCE-based application 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: FLAC Lossless Codec** - FLAC encoding/decoding for NINJAM intervals with UI toggle and session recording
+- [x] **Phase 1: FLAC Lossless Codec** - FLAC encoding/decoding for NINJAM intervals with UI toggle and session recording (completed 2026-03-07)
 - [ ] **Phase 2: JUCE Scaffolding** - Plugin skeleton with AudioProcessor, thread architecture, multi-bus declaration, and CI
 - [ ] **Phase 3: NJClient Audio Bridge** - Wire NJClient into JUCE processBlock with stereo output and end-to-end audio flow
 - [ ] **Phase 4: Core UI Panels** - Connection, chat, status, server browser, and codec selector as JUCE Components
@@ -37,7 +37,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 - [x] 01-01-PLAN.md -- libFLAC submodule, CMake integration, FlacEncoder/FlacDecoder classes
 - [x] 01-02-PLAN.md -- NJClient FLAC encode/decode paths, format state, command queue, chat notification
-- [ ] 01-03-PLAN.md -- Codec selection UI, sender/receiver indicators, recording toggle, end-to-end verification
+- [x] 01-03-PLAN.md -- Codec selection UI, sender/receiver indicators, recording toggle, end-to-end verification
 
 ### Phase 2: JUCE Scaffolding
 **Goal**: The JUCE project skeleton builds, passes pluginval, and runs as VST3, AU, and standalone with correct architecture in place
@@ -140,7 +140,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. FLAC Lossless Codec | 2/3 | In Progress | - |
+| 1. FLAC Lossless Codec | 3/3 | Complete   | 2026-03-07 |
 | 2. JUCE Scaffolding | 0/? | Not started | - |
 | 3. NJClient Audio Bridge | 0/? | Not started | - |
 | 4. Core UI Panels | 0/? | Not started | - |

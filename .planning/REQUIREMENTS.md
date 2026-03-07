@@ -11,7 +11,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [x] **CODEC-01**: User can send audio using FLAC lossless encoding
 - [x] **CODEC-02**: User can receive and decode FLAC audio from other participants
-- [ ] **CODEC-03**: User can switch between FLAC and Vorbis via UI toggle
+- [x] **CODEC-03**: User can switch between FLAC and Vorbis via UI toggle
 - [x] **CODEC-04**: Codec switch applies at interval boundary (no mid-interval glitches)
 - [x] **CODEC-05**: Default codec is FLAC (user can switch to Vorbis for bandwidth-constrained sessions)
 
@@ -54,8 +54,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Session Recording
 
-- [ ] **REC-01**: User can enable session recording via UI
-- [ ] **REC-02**: Recorded audio saved as OGG or WAV (existing NJClient capability)
+- [x] **REC-01**: User can enable session recording via UI
+- [x] **REC-02**: Recorded audio saved as OGG or WAV (existing NJClient capability)
 
 ### Research Deliverables
 
@@ -110,7 +110,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | CODEC-01 | Phase 1 | Complete |
 | CODEC-02 | Phase 1 | Complete |
-| CODEC-03 | Phase 1 | Pending |
+| CODEC-03 | Phase 1 | Complete |
 | CODEC-04 | Phase 1 | Complete |
 | CODEC-05 | Phase 1 | Complete |
 | JUCE-01 | Phase 2 | Pending |
@@ -138,8 +138,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SYNC-03 | Phase 7 | Pending |
 | SYNC-04 | Phase 7 | Pending |
 | SYNC-05 | Phase 7 | Pending |
-| REC-01 | Phase 1 | Pending |
-| REC-02 | Phase 1 | Pending |
+| REC-01 | Phase 1 | Complete |
+| REC-02 | Phase 1 | Complete |
 | RES-01 | Phase 7 | Pending |
 | RES-02 | Phase 7 | Pending |
 | RES-03 | Phase 7 | Pending |

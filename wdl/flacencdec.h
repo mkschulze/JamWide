@@ -38,20 +38,8 @@ public:
         m_nch = nch;
         m_srate = srate;
         m_err = 0;
-        m_encoder = FLAC__stream_encoder_new();
-        if (!m_encoder) { m_err = 1; return; }
-
-        FLAC__stream_encoder_set_channels(m_encoder, nch);
-        FLAC__stream_encoder_set_bits_per_sample(m_encoder, 16);
-        FLAC__stream_encoder_set_sample_rate(m_encoder, srate);
-        FLAC__stream_encoder_set_compression_level(m_encoder, 5);
-        FLAC__stream_encoder_set_blocksize(m_encoder, 1024);
-
-        FLAC__StreamEncoderInitStatus status = FLAC__stream_encoder_init_stream(
-            m_encoder, write_cb, /*seek*/nullptr, /*tell*/nullptr,
-            /*metadata*/nullptr, this);
-        if (status != FLAC__STREAM_ENCODER_INIT_STATUS_OK)
-            m_err = 1;
+        m_encoder = nullptr;
+        initEncoder();
     }
 
     ~FlacEncoder()
@@ -66,19 +54,18 @@ public:
     {
         if (m_err || !m_encoder) return;
 
-        // Convert float -> FLAC__int32 interleaved
+        // Convert float -> FLAC__int32 interleaved.
         // advance = stride between successive samples in the input buffer
         // spacing = stride between channels for the same sample
-        // This matches the VorbisEncoder calling convention:
-        //   mono:    advance=1, spacing=1
+        // Matches the VorbisEncoder calling convention:
+        //   mono:               advance=1, spacing=1
         //   stereo interleaved: advance=2, spacing=1 (L0 R0 L1 R1 ...)
-        //   stereo planar:     advance=1, spacing=N (L0 L1...LN R0 R1...RN)
+        //   stereo planar:      advance=1, spacing=N (L0 L1...LN R0 R1...RN)
         m_intbuf.resize(inlen * m_nch);
 
         for (int i = 0, idx = 0; i < inlen; i++, idx += advance) {
             for (int c = 0; c < m_nch; c++) {
                 float s = in[idx + c * spacing];
-                // Clamp to [-1.0, 1.0]
                 if (s > 1.0f) s = 1.0f;
                 if (s < -1.0f) s = -1.0f;
                 m_intbuf[i * m_nch + c] = (FLAC__int32)lrintf(s * 32767.0f);
@@ -99,36 +86,43 @@ public:
     void reinit(int bla=0) override
     {
         if (!bla) {
-            // Finish current stream (flushes remaining samples)
+            // Finish current stream (flushes remaining samples via write_cb)
             if (m_encoder) {
                 FLAC__stream_encoder_finish(m_encoder);
                 FLAC__stream_encoder_delete(m_encoder);
+                m_encoder = nullptr;
             }
-            // Note: do NOT clear outqueue here -- the finish() call above
-            // flushes the final FLAC frames via write_cb into outqueue.
-            // The caller reads this data before calling reinit() again.
+            // Note: do NOT clear outqueue here -- finish() above flushed the
+            // final FLAC frames into outqueue. The caller reads this data
+            // before calling reinit() again.
 
-            // Create fresh encoder (headers go into outqueue via write_cb)
-            m_encoder = FLAC__stream_encoder_new();
-            if (!m_encoder) { m_err = 1; return; }
-
+            // Create fresh encoder (STREAMINFO header written via write_cb)
             m_err = 0;
-            FLAC__stream_encoder_set_channels(m_encoder, m_nch);
-            FLAC__stream_encoder_set_bits_per_sample(m_encoder, 16);
-            FLAC__stream_encoder_set_sample_rate(m_encoder, m_srate);
-            FLAC__stream_encoder_set_compression_level(m_encoder, 5);
-            FLAC__stream_encoder_set_blocksize(m_encoder, 1024);
-
-            FLAC__StreamEncoderInitStatus status = FLAC__stream_encoder_init_stream(
-                m_encoder, write_cb, nullptr, nullptr, nullptr, this);
-            if (status != FLAC__STREAM_ENCODER_INIT_STATUS_OK)
-                m_err = 1;
+            initEncoder();
         }
     }
 
     WDL_Queue outqueue;
 
 private:
+    void initEncoder()
+    {
+        m_encoder = FLAC__stream_encoder_new();
+        if (!m_encoder) { m_err = 1; return; }
+
+        FLAC__stream_encoder_set_channels(m_encoder, m_nch);
+        FLAC__stream_encoder_set_bits_per_sample(m_encoder, 16);
+        FLAC__stream_encoder_set_sample_rate(m_encoder, m_srate);
+        FLAC__stream_encoder_set_compression_level(m_encoder, 5);
+        FLAC__stream_encoder_set_blocksize(m_encoder, 1024);
+
+        FLAC__StreamEncoderInitStatus status = FLAC__stream_encoder_init_stream(
+            m_encoder, write_cb, /*seek*/nullptr, /*tell*/nullptr,
+            /*metadata*/nullptr, this);
+        if (status != FLAC__STREAM_ENCODER_INIT_STATUS_OK)
+            m_err = 1;
+    }
+
     static FLAC__StreamEncoderWriteStatus write_cb(
         const FLAC__StreamEncoder * /*encoder*/,
         const FLAC__byte buffer[],
@@ -155,18 +149,8 @@ public:
         m_srate = 0;
         m_nch = 0;
         m_err = 0;
-        m_decoder = FLAC__stream_decoder_new();
-        if (m_decoder) {
-            FLAC__StreamDecoderInitStatus status = FLAC__stream_decoder_init_stream(
-                m_decoder,
-                read_cb, /*seek*/nullptr, /*tell*/nullptr,
-                /*length*/nullptr, /*eof*/nullptr,
-                write_cb, metadata_cb, error_cb, this);
-            if (status != FLAC__STREAM_DECODER_INIT_STATUS_OK)
-                m_err = 1;
-        } else {
-            m_err = 1;
-        }
+        m_decoder = nullptr;
+        initDecoder();
     }
 
     ~FlacDecoder()
@@ -190,17 +174,11 @@ public:
         (void)srclen;
         if (!m_decoder) return;
 
-        // Process frames while input data is available and decoder is OK.
-        // process_single() decodes one metadata block or one audio frame.
-        // If the read_cb ABORTs (buffer empty mid-frame), the decoder enters
-        // ABORTED state. We break rather than retry -- the caller will feed
-        // more data and call DecodeWrote again if needed.
         // process_single() decodes one metadata block or one audio frame.
         // libFLAC buffers read data internally, so even when m_inbuf is
         // empty, the decoder may still have buffered data to process.
-        // We keep calling process_single until:
-        //   - It returns false (read_cb ABORTed because no more data)
-        //   - Decoder state is END_OF_STREAM or ABORTED
+        // Keep calling until the decoder needs more data (read_cb ABORTs),
+        // reaches END_OF_STREAM, or enters an error state.
         for (;;) {
             FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_decoder);
             if (state == FLAC__STREAM_DECODER_END_OF_STREAM ||
@@ -224,14 +202,9 @@ public:
         if (m_decoder) {
             FLAC__stream_decoder_finish(m_decoder);
             FLAC__stream_decoder_delete(m_decoder);
+            m_decoder = nullptr;
         }
-        m_decoder = FLAC__stream_decoder_new();
-        if (m_decoder) {
-            FLAC__stream_decoder_init_stream(
-                m_decoder,
-                read_cb, nullptr, nullptr, nullptr, nullptr,
-                write_cb, metadata_cb, error_cb, this);
-        }
+        initDecoder();
     }
 
     int Available() override { return m_outbuf.Available(); }
@@ -251,6 +224,20 @@ public:
     }
 
 private:
+    void initDecoder()
+    {
+        m_decoder = FLAC__stream_decoder_new();
+        if (!m_decoder) { m_err = 1; return; }
+
+        FLAC__StreamDecoderInitStatus status = FLAC__stream_decoder_init_stream(
+            m_decoder,
+            read_cb, /*seek*/nullptr, /*tell*/nullptr,
+            /*length*/nullptr, /*eof*/nullptr,
+            write_cb, metadata_cb, error_cb, this);
+        if (status != FLAC__STREAM_DECODER_INIT_STATUS_OK)
+            m_err = 1;
+    }
+
     static FLAC__StreamDecoderReadStatus read_cb(
         const FLAC__StreamDecoder * /*decoder*/,
         FLAC__byte buffer[],
@@ -283,8 +270,7 @@ private:
         int samples = (int)frame->header.blocksize;
         int bps = (int)frame->header.bits_per_sample;
         // Scale must match encoder: encoder uses int = lrintf(float * (2^(bps-1) - 1))
-        // so decoder uses float = int / (2^(bps-1) - 1)
-        // For 16-bit: 32767.0f
+        // so decoder uses float = int / (2^(bps-1) - 1). For 16-bit: 1/32767.
         float scale = 1.0f / (float)((1 << (bps - 1)) - 1);
 
         float *out = self->m_outbuf.Add(nullptr, samples * nch);

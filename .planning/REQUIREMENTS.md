@@ -67,6 +67,38 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 Deferred to future release. Tracked but not in current roadmap.
 
+### Codec & Transport Redesign
+
+Source: `CODEC_REDESIGN_PLAN.md` — low-latency codec stack with Opus, robust FLAC, and packetized transport.
+
+**Transport Layer:**
+- **XPORT-01**: Codec-agnostic packet envelope (version, codec_id, stream_id, sequence, flags, sample_rate, channels, payload)
+- **XPORT-02**: Per-remote-channel jitter/playout buffer with adaptive target delay
+- **XPORT-03**: Packet loss detection and concealment (bounded mute, never undefined decode state)
+- **XPORT-04**: Decoder input via explicit packet push model (not raw byte stream callbacks)
+
+**Opus Integration:**
+- **OPUS-01**: libopus dependency and build integration
+- **OPUS-02**: Opus encoder/decoder adapters implementing codec pipeline interface
+- **OPUS-03**: Mode presets (low-latency voice, music) with sensible defaults (48kHz, 5-10ms packets, constrained VBR)
+- **OPUS-04**: Optional in-band FEC toggle
+
+**FLAC Robust Mode:**
+- **FLACR-01**: FLAC packetization as frame-aligned complete decodable units
+- **FLACR-02**: Robust reset/discontinuity handling per stream (explicit state machine)
+- **FLACR-03**: No starvation-driven decoder state transitions — partial delivery never causes silent failure
+
+**Codec Negotiation:**
+- **NEG-01**: Client/server codec capability exchange (supported codecs, preferred live codec, FEC support)
+- **NEG-02**: Codec preference UI (Auto / Opus / FLAC / Vorbis legacy)
+- **NEG-03**: Negotiated codec indicator per remote channel
+- **NEG-04**: Bandwidth and latency warning labels per codec mode
+
+**Rollout & Reliability:**
+- **ROLL-01**: Telemetry counters (loss, concealment events, jitter buffer depth, codec switches)
+- **ROLL-02**: Canary rollout flag for staged deployment
+- **ROLL-03**: WAN simulation test suite in CI (jitter 0-120ms, loss 0-5%, reorder, mixed peers)
+
 ### Video
 
 - **VID-01**: Camera capture and H.264 encoding for video streaming
@@ -82,10 +114,10 @@ Deferred to future release. Tracked but not in current roadmap.
 ### Advanced Features
 
 - **ADV-01**: NINJAM interval-synced looper (JamTaba-style)
-- **ADV-02**: Voice chat (low-bitrate Opus stream)
+- **ADV-02**: Voice chat (low-latency Opus stream)
 - **ADV-03**: Input effects processing (compressor, gate, EQ) for standalone mode
 - **ADV-04**: Mixer presets (save/load per-user volume/pan/mute/solo)
-- **ADV-05**: FLAC capability negotiation (auto-detect peer codec support)
+- **ADV-05**: ~~FLAC capability negotiation~~ — superseded by NEG-01 through NEG-04
 - **ADV-06**: CLAP plugin format via juce_clap_extensions (or JUCE 9 native)
 
 ## Out of Scope

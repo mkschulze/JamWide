@@ -93,6 +93,13 @@ Full codebase analysis at `.planning/codebase/`:
 - **Platform**: macOS and Windows (Linux nice-to-have but not required)
 - **Dependencies**: libFLAC (new), JUCE (replaces ImGui + clap-wrapper), existing libogg/libvorbis retained for Vorbis support
 
+## Milestones
+
+| Milestone | Focus | Status |
+|-----------|-------|--------|
+| v1: JUCE Migration | FLAC codec, JUCE rewrite, multichannel routing, DAW sync | Active (Phase 2 of 7) |
+| v2: Codec & Transport Redesign | Opus live codec, packetized transport, jitter handling, capability negotiation | Future |
+
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
@@ -103,6 +110,8 @@ Full codebase analysis at `.planning/codebase/`:
 | Video as research only | JamTaba approach is proven but significant scope — evaluate feasibility before committing | — Pending |
 | MCP/OSC for cross-DAW sync | REAPER extension APIs aren't portable — MCP servers and OSC offer cross-DAW alternatives | — Pending |
 | Default Vorbis, FLAC opt-in | Preserves backward compatibility — old clients can't decode FLAC | — Pending |
+| Opus as v2 live default | Opus offers better quality/latency/bitrate than Vorbis; transport refactor needed first (v2 milestone) | — Planned |
+| Transport refactor before new codecs | Packet envelope + jitter buffer needed to support Opus FEC and robust FLAC — build foundation first | — Planned |
 
 ---
 *Last updated: 2026-03-07 after initialization*

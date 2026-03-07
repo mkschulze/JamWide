@@ -133,6 +133,24 @@ Plans:
 - [ ] 07-01: TBD
 - [ ] 07-02: TBD
 
+## Future Milestones
+
+### v2: Codec & Transport Redesign
+**Source:** `CODEC_REDESIGN_PLAN.md`
+**Depends on:** v1 complete (JUCE migration provides the plugin shell; codec work modifies njclient internals)
+**Goal:** Low-latency codec stack with Opus as real-time default, robust FLAC framing, packetized transport with jitter handling, and backward-compatible capability negotiation.
+**Requirements:** XPORT-01..04, OPUS-01..04, FLACR-01..03, NEG-01..04, ROLL-01..03
+
+**Planned phases:**
+1. Design Freeze & Test Harness — packet spec, state machine, network simulator
+2. Transport Refactor — packet envelope, sequence/stream IDs, decoder push model (Vorbis through new layer)
+3. Opus Integration — libopus, encoder/decoder adapters, mode presets, FEC
+4. FLAC Robust Mode — frame-aligned packetization, explicit state machine, no starvation failures
+5. Negotiation, UI & Policy — capability exchange, codec preference UI, bandwidth warnings
+6. Rollout & Cleanup — telemetry, canary flag, soak tests, de-emphasize Vorbis
+
+**Key constraint:** Server remains a dumb relay — all codec intelligence is client-side. Legacy Vorbis peers must coexist without negotiation support.
+
 ## Progress
 
 **Execution Order:**

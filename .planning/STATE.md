@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 1 context gathered
-last_updated: "2026-03-07T00:47:58.147Z"
-last_activity: 2026-03-07 -- Roadmap created
+stopped_at: Phase 1 planned — ready to execute
+last_updated: "2026-03-07"
+last_activity: 2026-03-07 -- Phase 1 planned (3 plans, 3 waves)
 progress:
   total_phases: 7
   completed_phases: 0
-  total_plans: 0
+  total_plans: 3
   completed_plans: 0
   percent: 0
 ---
@@ -26,11 +26,18 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 ## Current Position
 
 Phase: 1 of 7 (FLAC Lossless Codec)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-03-07 -- Roadmap created
+Plan: 0 of 3 in current phase
+Status: Planned — ready to execute
+Last activity: 2026-03-07 -- Phase 1 planned (3 plans, 3 waves)
 
 Progress: [..........] 0%
+
+### Phase 1 Plans
+| Wave | Plan | Objective | Status |
+|------|------|-----------|--------|
+| 1 | 01-01 | libFLAC submodule + CMake + FlacEncoder/FlacDecoder + tests | ○ Pending |
+| 2 | 01-02 | NJClient FLAC encode/decode, format state, SPSC command, chat notify | ○ Pending |
+| 3 | 01-03 | Codec selection UI, indicators, recording toggle | ○ Pending |
 
 ## Performance Metrics
 
@@ -68,11 +75,11 @@ None yet.
 
 ### Blockers/Concerns
 
-- libFLAC integration approach needs reconciliation: external submodule (FLAC_INTEGRATION_PLAN.md) vs JUCE bundled copy (research recommendation). Must decide before Phase 1 planning.
+- libFLAC integration approach decided: git submodule at libs/libflac (xiph/flac @ 1.5.0), WITH_OGG OFF. Research confirmed this is the right approach.
 - JUCE license decision (splash screen) needed before Phase 2 ships.
 
 ## Session Continuity
 
-Last session: 2026-03-07T00:47:58.144Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-flac-lossless-codec/01-CONTEXT.md
+Last session: 2026-03-07
+Stopped at: Phase 1 planned — ready to execute
+Resume with: /gsd:execute-phase 1

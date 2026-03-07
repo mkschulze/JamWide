@@ -1,0 +1,120 @@
+name: JUCE Build + Validate
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build-macos:
+    runs-on: macos-14  # Apple Silicon runner
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Configure CMake
+        env:
+          JAMWIDE_BUILD_TYPE: Release
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE="$JAMWIDE_BUILD_TYPE" \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DJAMWIDE_BUILD_JUCE=ON \
+            -DJAMWIDE_BUILD_CLAP=OFF \
+            -DJAMWIDE_DEV_BUILD=OFF
+
+      - name: Build
+        env:
+          JAMWIDE_BUILD_TYPE: Release
+        run: cmake --build build --config "$JAMWIDE_BUILD_TYPE" -j $(sysctl -n hw.ncpu)
+
+      - name: Verify artifacts
+        run: |
+          echo "=== JUCE build artifacts ==="
+          ls -la "build/JamWideJuce_artefacts/Release/VST3/JamWide JUCE.vst3/" || echo "VST3 not found"
+          ls -la "build/JamWideJuce_artefacts/Release/AU/JamWide JUCE.component/" || echo "AU not found"
+          ls -la "build/JamWideJuce_artefacts/Release/Standalone/JamWide JUCE.app/" || echo "Standalone not found"
+
+      - name: Download pluginval
+        run: |
+          curl -L https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip -o pluginval.zip
+          unzip pluginval.zip
+
+      - name: Force AU re-scan
+        run: killall -9 AudioComponentRegistrar 2>/dev/null || true
+
+      - name: Validate VST3
+        run: |
+          ./pluginval.app/Contents/MacOS/pluginval \
+            --validate-in-process \
+            --strictness-level 5 \
+            --timeout-ms 120000 \
+            --validate "build/JamWideJuce_artefacts/Release/VST3/JamWide JUCE.vst3"
+
+      - name: Validate AU
+        continue-on-error: true
+        run: |
+          ./pluginval.app/Contents/MacOS/pluginval \
+            --validate-in-process \
+            --strictness-level 5 \
+            --timeout-ms 120000 \
+            --validate "build/JamWideJuce_artefacts/Release/AU/JamWide JUCE.component"
+
+      - name: Validate Standalone
+        continue-on-error: true
+        run: |
+          ./pluginval.app/Contents/MacOS/pluginval \
+            --validate-in-process \
+            --strictness-level 5 \
+            --timeout-ms 120000 \
+            --validate "build/JamWideJuce_artefacts/Release/Standalone/JamWide JUCE.app"
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Configure CMake
+        run: |
+          cmake -B build `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DJAMWIDE_BUILD_JUCE=ON `
+            -DJAMWIDE_BUILD_CLAP=OFF `
+            -DJAMWIDE_DEV_BUILD=OFF
+
+      - name: Build
+        env:
+          JAMWIDE_BUILD_TYPE: Release
+        run: cmake --build build --config "$env:JAMWIDE_BUILD_TYPE"
+
+      - name: Verify artifacts
+        shell: pwsh
+        run: |
+          Write-Host "=== JUCE build artifacts ==="
+          Get-ChildItem -Path "build/JamWideJuce_artefacts" -Recurse -Include "*.vst3" -Directory | Select-Object FullName
+
+      - name: Download pluginval
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip" -OutFile pluginval.zip
+          Expand-Archive -Path pluginval.zip -DestinationPath pluginval
+
+      - name: Validate VST3
+        run: |
+          pluginval\pluginval.exe --validate-in-process --strictness-level 5 --timeout-ms 120000 --validate "build\JamWideJuce_artefacts\Release\VST3\JamWide JUCE.vst3"

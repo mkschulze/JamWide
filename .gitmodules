@@ -16,3 +16,6 @@
 [submodule "libs/clap-wrapper"]
 	path = libs/clap-wrapper
 	url = https://github.com/free-audio/clap-wrapper.git
+[submodule "libs/libflac"]
+	path = libs/libflac
+	url = https://github.com/xiph/flac.git

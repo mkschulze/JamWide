@@ -45,6 +45,18 @@ set(OGG_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/libogg/include)
 set(OGG_LIBRARY ogg)
 add_subdirectory(libs/libvorbis EXCLUDE_FROM_ALL)
 
+# libFLAC
+set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(WITH_OGG OFF CACHE BOOL "" FORCE)        # Native FLAC, not OGG FLAC
+set(BUILD_CXXLIBS OFF CACHE BOOL "" FORCE)    # C API only
+set(INSTALL_MANPAGES OFF CACHE BOOL "" FORCE)
+set(INSTALL_PKGCONFIG_MODULES OFF CACHE BOOL "" FORCE)
+set(INSTALL_CMAKE_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
+add_subdirectory(libs/libflac EXCLUDE_FROM_ALL)
+
 # Dear ImGui (manual setup - no CMakeLists in repo)
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/imgui)
 add_library(imgui STATIC
@@ -110,7 +122,7 @@ target_include_directories(njclient PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
-target_link_libraries(njclient PUBLIC wdl vorbis vorbisenc ogg)
+target_link_libraries(njclient PUBLIC wdl vorbis vorbisenc ogg FLAC)
 if(JAMWIDE_DEV_BUILD)
     target_compile_definitions(njclient PRIVATE JAMWIDE_DEV_BUILD=1)
 endif()

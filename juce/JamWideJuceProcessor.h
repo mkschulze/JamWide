@@ -1,13 +1,15 @@
 #pragma once
 #include <JuceHeader.h>
+#include <memory>
 
 class JamWideJuceEditor;
+class NinjamRunThread;
 
 class JamWideJuceProcessor : public juce::AudioProcessor
 {
 public:
     JamWideJuceProcessor();
-    ~JamWideJuceProcessor() override = default;
+    ~JamWideJuceProcessor() override;
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -40,5 +42,7 @@ public:
     juce::AudioProcessorValueTreeState apvts;
 
 private:
+    std::unique_ptr<NinjamRunThread> runThread;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(JamWideJuceProcessor)
 };

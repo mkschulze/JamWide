@@ -260,6 +260,7 @@ if(JAMWIDE_BUILD_JUCE)
     target_sources(JamWideJuce PRIVATE
         juce/JamWideJuceProcessor.cpp
         juce/JamWideJuceEditor.cpp
+        juce/NinjamRunThread.cpp
     )
 
     target_compile_definitions(JamWideJuce PUBLIC

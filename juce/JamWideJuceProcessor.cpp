@@ -1,5 +1,6 @@
 #include "JamWideJuceProcessor.h"
 #include "JamWideJuceEditor.h"
+#include "NinjamRunThread.h"
 
 //==============================================================================
 JamWideJuceProcessor::JamWideJuceProcessor()
@@ -31,6 +32,13 @@ JamWideJuceProcessor::JamWideJuceProcessor()
 {
 }
 
+JamWideJuceProcessor::~JamWideJuceProcessor()
+{
+    // Safety net: ensure runThread is stopped even if releaseResources() was not called.
+    // unique_ptr destruction invokes NinjamRunThread destructor which calls stopThread(5000).
+    runThread.reset();
+}
+
 //==============================================================================
 juce::AudioProcessorValueTreeState::ParameterLayout
 JamWideJuceProcessor::createParameterLayout()
@@ -57,13 +65,22 @@ JamWideJuceProcessor::createParameterLayout()
 //==============================================================================
 void JamWideJuceProcessor::prepareToPlay(double /*sampleRate*/, int /*samplesPerBlock*/)
 {
-    // Phase 2: nothing to prepare yet
     // Phase 3 will set up NJClient sample rate and buffer size here
+
+    // Start the NinjamRun thread for NJClient::Run() loop (Phase 3 fills in the body)
+    runThread = std::make_unique<NinjamRunThread>(*this);
+    runThread->startThread(juce::Thread::Priority::normal);
 }
 
 void JamWideJuceProcessor::releaseResources()
 {
-    // Phase 2: nothing to release
+    // Stop and destroy the NinjamRun thread cleanly
+    if (runThread)
+    {
+        runThread->signalThreadShouldExit();
+        runThread->stopThread(5000);
+        runThread.reset();
+    }
 }
 
 void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,

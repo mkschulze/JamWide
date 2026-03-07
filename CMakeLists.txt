@@ -216,3 +216,17 @@ install(TARGETS jamwide_clap
     LIBRARY DESTINATION lib/clap
     BUNDLE DESTINATION lib/clap
 )
+
+# Tests
+if(JAMWIDE_BUILD_TESTS)
+    enable_testing()
+    add_executable(test_flac_codec tests/test_flac_codec.cpp)
+    target_include_directories(test_flac_codec PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_link_libraries(test_flac_codec PRIVATE FLAC wdl)
+    # Only expose interfaces from vorbisencdec.h (no Vorbis codec deps)
+    target_compile_definitions(test_flac_codec PRIVATE WDL_VORBIS_INTERFACE_ONLY)
+    add_test(NAME flac_codec COMMAND test_flac_codec)
+endif()

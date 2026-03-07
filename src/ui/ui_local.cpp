@@ -12,6 +12,10 @@
 #include "core/njclient.h"
 #include "imgui.h"
 
+// FOURCC constants for codec identification (must match njclient.cpp definitions)
+#define MAKE_NJ_FOURCC(A,B,C,D) ((A) | ((B)<<8) | ((C)<<16) | ((D)<<24))
+#define NJ_ENCODER_FMT_FLAC MAKE_NJ_FOURCC('F','L','A','C')
+
 namespace {
 
 const char* const kBitrateLabels[] = {
@@ -69,6 +73,31 @@ void ui_render_local_channel(jamwide::JamWidePlugin* plugin) {
             cmd.bitrate = bitrate;
             plugin->cmd_queue.try_push(std::move(cmd));
         }
+    }
+
+    // Codec selector (CODEC-03)
+    ImGui::SameLine();
+    {
+        const char* kCodecLabels[] = { "FLAC (Lossless)", "Vorbis (Compressed)" };
+        ImGui::SetNextItemWidth(150.0f);
+        if (ImGui::Combo("##codec_local", &state.local_codec_index,
+                         kCodecLabels, 2)) {
+            if (state.status == NJClient::NJC_STATUS_OK) {
+                jamwide::SetEncoderFormatCommand cmd;
+                cmd.fourcc = (state.local_codec_index == 0)
+                    ? NJ_ENCODER_FMT_FLAC
+                    : MAKE_NJ_FOURCC('O','G','G','v');
+                plugin->cmd_queue.try_push(std::move(cmd));
+            }
+        }
+    }
+
+    // Active codec indicator
+    ImGui::SameLine();
+    if (state.local_codec_index == 0) {
+        ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "[FLAC]");
+    } else {
+        ImGui::TextDisabled("[Vorbis]");
     }
 
     ImGui::SameLine();
@@ -143,6 +172,22 @@ void ui_render_local_channel(jamwide::JamWidePlugin* plugin) {
     float vu_right = plugin->ui_snapshot.local_vu_right.load(
         std::memory_order_relaxed);
     render_vu_meter("##local_vu", vu_left, vu_right);
+
+    // Session recording (REC-01, REC-02)
+    if (state.status == NJClient::NJC_STATUS_OK) {
+        if (ImGui::Checkbox("Record Session", &state.recording_enabled)) {
+            // Set config_savelocalaudio: 2 = OGG + WAV, 0 = off
+            std::unique_lock<std::mutex> lock(plugin->client_mutex);
+            if (plugin->client) {
+                plugin->client->config_savelocalaudio =
+                    state.recording_enabled ? 2 : 0;
+            }
+        }
+        if (state.recording_enabled) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(OGG + WAV)");
+        }
+    }
 
     if (state.status == NJClient::NJC_STATUS_OK) {
         ImGui::Spacing();

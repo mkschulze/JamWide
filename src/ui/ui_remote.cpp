@@ -11,6 +11,10 @@
 #include "core/njclient.h"
 #include "imgui.h"
 
+// FOURCC constants for codec identification (must match njclient.cpp definitions)
+#define MAKE_NJ_FOURCC(A,B,C,D) ((A) | ((B)<<8) | ((C)<<16) | ((D)<<24))
+#define NJ_ENCODER_FMT_FLAC MAKE_NJ_FOURCC('F','L','A','C')
+
 void ui_render_remote_channels(jamwide::JamWidePlugin* plugin) {
     if (!plugin) return;
 
@@ -104,6 +108,27 @@ void ui_render_remote_channels(jamwide::JamWidePlugin* plugin) {
 
                 ImGui::SameLine();
                 ImGui::Text("%s", channel_label);
+
+                // Per-channel codec indicator (receiver-side)
+                {
+                    unsigned int codec_fourcc = client->GetUserChannelCodec(
+                        u, channel_index);
+                    if (codec_fourcc == NJ_ENCODER_FMT_FLAC) {
+                        ImGui::SameLine();
+                        ImGui::TextColored(
+                            ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "[FLAC]");
+                    } else if (codec_fourcc ==
+                               MAKE_NJ_FOURCC('O','G','G','v')) {
+                        ImGui::SameLine();
+                        ImGui::TextDisabled("[Vorbis]");
+                    } else if (codec_fourcc != 0) {
+                        // Unsupported codec error indicator
+                        ImGui::SameLine();
+                        ImGui::TextColored(
+                            ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
+                            "[Unsupported codec]");
+                    }
+                }
 
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(120.0f);

@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: FLAC Lossless Codec** - FLAC encoding/decoding for NINJAM intervals with UI toggle and session recording (completed 2026-03-07)
 - [x] **Phase 2: JUCE Scaffolding** - Plugin skeleton with AudioProcessor, thread architecture, multi-bus declaration, and CI (completed 2026-03-07)
-- [ ] **Phase 3: NJClient Audio Bridge** - Wire NJClient into JUCE processBlock with stereo output and end-to-end audio flow
+- [x] **Phase 3: NJClient Audio Bridge** - Wire NJClient into JUCE processBlock with stereo output and end-to-end audio flow (completed 2026-03-07)
 - [ ] **Phase 4: Core UI Panels** - Connection, chat, status, server browser, and codec selector as JUCE Components
 - [ ] **Phase 5: Mixer UI and Channel Controls** - Remote user mixer, local channels, metronome, VU meters, and state persistence
 - [ ] **Phase 6: Multichannel Output Routing** - Per-user and per-channel stereo pair routing to DAW output buses
@@ -67,7 +67,7 @@ Plans:
 
 Plans:
 - [x] 03-01-PLAN.md -- NJClient ownership in processor, processBlock->AudioProc bridge, NinjamRunThread run loop with command queue
-- [ ] 03-02-PLAN.md -- Minimal connect/disconnect editor UI, end-to-end audio verification
+- [x] 03-02-PLAN.md -- Minimal connect/disconnect editor UI, end-to-end audio verification
 
 ### Phase 4: Core UI Panels
 **Goal**: Users can connect, chat, browse servers, and manage codec settings entirely through the JUCE UI (no Dear ImGui)
@@ -160,7 +160,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 |-------|----------------|--------|-----------|
 | 1. FLAC Lossless Codec | 3/3 | Complete   | 2026-03-07 |
 | 2. JUCE Scaffolding | 2/2 | Complete   | 2026-03-07 |
-| 3. NJClient Audio Bridge | 1/2 | In progress | - |
+| 3. NJClient Audio Bridge | 2/2 | Complete   | 2026-03-07 |
 | 4. Core UI Panels | 0/? | Not started | - |
 | 5. Mixer UI and Channel Controls | 0/? | Not started | - |
 | 6. Multichannel Output Routing | 0/? | Not started | - |

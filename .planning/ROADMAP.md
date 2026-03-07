@@ -13,7 +13,7 @@ JamWide evolves from a working NINJAM client into a full JUCE-based application 
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: FLAC Lossless Codec** - FLAC encoding/decoding for NINJAM intervals with UI toggle and session recording (completed 2026-03-07)
-- [ ] **Phase 2: JUCE Scaffolding** - Plugin skeleton with AudioProcessor, thread architecture, multi-bus declaration, and CI
+- [x] **Phase 2: JUCE Scaffolding** - Plugin skeleton with AudioProcessor, thread architecture, multi-bus declaration, and CI (completed 2026-03-07)
 - [ ] **Phase 3: NJClient Audio Bridge** - Wire NJClient into JUCE processBlock with stereo output and end-to-end audio flow
 - [ ] **Phase 4: Core UI Panels** - Connection, chat, status, server browser, and codec selector as JUCE Components
 - [ ] **Phase 5: Mixer UI and Channel Controls** - Remote user mixer, local channels, metronome, VU meters, and state persistence
@@ -51,8 +51,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- JUCE 8.0.12 submodule, CMake integration, AudioProcessor with multi-bus layout, minimal Editor
-- [ ] 02-02-PLAN.md -- NinjamRunThread (juce::Thread), processor lifecycle wiring, GitHub Actions CI with pluginval
+- [x] 02-01-PLAN.md -- JUCE 8.0.12 submodule, CMake integration, AudioProcessor with multi-bus layout, minimal Editor
+- [x] 02-02-PLAN.md -- NinjamRunThread (juce::Thread), processor lifecycle wiring, GitHub Actions CI with pluginval
 
 ### Phase 3: NJClient Audio Bridge
 **Goal**: Users can connect to a NINJAM server and hear audio flowing end-to-end through the JUCE plugin or standalone app
@@ -159,7 +159,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. FLAC Lossless Codec | 3/3 | Complete   | 2026-03-07 |
-| 2. JUCE Scaffolding | 1/2 | In Progress | - |
+| 2. JUCE Scaffolding | 2/2 | Complete   | 2026-03-07 |
 | 3. NJClient Audio Bridge | 0/? | Not started | - |
 | 4. Core UI Panels | 0/? | Not started | - |
 | 5. Mixer UI and Channel Controls | 0/? | Not started | - |

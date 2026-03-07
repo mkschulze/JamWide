@@ -305,6 +305,30 @@ if(JAMWIDE_BUILD_JUCE)
             endforeach()
         endif()
     endif()
+    # Pluginval validation: cmake --build build --target validate
+    # Downloads pluginval automatically on first run, caches in build dir
+    if(APPLE)
+        set(_pluginval_url "https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip")
+        set(_pluginval_exe "${CMAKE_BINARY_DIR}/_pluginval/pluginval.app/Contents/MacOS/pluginval")
+    elseif(WIN32)
+        set(_pluginval_url "https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip")
+        set(_pluginval_exe "${CMAKE_BINARY_DIR}/_pluginval/pluginval.exe")
+    endif()
+
+    if(DEFINED _pluginval_url)
+        add_custom_target(validate
+            COMMAND ${CMAKE_COMMAND}
+                -D "PLUGINVAL_URL=${_pluginval_url}"
+                -D "PLUGINVAL_EXE=${_pluginval_exe}"
+                -D "PLUGINVAL_DIR=${CMAKE_BINARY_DIR}/_pluginval"
+                -D "VST3_PATH=$<TARGET_BUNDLE_DIR:JamWideJuce_VST3>"
+                -P "${CMAKE_SOURCE_DIR}/cmake/run-pluginval.cmake"
+            DEPENDS JamWideJuce_VST3
+            COMMENT "Validating VST3 with pluginval (strictness 5)"
+            VERBATIM
+        )
+    endif()
+
 endif() # JAMWIDE_BUILD_JUCE
 
 # Tests

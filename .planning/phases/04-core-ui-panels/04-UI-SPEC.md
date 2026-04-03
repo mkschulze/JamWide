@@ -5,6 +5,7 @@ status: draft
 shadcn_initialized: false
 preset: none
 created: 2026-04-04
+revised: 2026-04-04
 ---
 
 # Phase 4 -- UI Design Contract
@@ -27,6 +28,8 @@ created: 2026-04-04
 | Font | System sans-serif (juce::Font default). No external font dependency. |
 
 **Design reference:** VB-Audio Voicemeeter Banana -- dark blue-gray pro-audio mixer. Dense single-screen layout, vertical channel strips, illuminated VU meters.
+
+**Primary focal point:** Illuminated VU meters in the channel strip area. The green/yellow/red gradient bars are the highest-contrast, highest-motion elements on screen and draw the eye to the mixer surface where the core audio activity is displayed.
 
 ---
 
@@ -85,8 +88,7 @@ Declared values (multiples of 4 only):
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4px | VU meter bar gap, icon-to-text inline gap |
-| sm | 8px | Field padding, channel strip internal margins |
-| md | 12px | Connection bar element spacing, chat message vertical gap |
+| sm | 8px | Field padding, channel strip internal margins, connection bar element spacing, chat message vertical gap |
 | lg | 16px | Channel strip horizontal gap, panel internal padding |
 | xl | 24px | Panel-to-panel gap (channel area to chat boundary) |
 | 2xl | 32px | Section header spacing (topic bar, status area) |
@@ -107,10 +109,10 @@ All sizes reference JUCE `juce::Font` constructed with `juce::FontOptions(size)`
 |------|------|--------|-------------|-------|
 | Body | 13px | Regular (plain) | 1.4 | Chat messages, server browser entries, labels |
 | Label | 11px | Regular (plain) | 1.2 | Channel strip names, status indicators, timestamps |
+| Status | 13px | Bold | 1.2 | BPM/BPI display, connection state text, codec indicator |
 | Heading | 16px | Bold | 1.2 | Panel titles ("Chat"), overlay headings ("Server Browser", "License Agreement") |
-| Status | 14px | Bold | 1.0 | BPM/BPI display, connection state text, codec indicator |
 
-**Rationale:** Dense pro-audio layout requires compact text. 13px body matches Voicemeeter Banana's information density. Bold reserved for status-critical information and section headings only.
+**Rationale:** Dense pro-audio layout requires compact text. 13px body matches Voicemeeter Banana's information density. Bold reserved for status-critical information and section headings only. Status text uses the same 13px as Body but is differentiated by Bold weight, avoiding an imperceptible 1px size difference.
 
 ---
 
@@ -187,7 +189,7 @@ Voicemeeter Banana-inspired dark palette. All values as JUCE `juce::Colour(0xAAR
 |---------|------|---------|
 | Server address field | `juce::TextEditor` | Default: `"ninbot.com"`, placeholder: `"server:port"`, width: 200px |
 | Username field | `juce::TextEditor` | Default: `"anonymous"`, placeholder: `"username"`, width: 120px |
-| Password toggle | `juce::TextButton` (icon) | Lock icon, toggles password field visibility (D-24) |
+| Password toggle | `juce::TextButton` (icon) | Lock icon, toggles password field visibility (D-24). Must call `setDescription("Toggle password visibility")` for screen reader accessibility. |
 | Password field | `juce::TextEditor` | Hidden by default, password masking enabled, width: 120px |
 | Connect/Disconnect button | `juce::TextButton` | Label toggles: "Connect" / "Disconnect". Green text when connected (D-04) |
 | Browse Servers button | `juce::TextButton` | Label: "Browse". Opens ServerBrowserOverlay (D-05) |
@@ -312,6 +314,7 @@ Phase 4 delivers label + VU meter only. Faders, knobs, mute/solo buttons are Pha
 | Primary CTA (disconnected) | "Connect" |
 | Primary CTA (connected) | "Disconnect" |
 | Secondary CTA | "Browse" (opens server browser) |
+| Chat send action | "Send" |
 | Empty state heading (channel area) | "Connect to a server to start jamming" |
 | Empty state action (channel area) | [Browse Servers] button |
 | Empty state (chat panel) | "Connect to a server to start chatting" |
@@ -335,6 +338,8 @@ Phase 4 delivers label + VU meter only. Faders, knobs, mute/solo buttons are Pha
 | BPM/BPI format | "{bpm} BPM | {bpi} BPI" |
 | User count format | "{n} users" (singular: "1 user") |
 | Scale options | "1x" / "1.5x" / "2x" |
+
+**CTA label convention:** "Connect", "Disconnect", "Browse", and "Send" are intentionally single-word labels without nouns. This is standard in NINJAM clients and pro-audio software (VB-Audio Voicemeeter Banana, REAPER, JamTaba all use terse single-word button labels). The dense mixer layout requires compact controls, and these verbs are unambiguous in context -- each button is adjacent to the element it acts on (server field, chat input). This is a deliberate domain convention, not an oversight.
 
 **Destructive actions:** "Disconnect" is the only destructive action in Phase 4. No confirmation dialog required -- single click disconnects immediately (consistent with all NINJAM clients). License "Decline" closes the connection (not destructive to user data).
 
@@ -409,7 +414,7 @@ UI-only state (lives on Editor, recreated fresh):
 | Chat message colors | `src/ui/ui_chat.cpp` color_for_type() direct port |
 | VU meter colors | `src/ui/ui_meters.cpp` vu_color() direct port |
 | Typography sizes | Claude's discretion (pro-audio density matching Voicemeeter Banana) |
-| Spacing scale | Claude's discretion (8-point base with 12px for dense layouts) |
+| Spacing scale | Claude's discretion (standard 4-multiple scale for dense layouts) |
 | Component inventory | REQUIREMENTS.md (UI-01..03, UI-07, UI-09) + CONTEXT.md decisions |
 | Interaction flows | CONTEXT.md (D-11..D-21, D-24..D-30) + ImGui behavioral reference |
 | Event architecture | RESEARCH.md Patterns 1, 2, 5 |
@@ -420,3 +425,4 @@ UI-only state (lives on Editor, recreated fresh):
 
 *Phase: 04-core-ui-panels*
 *Contract created: 2026-04-04*
+*Revised: 2026-04-04*

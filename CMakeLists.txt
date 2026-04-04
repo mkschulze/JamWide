@@ -262,6 +262,8 @@ if(JAMWIDE_BUILD_JUCE)
         juce/JamWideJuceEditor.cpp
         juce/NinjamRunThread.cpp
         juce/ui/JamWideLookAndFeel.cpp
+        juce/ui/ConnectionBar.cpp
+        juce/ui/ChatPanel.cpp
         src/net/server_list.cpp
     )
 
@@ -270,6 +272,10 @@ if(JAMWIDE_BUILD_JUCE)
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_DISPLAY_SPLASH_SCREEN=0
+    )
+
+    target_include_directories(JamWideJuce PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/juce
     )
 
     target_link_libraries(JamWideJuce

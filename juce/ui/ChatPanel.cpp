@@ -257,7 +257,7 @@ ChatPanel::ChatPanel(JamWideJuceProcessor& processor)
     // Tip label -- chat commands, plus Reaper keyboard hint if running in Reaper
     {
         juce::PluginHostType hostType;
-        juce::String tipText = "Commands: /msg /topic /kick /bpm /bpi";
+        juce::String tipText = "Commands: /msg <user> <text>, /topic <text>, /me <text>, !vote bpm/bpi <n>";
         if (hostType.isReaper())
             tipText = "Tip: Enable 'Send keyboard input to plugin' in REAPER FX menu\n" + tipText;
         tipLabel.setText(tipText, juce::dontSendNotification);

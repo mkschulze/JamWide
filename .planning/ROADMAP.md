@@ -115,11 +115,11 @@ Plans:
   3. Metronome is routable to its own dedicated output pair
   4. Main mix always remains on output bus 0 regardless of routing mode
   5. Multichannel layout works in at least Logic Pro, REAPER, and one other DAW (Ableton or Bitwig)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
+- [ ] 06-01-PLAN.md -- Audio backend: 34-channel processBlock, main-mix accumulation, command infrastructure, routing mode dispatch, metronome bus, state persistence
+- [ ] 06-02-PLAN.md -- UI wiring: Route button in ConnectionBar, routing selector items update, ChannelStripArea callback wiring, snapshot refresh
 
 ### Phase 7: DAW Sync and Session Polish
 **Goal**: The plugin feels native in any DAW with transport-aware broadcasting, live tempo changes, and session tracking; research deliverables complete
@@ -167,5 +167,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 3. NJClient Audio Bridge | 2/2 | Complete   | 2026-03-07 |
 | 4. Core UI Panels | 3/4 | In Progress | - |
 | 5. Mixer UI and Channel Controls | 0/4 | Not started | - |
-| 6. Multichannel Output Routing | 0/? | Not started | - |
+| 6. Multichannel Output Routing | 0/2 | Not started | - |
 | 7. DAW Sync and Session Polish | 0/? | Not started | - |

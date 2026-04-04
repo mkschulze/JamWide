@@ -97,11 +97,12 @@ Plans:
   3. User can control metronome volume, pan, and mute
   4. VU meters display real-time levels for both local and remote channels
   5. All mixer settings and plugin state persist across DAW save/load cycles
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [ ] 05-01-PLAN.md -- VbFader custom component, LookAndFeel pan/metro slider overrides, APVTS parameter extension
+- [ ] 05-02-PLAN.md -- ChannelStrip controls (footer + fader + scroll), remote channel mixer wiring
+- [ ] 05-03-PLAN.md -- Local 4-channel expand/collapse, metronome controls, state persistence, solo logic
 
 ### Phase 6: Multichannel Output Routing
 **Goal**: DAW users can route each remote participant to a separate stereo track for independent mixing and processing
@@ -164,6 +165,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 2. JUCE Scaffolding | 2/2 | Complete   | 2026-03-07 |
 | 3. NJClient Audio Bridge | 2/2 | Complete   | 2026-03-07 |
 | 4. Core UI Panels | 3/4 | In Progress | - |
-| 5. Mixer UI and Channel Controls | 0/? | Not started | - |
+| 5. Mixer UI and Channel Controls | 0/3 | Not started | - |
 | 6. Multichannel Output Routing | 0/? | Not started | - |
 | 7. DAW Sync and Session Polish | 0/? | Not started | - |

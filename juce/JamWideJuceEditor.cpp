@@ -296,6 +296,11 @@ void JamWideJuceEditor::handleServerDoubleClicked(const juce::String& address)
 void JamWideJuceEditor::refreshChannelStrips()
 {
     channelStripArea.refreshFromUsers(processorRef.cachedUsers);
+
+    // Highlight Fit button red when strips overflow the viewport
+    int chatW = chatSidebarVisible ? kChatPanelWidth : 0;
+    int available = getWidth() - chatW - kChatToggleWidth - 4;
+    connectionBar.setFitHighlight(channelStripArea.getDesiredWidth() > available);
 }
 
 void JamWideJuceEditor::toggleChatSidebar()

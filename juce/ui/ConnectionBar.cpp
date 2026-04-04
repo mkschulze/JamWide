@@ -263,6 +263,24 @@ void ConnectionBar::handleConnectClick()
     if (onConnectClicked) onConnectClicked();
 }
 
+void ConnectionBar::setFitHighlight(bool overflow)
+{
+    if (overflow)
+    {
+        fitButton.setColour(juce::TextButton::buttonColourId,
+                            juce::Colour(JamWideLookAndFeel::kAccentDestructive));
+        fitButton.setColour(juce::TextButton::textColourOffId,
+                            juce::Colour(JamWideLookAndFeel::kTextPrimary));
+    }
+    else
+    {
+        fitButton.setColour(juce::TextButton::buttonColourId,
+                            juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
+        fitButton.setColour(juce::TextButton::textColourOffId,
+                            juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    }
+}
+
 void ConnectionBar::handleCodecChange()
 {
     unsigned int fourcc = 0;

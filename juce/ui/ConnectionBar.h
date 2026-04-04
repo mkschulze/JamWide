@@ -19,6 +19,7 @@ public:
     juce::String getServerAddress() const;
     juce::String getUsername() const;
     juce::String getPassword() const;
+    void setFitHighlight(bool overflow);
 
     // Callbacks for editor
     std::function<void()> onBrowseClicked;

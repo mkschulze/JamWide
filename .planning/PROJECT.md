@@ -23,6 +23,9 @@ Musicians can jam together online with lossless audio quality and per-user mixin
 - ✓ Remote user channel display and mixing — existing
 - ✓ Metronome with volume/pan/mute — existing
 - ✓ BPM/BPI display from server — existing
+- ✓ Per-channel mixer controls (volume, pan, mute, solo) for remote and local channels — Validated in Phase 5: Mixer UI and Channel Controls
+- ✓ Plugin state persistence via APVTS getStateInformation/setStateInformation — Validated in Phase 5
+- ✓ Multi-bus audio path (4 stereo input buses for local channels) — Validated in Phase 5
 
 ### Active
 

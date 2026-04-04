@@ -1,6 +1,9 @@
 #pragma once
 #include <JuceHeader.h>
 #include "JamWideJuceProcessor.h"
+#include "ui/JamWideLookAndFeel.h"
+#include "ui/ConnectionBar.h"
+#include "ui/ChatPanel.h"
 
 class JamWideJuceEditor : public juce::AudioProcessorEditor,
                            private juce::Timer
@@ -14,19 +17,27 @@ public:
 
 private:
     void timerCallback() override;
-    void onConnectClicked();
-    bool isConnected() const;
+    void drainEvents();
+    void pollStatus();
+    void showServerBrowser();     // placeholder for Plan 04
+    void showLicenseDialog();     // placeholder for Plan 04
+    void applyScale(float factor);
 
     JamWideJuceProcessor& processorRef;
+    JamWideLookAndFeel lookAndFeel;
 
-    juce::Label serverLabel;
-    juce::TextEditor serverField;
+    ConnectionBar connectionBar;
+    ChatPanel chatPanel;
 
-    juce::Label usernameLabel;
-    juce::TextEditor usernameField;
+    juce::Label mixerPlaceholder;
 
-    juce::TextButton connectButton;
-    juce::Label statusLabel;
+    bool chatSidebarVisible = true;
+    int prevPollStatus_ = -1;  // REVIEW FIX: member, not static
+
+    static constexpr int kBaseWidth = 1000;
+    static constexpr int kBaseHeight = 700;
+    static constexpr int kConnectionBarHeight = 44;
+    static constexpr int kChatPanelWidth = 260;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(JamWideJuceEditor)
 };

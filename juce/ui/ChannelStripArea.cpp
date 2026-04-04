@@ -240,10 +240,8 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
                         juce::Colour(JamWideLookAndFeel::kTextSecondary));
     fitButton.setColour(juce::TextButton::textColourOnId,
                         juce::Colour(JamWideLookAndFeel::kTextPrimary));
-    fitButton.setClickingTogglesState(true);
     fitButton.onClick = [this]() {
-        fitMode_ = fitButton.getToggleState();
-        resized();
+        if (onFitClicked) onFitClicked();
     };
 
     // Add master strip (outside viewport, pinned right)
@@ -677,42 +675,30 @@ void ChannelStripArea::resized()
     // Viewport with local + remote strips
     viewport.setBounds(area);
 
-    // Count strips
+    // Layout strips inside container
     int localStripCount = 1 + (localExpanded_ ? static_cast<int>(localChildStrips.size()) : 0);
     int visibleRemoteStrips = 0;
     for (auto& strip : remoteStrips)
         if (strip->isVisible())
             ++visibleRemoteStrips;
     const int totalStrips = localStripCount + visibleRemoteStrips;
-
-    // Calculate strip dimensions -- normal or compressed to fit
-    int stripW = kStripWidth;
-    int stripP = kStripPitch;
-    if (fitMode_ && totalStrips > 0)
-    {
-        int availableW = area.getWidth();
-        stripP = juce::jmax(kStripWidthMin + 2, availableW / totalStrips);
-        stripW = stripP - (kStripPitch - kStripWidth);  // keep same gap ratio
-        stripW = juce::jmax(kStripWidthMin, stripW);
-    }
-
-    const int containerWidth = totalStrips * stripP;
+    const int containerWidth = totalStrips * kStripPitch;
     const int containerHeight = area.getHeight();
     stripContainer.setBounds(0, 0, containerWidth, containerHeight);
 
     int x = 0;
 
     // Local strip
-    localStrip.setBounds(x, 0, stripW, containerHeight);
-    x += stripP;
+    localStrip.setBounds(x, 0, kStripWidth, containerHeight);
+    x += kStripPitch;
 
     // Local child strips (when expanded)
     if (localExpanded_)
     {
         for (auto& child : localChildStrips)
         {
-            child->setBounds(x, 0, stripW, containerHeight);
-            x += stripP;
+            child->setBounds(x, 0, kStripWidth, containerHeight);
+            x += kStripPitch;
         }
     }
 
@@ -721,8 +707,8 @@ void ChannelStripArea::resized()
     {
         if (strip->isVisible())
         {
-            strip->setBounds(x, 0, stripW, containerHeight);
-            x += stripP;
+            strip->setBounds(x, 0, kStripWidth, containerHeight);
+            x += kStripPitch;
         }
     }
 

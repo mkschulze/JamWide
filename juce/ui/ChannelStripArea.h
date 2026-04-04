@@ -24,6 +24,7 @@ public:
     void mouseDown(const juce::MouseEvent& e) override;
 
     std::function<void()> onBrowseClicked;
+    std::function<void()> onFitClicked;   // editor should resize to fit all strips
     int getDesiredWidth() const;
 
     // Look up current user_index and channel_index from stable identity.
@@ -67,13 +68,11 @@ private:
 
     juce::Label emptyStateLabel;
     juce::TextButton browseButton;
-    juce::TextButton fitButton;       // "Fit" toggle -- compress strips to fit viewport
+    juce::TextButton fitButton;       // "Fit" -- resize editor to show all strips
     bool isConnected = false;
-    bool fitMode_ = false;            // true = compress strips to fit without scrolling
 
     static constexpr int kStripWidth = 100;
     static constexpr int kStripPitch = 106;
-    static constexpr int kStripWidthMin = 54;  // minimum compressed strip width
     static constexpr int kMasterWidth = 110;
     static constexpr int kMaxVisibleStrips = 13;
 

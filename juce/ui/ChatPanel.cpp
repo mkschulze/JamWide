@@ -245,6 +245,41 @@ ChatPanel::ChatPanel(JamWideJuceProcessor& processor)
     chatInput.onReturnKey = [this]() { handleSend(); };
     addAndMakeVisible(chatInput);
 
+    // Emoji button
+    emojiButton.setButtonText(juce::String(juce::CharPointer_UTF8("\xf0\x9f\x98\x80"))); // grin emoji
+    emojiButton.setColour(juce::TextButton::buttonColourId,
+        juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
+    emojiButton.setTooltip("Insert emoji");
+    emojiButton.onClick = [this]() {
+        static const char* emojis[] = {
+            "\xf0\x9f\x98\x80", "\xf0\x9f\x98\x82", "\xf0\x9f\x98\x8e", "\xf0\x9f\xa4\x98",
+            "\xf0\x9f\x8e\xb8", "\xf0\x9f\x8e\xb9", "\xf0\x9f\x8e\xa4", "\xf0\x9f\xa5\x81",
+            "\xf0\x9f\x8e\xb5", "\xf0\x9f\x8e\xb6", "\xf0\x9f\x94\xa5", "\xf0\x9f\x91\x8d",
+            "\xf0\x9f\x91\x8e", "\xf0\x9f\x91\x8f", "\xe2\x9c\x8c\xef\xb8\x8f", "\xf0\x9f\x92\xaa",
+            "\xe2\x9d\xa4\xef\xb8\x8f", "\xf0\x9f\x98\xa2", "\xf0\x9f\x98\xa1", "\xf0\x9f\x98\xb4"
+        };
+        static const char* labels[] = {
+            "grin", "laugh", "cool", "rock on",
+            "guitar", "keys", "mic", "drums",
+            "music", "notes", "fire", "thumbs up",
+            "thumbs down", "clap", "peace", "strong",
+            "heart", "sad", "angry", "sleep"
+        };
+        juce::PopupMenu menu;
+        for (int i = 0; i < 20; ++i)
+            menu.addItem(i + 1, juce::String(juce::CharPointer_UTF8(emojis[i])) + " " + labels[i]);
+
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&emojiButton),
+            [this](int result) {
+                if (result > 0 && result <= 20)
+                {
+                    chatInput.insertTextAtCaret(juce::CharPointer_UTF8(emojis[result - 1]));
+                    chatInput.grabKeyboardFocus();
+                }
+            });
+    };
+    addAndMakeVisible(emojiButton);
+
     // Send button
     sendButton.setButtonText("Send");
     sendButton.setColour(juce::TextButton::buttonColourId,
@@ -314,7 +349,9 @@ void ChatPanel::resized()
     // Input row above tip
     auto inputRow = area.removeFromBottom(28);
     sendButton.setBounds(inputRow.removeFromRight(48));
-    inputRow.removeFromRight(4);
+    inputRow.removeFromRight(2);
+    emojiButton.setBounds(inputRow.removeFromRight(28));
+    inputRow.removeFromRight(2);
     chatInput.setBounds(inputRow);
 
     area.removeFromBottom(4);

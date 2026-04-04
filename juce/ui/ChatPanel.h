@@ -57,6 +57,7 @@ private:
     juce::Viewport chatViewport;
     ChatMessageListComponent messageList;
     juce::TextEditor chatInput;
+    juce::TextButton emojiButton;
     juce::TextButton sendButton;
     juce::TextButton jumpToBottomButton;
     juce::Label tipLabel;

@@ -82,8 +82,8 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 04-01-PLAN.md -- Infrastructure: LookAndFeel, Processor event queues, NinjamRunThread callbacks, ChatMessageModel
-- [ ] 04-02-PLAN.md -- ConnectionBar + ChatPanel + Editor shell with timer-polled event drain
+- [x] 04-01-PLAN.md -- Infrastructure: LookAndFeel, Processor event queues, NinjamRunThread callbacks, ChatMessageModel
+- [x] 04-02-PLAN.md -- ConnectionBar + ChatPanel + Editor shell with timer-polled event drain
 - [ ] 04-03-PLAN.md -- VuMeter + ChannelStrip + BeatBar + ChannelStripArea (mixer visual layout)
 - [ ] 04-04-PLAN.md -- ServerBrowserOverlay + LicenseDialog + final editor assembly + Timing Guide removal
 
@@ -163,7 +163,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 1. FLAC Lossless Codec | 3/3 | Complete   | 2026-03-07 |
 | 2. JUCE Scaffolding | 2/2 | Complete   | 2026-03-07 |
 | 3. NJClient Audio Bridge | 2/2 | Complete   | 2026-03-07 |
-| 4. Core UI Panels | 0/4 | Planned | - |
+| 4. Core UI Panels | 2/4 | In Progress|  |
 | 5. Mixer UI and Channel Controls | 0/? | Not started | - |
 | 6. Multichannel Output Routing | 0/? | Not started | - |
 | 7. DAW Sync and Session Polish | 0/? | Not started | - |

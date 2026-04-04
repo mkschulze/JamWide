@@ -32,7 +32,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [ ] **UI-04**: Remote user mixer (volume, pan, mute, solo per channel)
 - [ ] **UI-05**: Local channel controls (volume, pan, mute, monitoring)
 - [ ] **UI-06**: Metronome controls (volume, pan, mute)
-- [ ] **UI-07**: Server browser with public server list
+- [x] **UI-07**: Server browser with public server list
 - [ ] **UI-08**: VU meters for local and remote channels
 - [x] **UI-09**: Codec selector (FLAC/Vorbis toggle per local channel)
 
@@ -157,7 +157,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UI-04 | Phase 5 | Pending |
 | UI-05 | Phase 5 | Pending |
 | UI-06 | Phase 5 | Pending |
-| UI-07 | Phase 4 | Pending |
+| UI-07 | Phase 4 | Complete |
 | UI-08 | Phase 5 | Pending |
 | UI-09 | Phase 4 | Complete |
 | MOUT-01 | Phase 6 | Pending |

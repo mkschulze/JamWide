@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 04-02 and 04-03 plans (Wave 2)
-last_updated: "2026-04-04T10:23:35.163Z"
-last_activity: 2026-03-07 -- Phase 3 plans done; audio bridge needs debugging
+status: executing
+stopped_at: 04-04 Tasks 1-2 complete, awaiting visual verification checkpoint (Task 3)
+last_updated: "2026-04-04T11:15:11.385Z"
+last_activity: 2026-04-04
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 11
-  completed_plans: 7
+  completed_plans: 11
   percent: 100
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 ## Current Position
 
 Phase: 4 of 7 (Core UI Panels)
-Plan: 3 of 4 in current phase
-Status: Executing Phase 4 plans in parallel
-Last activity: 2026-04-04 -- Phase 4 plans 01-03 complete
+Plan: 4 of 4 in current phase
+Status: Ready to execute
+Last activity: 2026-04-04
 
 Progress: [##########] 100%
 
@@ -78,6 +78,7 @@ Progress: [##########] 100%
 *Updated after each plan completion*
 | Phase 04 P01 | 16min | 2 tasks | 8 files |
 | Phase 04 P03 | 10min | 2 tasks | 9 files |
+| Phase 04 P04 | 9min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,9 @@ Recent decisions affecting current work:
 - [Phase 04]: applyScale uses setTransform only; setSize called only in standalone mode via peer title bar detection (Plan 04-02, REVIEW FIX #1)
 - [Phase 04]: prevPollStatus_ as member var prevents stale state across editor reconstructions (Plan 04-02)
 - [Phase 04]: juce/ added to target_include_directories for sub-directory source files (Plan 04-02)
+- [Phase 04]: LicenseDialog: no mouseDown override -- scrim blocks but only Accept/Decline dismiss (prevents hanging run thread)
+- [Phase 04]: Double-click auto-connect uses existing password from ConnectionBar.getPassword()
+- [Phase 04]: Chat toggle redistributes within bounds, no setSize (REVIEW FIX #5)
 
 ### Pending Todos
 
@@ -134,6 +138,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-04T10:51:11Z
-Stopped at: Completed 04-02 and 04-03 (Wave 2)
+Last session: 2026-04-04T11:15:11.381Z
+Stopped at: 04-04 Tasks 1-2 complete, awaiting visual verification checkpoint (Task 3)
 Resume with: Execute 04-04 (Wave 3 — final assembly with ServerBrowser, LicenseDialog, Timing Guide removal)

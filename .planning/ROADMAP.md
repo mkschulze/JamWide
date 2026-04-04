@@ -83,9 +83,9 @@ Plans:
 
 Plans:
 - [x] 04-01-PLAN.md -- Infrastructure: LookAndFeel, Processor event queues, NinjamRunThread callbacks, ChatMessageModel
-- [ ] 04-02-PLAN.md -- ConnectionBar + ChatPanel + Editor shell with timer-polled event drain
+- [x] 04-02-PLAN.md -- ConnectionBar + ChatPanel + Editor shell with timer-polled event drain
 - [x] 04-03-PLAN.md -- VuMeter + ChannelStrip + BeatBar + ChannelStripArea (mixer visual layout)
-- [ ] 04-04-PLAN.md -- ServerBrowserOverlay + LicenseDialog + final editor assembly + Timing Guide removal
+- [x] 04-04-PLAN.md -- ServerBrowserOverlay + LicenseDialog + final editor assembly + Timing Guide removal
 
 ### Phase 5: Mixer UI and Channel Controls
 **Goal**: Users can mix remote participants and control local channels with full per-channel controls and visual feedback

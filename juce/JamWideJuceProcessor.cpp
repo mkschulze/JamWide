@@ -139,6 +139,17 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         inputScratch.setSize(2, numSamples, false, false, true);
         for (int ch = 0; ch < nch; ++ch)
             inputScratch.copyFrom(ch, 0, buffer, ch, 0, numSamples);
+
+        // DEBUG: Log input level periodically
+        static int dbgCounter = 0;
+        if (++dbgCounter >= 500)
+        {
+            dbgCounter = 0;
+            float peakL = inputScratch.getMagnitude(0, 0, numSamples);
+            float peakR = inputScratch.getMagnitude(1, 0, numSamples);
+            fprintf(stderr, "[processBlock] AudioProc path: nch=%d totalCh=%d inPeakL=%.6f inPeakR=%.6f srate=%d\n",
+                    nch, totalChannels, peakL, peakR, (int)storedSampleRate);
+        }
         // Zero any scratch channels beyond what buffer provides
         for (int ch = nch; ch < 2; ++ch)
             inputScratch.clear(ch, 0, numSamples);

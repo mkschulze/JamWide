@@ -118,8 +118,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 06-01-PLAN.md -- Audio backend: 34-channel processBlock, main-mix accumulation, command infrastructure, routing mode dispatch, metronome bus, state persistence
-- [ ] 06-02-PLAN.md -- UI wiring: Route button in ConnectionBar, routing selector items update, ChannelStripArea callback wiring, snapshot refresh
+- [x] 06-01-PLAN.md -- Audio backend: 34-channel processBlock, main-mix accumulation, command infrastructure, routing mode dispatch, metronome bus, state persistence
+- [x] 06-02-PLAN.md -- UI wiring: Route button in ConnectionBar, routing selector items update, ChannelStripArea callback wiring, snapshot refresh
 
 ### Phase 7: DAW Sync and Session Polish
 **Goal**: The plugin feels native in any DAW with transport-aware broadcasting, live tempo changes, and session tracking; research deliverables complete

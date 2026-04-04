@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 4 replanned with review feedback, all checks passed
-last_updated: "2026-04-04T10:02:13.324Z"
-last_activity: 2026-04-04 -- Phase 04 execution started
+status: verifying
+stopped_at: Completed 04-02 and 04-03 plans (Wave 2)
+last_updated: "2026-04-04T10:23:35.163Z"
+last_activity: 2026-03-07 -- Phase 3 plans done; audio bridge needs debugging
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 11
-  completed_plans: 8
-  percent: 73
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Phase 04 — core-ui-panels
+**Current focus:** Phase 4: Core UI Panels -- Not yet planned
 
 ## Current Position
 
-Phase: 04 (core-ui-panels) — EXECUTING
-Plan: 3 of 4
-Status: Executing Phase 04
-Last activity: 2026-04-04 -- Completed 04-02 (ConnectionBar + ChatPanel + Editor)
+Phase: 4 of 7 (Core UI Panels)
+Plan: 3 of 4 in current phase
+Status: Executing Phase 4 plans in parallel
+Last activity: 2026-04-04 -- Phase 4 plans 01-03 complete
 
-Progress: [███████░░░] 73%
+Progress: [##########] 100%
 
 ### Phase 1 Plans
 
@@ -54,22 +54,13 @@ Progress: [███████░░░] 73%
 | 1 | 03-01 | NJClient AudioProc bridge + run loop + command dispatch | * Complete |
 | 2 | 03-02 | Minimal connect/disconnect editor UI + end-to-end verification | * Complete |
 
-### Phase 4 Plans
-
-| Wave | Plan | Objective | Status |
-|------|------|-----------|--------|
-| 1 | 04-01 | LookAndFeel + event queues + cachedUsers + NinjamRunThread callbacks | * Complete |
-| 1 | 04-02 | ConnectionBar + ChatPanel + Editor shell with event drain | * Complete |
-| 2 | 04-03 | Chat panel + channel strips + remote mixer | Pending |
-| 3 | 04-04 | Server browser + license dialog + settings | Pending |
-
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 8
+- Total plans completed: 7
 - Average duration: 10min
-- Total execution time: 1.38 hours
+- Total execution time: 1.15 hours
 
 **By Phase:**
 
@@ -81,10 +72,12 @@ Progress: [███████░░░] 73%
 
 **Recent Trend:**
 
-- Last 5 plans: 02-01 (12min), 02-02 (5min), 03-01 (12min), 03-02 (~15min), 04-02 (14min)
+- Last 5 plans: 01-03 (3min), 02-01 (12min), 02-02 (5min), 03-01 (12min), 03-02 (~15min)
 - Trend: Stable
 
 *Updated after each plan completion*
+| Phase 04 P01 | 16min | 2 tasks | 8 files |
+| Phase 04 P03 | 10min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -118,10 +111,16 @@ Recent decisions affecting current work:
 - Editor uses processorRef (renamed from processor) to avoid -Wshadow-field with AudioProcessorEditor base (Plan 03-02)
 - Status polling via 10Hz Timer reading cached_status atomic -- no locks from UI thread (Plan 03-02)
 - Editor is intentionally minimal -- Phase 4 replaces it entirely (Plan 03-02)
-- applyScale uses AffineTransform only; setSize only for standalone mode (REVIEW FIX #1) (Plan 04-02)
-- prevPollStatus_ is member var, not static -- prevents state leak across editor reconstructions (Plan 04-02)
-- juce/ added to target_include_directories for juce/ui/ sub-directory sources (Plan 04-02)
-- parse_chat_input ported from ImGui to JUCE ChatPanel (Plan 04-02)
+- [Phase 04]: GetPosition() public API used instead of protected m_interval_pos/m_interval_length members (Plan 04-01)
+- [Phase 04]: server_list.cpp added directly to JUCE target sources for link resolution (Plan 04-01)
+- [Phase 04]: License callback uses JUCE CriticalSection exit()/enter() for deadlock prevention (Plan 04-01)
+- [Phase 04]: VuMeter has NO internal timer -- centralized 30Hz timer in ChannelStripArea drives all VU updates (Plan 04-03, REVIEW FIX #7)
+- [Phase 04]: Remote VU reads live vu_left/vu_right from cachedUsers, not hardcoded zero (Plan 04-03, REVIEW FIX #6)
+- [Phase 04]: BeatBar adapts numbering density by BPI range: <=8 all, 9-24 downbeats, 32+ group markers (Plan 04-03)
+- [Phase 04]: FLAC is default codec (CODEC-05) -- codecSelector.setSelectedId(1) (Plan 04-02)
+- [Phase 04]: applyScale uses setTransform only; setSize called only in standalone mode via peer title bar detection (Plan 04-02, REVIEW FIX #1)
+- [Phase 04]: prevPollStatus_ as member var prevents stale state across editor reconstructions (Plan 04-02)
+- [Phase 04]: juce/ added to target_include_directories for sub-directory source files (Plan 04-02)
 
 ### Pending Todos
 
@@ -135,6 +134,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-04T10:54:42Z
-Stopped at: Completed 04-02-PLAN.md (ConnectionBar + ChatPanel + Editor)
-Resume with: /gsd:execute-phase 04 (Plan 3 of 4 next: Chat panel + channel strips + remote mixer)
+Last session: 2026-04-04T10:51:11Z
+Stopped at: Completed 04-02 and 04-03 (Wave 2)
+Resume with: Execute 04-04 (Wave 3 — final assembly with ServerBrowser, LicenseDialog, Timing Guide removal)

@@ -261,6 +261,7 @@ if(JAMWIDE_BUILD_JUCE)
         juce/JamWideJuceProcessor.cpp
         juce/JamWideJuceEditor.cpp
         juce/NinjamRunThread.cpp
+        juce/ui/JamWideLookAndFeel.cpp
     )
 
     target_compile_definitions(JamWideJuce PUBLIC

@@ -2,6 +2,7 @@
 #include "JamWideJuceEditor.h"
 #include "NinjamRunThread.h"
 #include "core/njclient.h"
+#include "ui/ui_state.h"
 
 #ifndef MAKE_NJ_FOURCC
 #define MAKE_NJ_FOURCC(A,B,C,D) ((A) | ((B)<<8) | ((C)<<16) | ((D)<<24))
@@ -93,6 +94,11 @@ void JamWideJuceProcessor::releaseResources()
     if (runThread)
     {
         runThread->signalThreadShouldExit();
+
+        // Unblock any pending license wait before stopping thread
+        license_response.store(-1, std::memory_order_release);
+        license_cv.notify_one();
+
         runThread->stopThread(5000);
         runThread.reset();
     }

@@ -263,6 +263,8 @@ public:
 
   int GetSampleRate() const { return m_srate; }
 
+  int find_unused_output_channel_pair() const;
+
 protected:
   double output_peaklevel[2];
 
@@ -326,8 +328,6 @@ protected:
   WDL_PtrList<RemoteDownload> m_downloads;
 
   WDL_HeapBuf tmpblock;
-
-  int find_unused_output_channel_pair() const;
 };
 
 

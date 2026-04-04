@@ -440,6 +440,21 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
                     cmd.solo = solo;
                     processorRef.cmd_queue.try_push(std::move(cmd));
                 };
+
+                strip->onRoutingChanged = [this, uName, cName](int busIndex) {
+                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
+                    if (uIdx < 0) return;
+                    jamwide::SetUserChannelStateCommand cmd;
+                    cmd.user_index = uIdx;
+                    cmd.channel_index = cIdx;
+                    cmd.set_outch = true;
+                    cmd.outchannel = busIndex * 2;  // Convert bus index to channel pair offset
+                    processorRef.cmd_queue.try_push(std::move(cmd));
+                };
+
+                // Refresh routing selector from snapshot out_chan_index
+                int busIndex = ch.out_chan_index / 2;
+                strip->setRoutingBus(busIndex);
             }
 
             remoteStrips.push_back(std::move(strip));
@@ -533,6 +548,21 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
                     cmd.solo = solo;
                     processorRef.cmd_queue.try_push(std::move(cmd));
                 };
+
+                childStrip->onRoutingChanged = [this, uName, cName](int busIndex) {
+                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
+                    if (uIdx < 0) return;
+                    jamwide::SetUserChannelStateCommand cmd;
+                    cmd.user_index = uIdx;
+                    cmd.channel_index = cIdx;
+                    cmd.set_outch = true;
+                    cmd.outchannel = busIndex * 2;  // Convert bus index to channel pair offset
+                    processorRef.cmd_queue.try_push(std::move(cmd));
+                };
+
+                // Refresh routing selector from snapshot out_chan_index
+                int busIndex = ch.out_chan_index / 2;
+                childStrip->setRoutingBus(busIndex);
 
                 remoteStrips.push_back(std::move(childStrip));
             }

@@ -20,6 +20,14 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
     addAndMakeVisible(connectionBar);
     connectionBar.onBrowseClicked = [this]() { showServerBrowser(); };
     connectionBar.onScaleChanged = [this](float factor) { applyScale(factor); };
+    connectionBar.onRouteModeChanged = [this](int mode) {
+        jamwide::SetRoutingModeCommand cmd;
+        cmd.mode = mode;
+        processorRef.cmd_queue.try_push(cmd);
+    };
+    // Initialize Route button highlight from persisted routing mode
+    connectionBar.setRoutingModeHighlight(
+        processorRef.routingMode.load(std::memory_order_relaxed));
 
     // BeatBar
     addAndMakeVisible(beatBar);

@@ -27,6 +27,11 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
     // ChannelStripArea
     addAndMakeVisible(channelStripArea);
     channelStripArea.onBrowseClicked = [this]() { showServerBrowser(); };  // D-29
+    channelStripArea.onLayoutChanged = [this]() {
+        int chatW = chatSidebarVisible ? kChatPanelWidth : 0;
+        int available = getWidth() - chatW - kChatToggleWidth - 4;
+        connectionBar.setFitHighlight(channelStripArea.getDesiredWidth() > available);
+    };
 
     // Fit button in ConnectionBar -- resize editor to show all channels
     connectionBar.onFitClicked = [this]() {

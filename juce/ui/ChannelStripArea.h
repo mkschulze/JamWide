@@ -24,6 +24,7 @@ public:
     void mouseDown(const juce::MouseEvent& e) override;
 
     std::function<void()> onBrowseClicked;
+    std::function<void()> onLayoutChanged;  // strip count or visibility changed
     int getDesiredWidth() const;
 
     // Look up current user_index and channel_index from stable identity.

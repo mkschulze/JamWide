@@ -43,6 +43,7 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
     localStrip.onExpandToggled = [this]() {
         localExpanded_ = !localExpanded_;
         rebuildStrips();
+        if (onLayoutChanged) onLayoutChanged();
     };
 
     // Show input bus selector on parent local strip (channel 0 per D-14)

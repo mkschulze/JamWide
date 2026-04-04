@@ -98,6 +98,24 @@ ChannelStrip::ChannelStrip()
             onMuteToggled(muteButton.getToggleState());
     };
 
+    // Input bus selector (hidden by default, shown for Local child strips)
+    addChildComponent(inputBusSelector);
+    inputBusSelector.addItem("Input 1-2", 1);
+    inputBusSelector.addItem("Input 3-4", 2);
+    inputBusSelector.addItem("Input 5-6", 3);
+    inputBusSelector.addItem("Input 7-8", 4);
+    inputBusSelector.setSelectedId(1, juce::dontSendNotification);
+    inputBusSelector.onChange = [this]() {
+        if (onInputBusChanged)
+        {
+            int selectedId = inputBusSelector.getSelectedId();
+            // Convert to NJClient srcch: stereo pair index with bit 10 set for stereo
+            // Input 1-2 = 0 | (1<<10), Input 3-4 = 1 | (1<<10), etc.
+            int srcch = (selectedId - 1) | (1 << 10);
+            onInputBusChanged(srcch);
+        }
+    };
+
     // Solo button per D-09
     addAndMakeVisible(soloButton);
     soloButton.setButtonText("S");
@@ -136,7 +154,8 @@ void ChannelStrip::configure(StripType type, const juce::String& name,
             subTxButton.setVisible(true);
             subTxButton.setButtonText("TX");
             subTxButton.setToggleState(true, juce::dontSendNotification);
-            expandButton.setVisible(false);
+            expandButton.setVisible(channelCount > 1);
+            expandButton.setButtonText(expanded ? "-" : "+");
             break;
 
         case StripType::Remote:
@@ -201,6 +220,10 @@ VbFader& ChannelStrip::getFader() { return fader; }
 juce::Slider& ChannelStrip::getPanSlider() { return panSlider; }
 juce::TextButton& ChannelStrip::getMuteButton() { return muteButton; }
 juce::TextButton& ChannelStrip::getSoloButton() { return soloButton; }
+juce::ComboBox& ChannelStrip::getInputBusSelector() { return inputBusSelector; }
+void ChannelStrip::setInputBus(int busIndex) {
+    inputBusSelector.setSelectedId(busIndex + 1, juce::dontSendNotification);
+}
 
 void ChannelStrip::paint(juce::Graphics& g)
 {
@@ -231,6 +254,13 @@ void ChannelStrip::resized()
 
     auto codecArea = header.removeFromTop(16);
     codecLabel.setBounds(codecArea.reduced(2, 0));
+
+    // Input bus selector (if visible)
+    if (inputBusSelector.isVisible())
+    {
+        auto selectorRow = header.removeFromTop(14);
+        inputBusSelector.setBounds(selectorRow.reduced(4, 0));
+    }
 
     // Expand button in header (if visible)
     if (expandButton.isVisible())

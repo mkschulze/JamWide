@@ -6,8 +6,8 @@
 ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
     : processorRef(processor)
 {
-    // Configure local strip
-    localStrip.configure(ChannelStrip::StripType::Local, "Local");
+    // Configure local strip as expandable parent (4 channels)
+    localStrip.configure(ChannelStrip::StripType::Local, "Local", {}, 4, false);
 
     // Wire local strip mixer callbacks to SetLocalChannelMonitoringCommand
     localStrip.onVolumeChanged = [this](float vol) {
@@ -39,6 +39,122 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
         processorRef.cmd_queue.try_push(std::move(cmd));
     };
 
+    // Make expand button visible on local strip (4ch badge)
+    localStrip.onExpandToggled = [this]() {
+        localExpanded_ = !localExpanded_;
+        rebuildStrips();
+    };
+
+    // Show input bus selector on parent local strip (channel 0 per D-14)
+    localStrip.getInputBusSelector().setVisible(true);
+    localStrip.setInputBus(processorRef.localInputSelector[0]);
+    localStrip.onInputBusChanged = [this](int srcch) {
+        processorRef.localInputSelector[0] = srcch & 0x3FF;
+        jamwide::SetLocalChannelInfoCommand cmd;
+        cmd.channel = 0;
+        cmd.set_srcch = true;
+        cmd.srcch = srcch;
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
+
+    // Create 3 child strips for local channels 1-3
+    for (int ch = 1; ch < 4; ++ch)
+    {
+        auto child = std::make_unique<ChannelStrip>();
+        child->configure(ChannelStrip::StripType::RemoteChild,
+                         "Ch" + juce::String(ch + 1));
+
+        // Show input bus selector on local child strips (per D-14)
+        child->getInputBusSelector().setVisible(true);
+        child->setInputBus(processorRef.localInputSelector[ch]);
+
+        // Wire input bus selector to command queue (per D-14)
+        child->onInputBusChanged = [this, ch](int srcch) {
+            processorRef.localInputSelector[ch] = srcch & 0x3FF;
+            jamwide::SetLocalChannelInfoCommand cmd;
+            cmd.channel = ch;
+            cmd.set_srcch = true;
+            cmd.srcch = srcch;
+            processorRef.cmd_queue.try_push(std::move(cmd));
+        };
+
+        // Wire child channel controls to command queue
+        child->onVolumeChanged = [this, ch](float vol) {
+            jamwide::SetLocalChannelMonitoringCommand cmd;
+            cmd.channel = ch;
+            cmd.set_volume = true;
+            cmd.volume = vol;
+            processorRef.cmd_queue.try_push(std::move(cmd));
+        };
+        child->onPanChanged = [this, ch](float pan) {
+            jamwide::SetLocalChannelMonitoringCommand cmd;
+            cmd.channel = ch;
+            cmd.set_pan = true;
+            cmd.pan = pan;
+            processorRef.cmd_queue.try_push(std::move(cmd));
+        };
+        child->onMuteToggled = [this, ch](bool mute) {
+            jamwide::SetLocalChannelMonitoringCommand cmd;
+            cmd.channel = ch;
+            cmd.set_mute = true;
+            cmd.mute = mute;
+            processorRef.cmd_queue.try_push(std::move(cmd));
+        };
+        child->onSoloToggled = [this, ch](bool solo) {
+            // NJClient handles additive solo internally via m_issoloactive bitmask.
+            // No UI-side solo tracking needed.
+            jamwide::SetLocalChannelMonitoringCommand cmd;
+            cmd.channel = ch;
+            cmd.set_solo = true;
+            cmd.solo = solo;
+            processorRef.cmd_queue.try_push(std::move(cmd));
+        };
+        child->onTransmitToggled = [this, ch](bool tx) {
+            processorRef.localTransmit[ch] = tx;
+            jamwide::SetLocalChannelInfoCommand cmd;
+            cmd.channel = ch;
+            cmd.set_transmit = true;
+            cmd.transmit = tx;
+            processorRef.cmd_queue.try_push(std::move(cmd));
+        };
+
+        localChildStrips.push_back(std::move(child));
+    }
+
+    // APVTS attachments for local channel 0 (on localStrip)
+    {
+        auto* volParam = processorRef.apvts.getParameter("localVol_0");
+        if (volParam)
+            localStrip.getFader().attachToParameter(*volParam);
+
+        localAttachments_[0].pan = std::make_unique<juce::SliderParameterAttachment>(
+            *processorRef.apvts.getParameter("localPan_0"),
+            localStrip.getPanSlider());
+
+        localAttachments_[0].mute = std::make_unique<juce::ButtonParameterAttachment>(
+            *processorRef.apvts.getParameter("localMute_0"),
+            localStrip.getMuteButton());
+    }
+
+    // APVTS attachments for local channels 1-3 (on child strips)
+    for (int ch = 1; ch < 4; ++ch)
+    {
+        auto& child = *localChildStrips[ch - 1];
+        juce::String suffix = juce::String(ch);
+
+        auto* volParam = processorRef.apvts.getParameter("localVol_" + suffix);
+        if (volParam)
+            child.getFader().attachToParameter(*volParam);
+
+        localAttachments_[ch].pan = std::make_unique<juce::SliderParameterAttachment>(
+            *processorRef.apvts.getParameter("localPan_" + suffix),
+            child.getPanSlider());
+
+        localAttachments_[ch].mute = std::make_unique<juce::ButtonParameterAttachment>(
+            *processorRef.apvts.getParameter("localMute_" + suffix),
+            child.getMuteButton());
+    }
+
     // Configure master strip
     masterStrip.configure(ChannelStrip::StripType::Master, "Master");
 
@@ -56,6 +172,35 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
     // Set initial master fader value from APVTS
     masterStrip.setVolume(*processorRef.apvts.getRawParameterValue("masterVol"));
     masterStrip.setMuted(*processorRef.apvts.getRawParameterValue("masterMute") >= 0.5f);
+
+    // Metronome horizontal slider (yellow fill) per D-16, D-17, D-18
+    // D-18 (locked decision): metronome has volume + mute only (no pan)
+    addAndMakeVisible(metroSlider);
+    metroSlider.setName("MetroSlider");  // LookAndFeel uses this to detect metro vs pan
+    metroSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    metroSlider.setRange(0.0, 2.0, 0.01);
+    metroSlider.setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
+
+    // Attach to APVTS metroVol
+    metroSliderAttachment_ = std::make_unique<juce::SliderParameterAttachment>(
+        *processorRef.apvts.getParameter("metroVol"), metroSlider);
+
+    // Metronome mute button
+    addAndMakeVisible(metroMuteBtn);
+    metroMuteBtn.setButtonText("MUTE");
+    metroMuteBtn.setClickingTogglesState(true);
+    metroMuteBtn.setColour(juce::TextButton::buttonColourId,
+                           juce::Colour(JamWideLookAndFeel::kBgElevated));
+    metroMuteBtn.setColour(juce::TextButton::buttonOnColourId,
+                           juce::Colour(JamWideLookAndFeel::kAccentDestructive));
+    metroMuteBtn.setColour(juce::TextButton::textColourOffId,
+                           juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    metroMuteBtn.setColour(juce::TextButton::textColourOnId,
+                           juce::Colour(JamWideLookAndFeel::kTextPrimary));
+
+    // Attach to APVTS metroMute
+    metroMuteAttachment_ = std::make_unique<juce::ButtonParameterAttachment>(
+        *processorRef.apvts.getParameter("metroMute"), metroMuteBtn);
 
     // Set up viewport with strip container
     addAndMakeVisible(viewport);
@@ -97,6 +242,19 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
 ChannelStripArea::~ChannelStripArea()
 {
     stopTimer();
+    // Destroy APVTS attachments before the UI components they're attached to
+    for (auto& att : localAttachments_)
+    {
+        att.vol.reset();
+        att.pan.reset();
+        att.mute.reset();
+    }
+    metroSliderAttachment_.reset();
+    metroMuteAttachment_.reset();
+    // Also detach local strip faders
+    localStrip.getFader().detachFromParameter();
+    for (auto& child : localChildStrips)
+        child->getFader().detachFromParameter();
 }
 
 // Stable identity lookup: resolve current user_index and channel_index
@@ -130,18 +288,32 @@ void ChannelStripArea::timerCallback()
     // Tick all VU meters (apply ballistics + repaint)
     localStrip.tickVu();
     masterStrip.tickVu();
+    for (auto& child : localChildStrips)
+        if (child->isVisible())
+            child->tickVu();
     for (auto& strip : remoteStrips)
         strip->tickVu();
 }
 
 void ChannelStripArea::updateVuLevels()
 {
-    // Local VU from atomic snapshot
+    // Local channel 0 VU (on localStrip)
     localStrip.setVuLevels(
-        processorRef.uiSnapshot.local_vu_left.load(std::memory_order_relaxed),
-        processorRef.uiSnapshot.local_vu_right.load(std::memory_order_relaxed));
+        processorRef.uiSnapshot.local_ch_vu_left[0].load(std::memory_order_relaxed),
+        processorRef.uiSnapshot.local_ch_vu_right[0].load(std::memory_order_relaxed));
 
-    // Master VU from atomic snapshot
+    // Local channels 1-3 VU (on child strips)
+    for (int ch = 1; ch < 4; ++ch)
+    {
+        if (ch - 1 < static_cast<int>(localChildStrips.size()))
+        {
+            localChildStrips[ch - 1]->setVuLevels(
+                processorRef.uiSnapshot.local_ch_vu_left[ch].load(std::memory_order_relaxed),
+                processorRef.uiSnapshot.local_ch_vu_right[ch].load(std::memory_order_relaxed));
+        }
+    }
+
+    // Master VU from processBlock output
     masterStrip.setVuLevels(
         processorRef.uiSnapshot.master_vu_left.load(std::memory_order_relaxed),
         processorRef.uiSnapshot.master_vu_right.load(std::memory_order_relaxed));
@@ -370,6 +542,18 @@ void ChannelStripArea::rebuildStrips()
     // Add local strip
     stripContainer.addAndMakeVisible(localStrip);
 
+    // Add local child strips when expanded
+    if (localExpanded_)
+    {
+        for (auto& child : localChildStrips)
+            stripContainer.addAndMakeVisible(*child);
+    }
+    else
+    {
+        for (auto& child : localChildStrips)
+            child->setVisible(false);
+    }
+
     // Add visible remote strips, respecting expand/collapse state.
     // Parent strips with channelCount > 1 control child visibility:
     // when collapsed, skip the child strips that follow the parent.
@@ -453,7 +637,12 @@ void ChannelStripArea::resized()
     viewport.setBounds(area);
 
     // Layout strips inside container
-    const int totalStrips = 1 + static_cast<int>(remoteStrips.size()); // local + remotes
+    int localStripCount = 1 + (localExpanded_ ? static_cast<int>(localChildStrips.size()) : 0);
+    int visibleRemoteStrips = 0;
+    for (auto& strip : remoteStrips)
+        if (strip->isVisible())
+            ++visibleRemoteStrips;
+    const int totalStrips = localStripCount + visibleRemoteStrips;
     const int containerWidth = totalStrips * kStripPitch;
     const int containerHeight = area.getHeight();
     stripContainer.setBounds(0, 0, containerWidth, containerHeight);
@@ -464,16 +653,39 @@ void ChannelStripArea::resized()
     localStrip.setBounds(x, 0, kStripWidth, containerHeight);
     x += kStripPitch;
 
+    // Local child strips (when expanded)
+    if (localExpanded_)
+    {
+        for (auto& child : localChildStrips)
+        {
+            child->setBounds(x, 0, kStripWidth, containerHeight);
+            x += kStripPitch;
+        }
+    }
+
     // Remote strips
     for (auto& strip : remoteStrips)
     {
-        strip->setBounds(x, 0, kStripWidth, containerHeight);
-        x += kStripPitch;
+        if (strip->isVisible())
+        {
+            strip->setBounds(x, 0, kStripWidth, containerHeight);
+            x += kStripPitch;
+        }
     }
+
+    // Position metronome controls over master strip's footer area
+    auto masterBounds = masterStrip.getBounds();
+    auto metroArea = masterBounds.removeFromBottom(38);  // kFooterHeight
+    auto metroFaderRow = metroArea.removeFromTop(16);
+    metroSlider.setBounds(metroFaderRow.reduced(4, 0));
+    metroArea.removeFromTop(2);  // gap
+    auto metroMuteRow = metroArea.removeFromTop(16);
+    metroMuteBtn.setBounds(metroMuteRow.reduced(4, 0));
 }
 
 int ChannelStripArea::getDesiredWidth() const
 {
-    const int totalStrips = 1 + static_cast<int>(remoteStrips.size());
+    int localStripCount = 1 + (localExpanded_ ? static_cast<int>(localChildStrips.size()) : 0);
+    const int totalStrips = localStripCount + static_cast<int>(remoteStrips.size());
     return totalStrips * kStripPitch + kMasterWidth;
 }

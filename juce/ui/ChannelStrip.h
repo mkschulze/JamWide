@@ -48,6 +48,11 @@ public:
     std::function<void(float)> onPanChanged;       // -1.0 to 1.0
     std::function<void(bool)>  onMuteToggled;      // true = muted
     std::function<void(bool)>  onSoloToggled;      // true = soloed
+    std::function<void(int)>   onInputBusChanged;  // srcch value for NJClient
+
+    // Input bus selector access
+    juce::ComboBox& getInputBusSelector();
+    void setInputBus(int busIndex);  // Update display (for state restore). 0-based pair index.
 
     StripType getType() const { return stripType; }
     bool isExpanded() const { return expanded_; }
@@ -65,6 +70,7 @@ private:
     juce::Slider panSlider;
     juce::TextButton muteButton;
     juce::TextButton soloButton;
+    juce::ComboBox inputBusSelector;
     bool expanded_ = false;
     int channelCount_ = 1;
 

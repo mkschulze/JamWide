@@ -44,7 +44,37 @@ private:
     ServerBrowserOverlay serverBrowser;
     LicenseDialog licenseDialog;
 
-    juce::TextButton chatToggleButton;
+    // Custom arrow button — TextButton truncates to "..." at 16px width
+    struct ChatToggleButton : public juce::Component
+    {
+        bool pointsRight = true;
+        std::function<void()> onClick;
+
+        void paint(juce::Graphics& g) override
+        {
+            auto b = getLocalBounds().toFloat().reduced(3.0f, 6.0f);
+            g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary));
+            juce::Path arrow;
+            if (pointsRight)
+            {
+                arrow.addTriangle(b.getX(), b.getY(),
+                                  b.getRight(), b.getCentreY(),
+                                  b.getX(), b.getBottom());
+            }
+            else
+            {
+                arrow.addTriangle(b.getRight(), b.getY(),
+                                  b.getX(), b.getCentreY(),
+                                  b.getRight(), b.getBottom());
+            }
+            g.fillPath(arrow);
+        }
+
+        void mouseDown(const juce::MouseEvent&) override
+        {
+            if (onClick) onClick();
+        }
+    } chatToggleButton;
 
     bool chatSidebarVisible = true;
     int prevPollStatus_ = -1;  // REVIEW FIX: member, not static

@@ -608,6 +608,20 @@ void ChannelStripArea::setConnectedState()
     resized();
 }
 
+void ChannelStripArea::mouseDown(const juce::MouseEvent& e)
+{
+    // Forward right-clicks to parent (editor) so the scale menu works anywhere
+    if (e.mods.isPopupMenu())
+    {
+        if (auto* parent = getParentComponent())
+            parent->mouseDown(e.getEventRelativeTo(parent));
+    }
+    else
+    {
+        Component::mouseDown(e);
+    }
+}
+
 void ChannelStripArea::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour(JamWideLookAndFeel::kBgPrimary));
@@ -673,14 +687,20 @@ void ChannelStripArea::resized()
         }
     }
 
-    // Position metronome controls over master strip's footer area
+    // Position metronome controls over master strip's footer area.
+    // Metro controls are ChannelStripArea children positioned atop the masterStrip.
+    // toFront() ensures they render above the masterStrip's background.
     auto masterBounds = masterStrip.getBounds();
-    auto metroArea = masterBounds.removeFromBottom(38);  // kFooterHeight
+    auto metroArea = juce::Rectangle<int>(
+        masterBounds.getX(), masterBounds.getBottom() - 38,
+        masterBounds.getWidth(), 38);
     auto metroFaderRow = metroArea.removeFromTop(16);
     metroSlider.setBounds(metroFaderRow.reduced(4, 0));
     metroArea.removeFromTop(2);  // gap
     auto metroMuteRow = metroArea.removeFromTop(16);
     metroMuteBtn.setBounds(metroMuteRow.reduced(4, 0));
+    metroSlider.toFront(false);
+    metroMuteBtn.toFront(false);
 }
 
 int ChannelStripArea::getDesiredWidth() const

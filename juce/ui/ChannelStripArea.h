@@ -21,6 +21,7 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void mouseDown(const juce::MouseEvent& e) override;
 
     std::function<void()> onBrowseClicked;
     int getDesiredWidth() const;

@@ -180,8 +180,10 @@ void ChannelStrip::configure(StripType type, const juce::String& name,
             subTxButton.setVisible(false);
             expandButton.setVisible(false);
             // D-11: Master strip has no solo. Also no pan (master outputs to main mix stereo).
+            // D-16: Master footer is replaced by metronome controls (managed by ChannelStripArea).
             soloButton.setVisible(false);
             panSlider.setVisible(false);
+            muteButton.setVisible(false);
             break;
     }
 

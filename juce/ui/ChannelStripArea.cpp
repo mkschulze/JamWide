@@ -106,7 +106,11 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
     for (size_t userIdx = 0; userIdx < users.size(); ++userIdx)
     {
         const auto& user = users[userIdx];
-        const juce::String userName(user.name);
+        // Strip @IP suffix from username (e.g. "user@1.2.3.4" -> "user")
+        juce::String userName(user.name);
+        int atIdx = userName.lastIndexOfChar('@');
+        if (atIdx > 0)
+            userName = userName.substring(0, atIdx);
 
         if (user.channels.size() <= 1)
         {

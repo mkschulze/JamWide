@@ -80,6 +80,9 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
     static constexpr int currentStateVersion = 1;
+    static constexpr int kTotalOutChannels = 34;  // 17 stereo buses
+    static constexpr int kNumOutputBuses = 17;
+    static constexpr int kMetronomeBus = 16;      // Last bus (channels 32-33)
 
     NJClient* getClient() { return client.get(); }
     juce::CriticalSection& getClientLock() { return clientLock; }
@@ -110,6 +113,11 @@ public:
     juce::String lastUsername{"anonymous"};
     float scaleFactor{1.0f};
 
+    // Routing mode (0=manual, 1=by-channel, 2=by-user) -- persisted per D-12
+    // REVIEW FIX: std::atomic<int> to prevent data race between message thread (write)
+    // and run thread (read on connect). See threading contract above.
+    std::atomic<int> routingMode{0};
+
     // Chat sidebar visibility (persisted via ValueTree, NOT APVTS param per review)
     bool chatSidebarVisible{true};
 
@@ -134,6 +142,7 @@ private:
     std::unique_ptr<NJClient> client;
     juce::CriticalSection clientLock;
     juce::AudioBuffer<float> inputScratch;
+    juce::AudioBuffer<float> outputScratch;
     double storedSampleRate = 48000.0;
 
     std::unique_ptr<NinjamRunThread> runThread;

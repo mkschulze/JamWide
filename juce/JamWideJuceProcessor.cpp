@@ -100,9 +100,14 @@ JamWideJuceProcessor::createParameterLayout()
 }
 
 //==============================================================================
-void JamWideJuceProcessor::prepareToPlay(double sampleRate, int /*samplesPerBlock*/)
+void JamWideJuceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     storedSampleRate = sampleRate;
+
+    // Pre-allocate output scratch buffer for 17 stereo pairs (34 channels)
+    // REVIEW FIX: Pre-allocate here, NOT in processBlock, to avoid audio-thread allocation.
+    // Use samplesPerBlock from the host. AudioProc zeros the buffer internally.
+    outputScratch.setSize(kTotalOutChannels, samplesPerBlock, false, true, false);
 
     // Start the NinjamRun thread for NJClient::Run() loop
     runThread = std::make_unique<NinjamRunThread>(*this);
@@ -194,24 +199,80 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         for (int ch = 0; ch < numInputChannels && ch < 8; ++ch)
             inPtrs[ch] = inputScratch.getWritePointer(ch);
 
-        // Output remains stereo on bus 0 (Phase 6 adds multichannel output)
-        float* outPtrs[2] = {
-            buffer.getWritePointer(0),
-            totalChannels > 1 ? buffer.getWritePointer(1) : buffer.getWritePointer(0)
-        };
+        // Expanded output: 17 stereo pairs = 34 mono channels
+        // REVIEW FIX: outputScratch pre-allocated in prepareToPlay(). If host sends a larger
+        // block than expected, resize here with avoidReallocating=true as a safety net.
+        if (outputScratch.getNumSamples() < numSamples)
+            outputScratch.setSize(kTotalOutChannels, numSamples, false, false, true);
+        outputScratch.clear();
 
-        client->AudioProc(inPtrs, numInputChannels, outPtrs, 2, numSamples,
-                          static_cast<int>(storedSampleRate));
+        float* outPtrs[kTotalOutChannels];
+        for (int ch = 0; ch < kTotalOutChannels; ++ch)
+            outPtrs[ch] = outputScratch.getWritePointer(ch);
 
-        // Master VU (after AudioProc writes output)
-        float masterPeakL = buffer.getMagnitude(0, 0, numSamples);
-        float masterPeakR = totalChannels > 1 ? buffer.getMagnitude(1, 0, numSamples) : masterPeakL;
+        client->AudioProc(inPtrs, numInputChannels, outPtrs, kTotalOutChannels,
+                          numSamples, static_cast<int>(storedSampleRate));
+
+        // Accumulate individual buses into main mix (D-08: Main Mix always has everything)
+        // NJClient applies master volume to outbuf[0..1] only (channels 0-1).
+        // Individual remote buses need master vol applied when accumulated into main mix.
+        // REVIEW FIX: Metronome bus (kMetronomeBus) is accumulated WITHOUT master volume.
+        // In original NJClient, metronome is mixed into outbuf[0..1] AFTER master vol is applied,
+        // so it is independent of master volume. Preserve this behavior.
+        float masterVol = client->config_mastermute.load(std::memory_order_relaxed)
+                          ? 0.0f
+                          : client->config_mastervolume.load(std::memory_order_relaxed);
+        float masterPan = client->config_masterpan.load(std::memory_order_relaxed);
+        float mvL = masterVol, mvR = masterVol;
+        if (masterPan > 0.0f) mvL *= 1.0f - masterPan;
+        else if (masterPan < 0.0f) mvR *= 1.0f + masterPan;
+
+        float* mainL = outPtrs[0];
+        float* mainR = outPtrs[1];
+
+        // Accumulate remote user buses (1 through kMetronomeBus-1) WITH master volume
+        for (int bus = 1; bus < kMetronomeBus; ++bus)
+        {
+            const float* busL = outPtrs[bus * 2];
+            const float* busR = outPtrs[bus * 2 + 1];
+            for (int s = 0; s < numSamples; ++s)
+            {
+                mainL[s] += busL[s] * mvL;
+                mainR[s] += busR[s] * mvR;
+            }
+        }
+
+        // Accumulate metronome bus WITHOUT master volume (preserves original NJClient behavior)
+        {
+            const float* metroL = outPtrs[kMetronomeBus * 2];
+            const float* metroR = outPtrs[kMetronomeBus * 2 + 1];
+            for (int s = 0; s < numSamples; ++s)
+            {
+                mainL[s] += metroL[s];
+                mainR[s] += metroR[s];
+            }
+        }
+
+        // Copy outputScratch to JUCE output buses (per Pitfall 1: check isEnabled)
+        const int numOutputBuses = getBusCount(false);
+        for (int bus = 0; bus < numOutputBuses && bus < kNumOutputBuses; ++bus)
+        {
+            auto* outputBus = getBus(false, bus);
+            if (outputBus == nullptr || !outputBus->isEnabled())
+                continue;
+            auto busBuffer = getBusBuffer(buffer, false, bus);
+            int busCh = busBuffer.getNumChannels();
+            if (busCh >= 1)
+                busBuffer.copyFrom(0, 0, outputScratch, bus * 2, 0, numSamples);
+            if (busCh >= 2)
+                busBuffer.copyFrom(1, 0, outputScratch, bus * 2 + 1, 0, numSamples);
+        }
+
+        // Master VU from main mix (post-accumulation for accurate measurement)
+        float masterPeakL = outputScratch.getMagnitude(0, 0, numSamples);
+        float masterPeakR = outputScratch.getMagnitude(1, 0, numSamples);
         uiSnapshot.master_vu_left.store(masterPeakL, std::memory_order_relaxed);
         uiSnapshot.master_vu_right.store(masterPeakR, std::memory_order_relaxed);
-
-        // Clear any remaining output channels beyond stereo
-        for (int ch = 2; ch < totalChannels; ++ch)
-            buffer.clear(ch, 0, numSamples);
 
         return;
     }
@@ -301,6 +362,9 @@ void JamWideJuceProcessor::getStateInformation(juce::MemoryBlock& destData)
                           localTransmit[static_cast<size_t>(ch)], nullptr);
     }
 
+    // Routing mode (per D-12: persist mode, not individual assignments)
+    state.setProperty("routingMode", routingMode.load(std::memory_order_relaxed), nullptr);
+
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -342,6 +406,10 @@ void JamWideJuceProcessor::setStateInformation(const void* data, int sizeInBytes
         localTransmit[static_cast<size_t>(ch)] = tree.getProperty(
             "localCh" + juce::String(ch) + "Tx", ch == 0);
     }
+
+    // Routing mode (per D-13: default Manual on first load)
+    int rawRoutingMode = tree.getProperty("routingMode", 0);
+    routingMode.store(juce::jlimit(0, 2, rawRoutingMode), std::memory_order_relaxed);
 
     // STEP 2: Restore APVTS parameters
     // replaceState handles masterVol, masterMute, metroVol, metroMute,

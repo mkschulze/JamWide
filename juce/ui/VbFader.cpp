@@ -80,22 +80,37 @@ void VbFader::paint(juce::Graphics& g)
                                2.0f);
     }
 
-    // 3. dB scale ticks on the track itself (small horizontal marks)
-    // Labels removed -- dB readout on thumb provides the value, tick marks
-    // are visual landmarks only. Keeps rendering within component bounds.
+    // 3. dB scale ticks with labels to the left of the track
     {
-        g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary).withAlpha(0.5f));
+        g.setFont(juce::FontOptions(8.0f));
 
-        const float tickLinears[] = { 2.0f, 1.0f, 0.5012f, 0.1259f, 0.0f };
-        for (float lin : tickLinears)
+        struct TickMark { float linear; const char* label; };
+        const TickMark ticks[] = {
+            { 2.0f,    "+6"  },
+            { 1.0f,    "0"   },
+            { 0.5012f, "-6"  },
+            { 0.1259f, "-18" },
+            { 0.0f,    "-inf"}
+        };
+
+        for (const auto& tick : ticks)
         {
-            float tickY = valueToY(lin);
-            // Small marks extending left and right of the track
+            float tickY = valueToY(tick.linear);
+
+            // Tick mark on track
+            g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary).withAlpha(0.5f));
             g.drawHorizontalLine(static_cast<int>(tickY),
-                                 trackX - 3.0f, trackX);
+                                 trackX - 2.0f, trackX);
             g.drawHorizontalLine(static_cast<int>(tickY),
                                  trackX + static_cast<float>(kTrackWidth),
-                                 trackX + static_cast<float>(kTrackWidth) + 3.0f);
+                                 trackX + static_cast<float>(kTrackWidth) + 2.0f);
+
+            // Label to the left of the track
+            g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary).withAlpha(0.7f));
+            g.drawText(tick.label,
+                       0, static_cast<int>(tickY - 5),
+                       static_cast<int>(trackX - 3), 10,
+                       juce::Justification::centredRight, false);
         }
     }
 

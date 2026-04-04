@@ -310,8 +310,8 @@ void ChannelStrip::resized()
     // Center zone: VU meter + fader side-by-side per D-10
     auto center = area;  // remaining area after header and footer
     int vuW = 24;
-    int gap = 6;
-    int faderW = VbFader::kThumbDiameter;  // 44px to accommodate the thumb
+    int gap = 4;
+    int faderW = 62;  // wider than thumb (44px) to fit dB scale labels
     int totalControlW = vuW + gap + faderW;
     int controlX = (center.getWidth() - totalControlW) / 2;
 

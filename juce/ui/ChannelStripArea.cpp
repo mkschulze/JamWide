@@ -229,21 +229,6 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
             onBrowseClicked();
     };
 
-    // Fit button -- compress strips to fit viewport without scrolling
-    addChildComponent(fitButton);
-    fitButton.setButtonText("Fit");
-    fitButton.setColour(juce::TextButton::buttonColourId,
-                        juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
-    fitButton.setColour(juce::TextButton::buttonOnColourId,
-                        juce::Colour(JamWideLookAndFeel::kAccentConnect));
-    fitButton.setColour(juce::TextButton::textColourOffId,
-                        juce::Colour(JamWideLookAndFeel::kTextSecondary));
-    fitButton.setColour(juce::TextButton::textColourOnId,
-                        juce::Colour(JamWideLookAndFeel::kTextPrimary));
-    fitButton.onClick = [this]() {
-        if (onFitClicked) onFitClicked();
-    };
-
     // Add master strip (outside viewport, pinned right)
     addAndMakeVisible(masterStrip);
 
@@ -607,7 +592,6 @@ void ChannelStripArea::setDisconnectedState()
     masterStrip.setVisible(false);
     metroSlider.setVisible(false);
     metroMuteBtn.setVisible(false);
-    fitButton.setVisible(false);
     emptyStateLabel.setVisible(true);
     browseButton.setVisible(true);
 
@@ -622,7 +606,6 @@ void ChannelStripArea::setConnectedState()
     masterStrip.setVisible(true);
     metroSlider.setVisible(true);
     metroMuteBtn.setVisible(true);
-    fitButton.setVisible(true);
     emptyStateLabel.setVisible(false);
     browseButton.setVisible(false);
 
@@ -662,9 +645,6 @@ void ChannelStripArea::resized()
     }
 
     // Fit button: bottom-left corner of the strip area, above viewport
-    fitButton.setBounds(area.getX() + 2, area.getBottom() - 22, 32, 20);
-    fitButton.toFront(false);
-
     // Master strip pinned right
     auto masterArea = area.removeFromRight(kMasterWidth);
     masterStrip.setBounds(masterArea);

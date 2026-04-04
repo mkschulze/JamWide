@@ -99,6 +99,17 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
     codecSelector.setColour(juce::ComboBox::outlineColourId, juce::Colour(JamWideLookAndFeel::kBorderSubtle));
     codecSelector.onChange = [this]() { handleCodecChange(); };
     addAndMakeVisible(codecSelector);
+
+    // Fit button -- resize plugin to show all channels
+    fitButton.setButtonText("Fit");
+    fitButton.setColour(juce::TextButton::buttonColourId,
+                        juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
+    fitButton.setColour(juce::TextButton::textColourOffId,
+                        juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    fitButton.onClick = [this]() {
+        if (onFitClicked) onFitClicked();
+    };
+    addAndMakeVisible(fitButton);
 }
 
 void ConnectionBar::resized()
@@ -141,6 +152,8 @@ void ConnectionBar::resized()
     int rightX = area.getRight();
     codecSelector.setBounds(rightX - 80, y, 80, h);
     rightX -= 80 + gap;
+    fitButton.setBounds(rightX - 36, y, 36, h);
+    rightX -= 36 + gap;
 
     userCountLabel.setBounds(rightX - 70, y, 70, h);
     rightX -= 70 + gap;

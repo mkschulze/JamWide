@@ -24,7 +24,6 @@ public:
     void mouseDown(const juce::MouseEvent& e) override;
 
     std::function<void()> onBrowseClicked;
-    std::function<void()> onFitClicked;   // editor should resize to fit all strips
     int getDesiredWidth() const;
 
     // Look up current user_index and channel_index from stable identity.
@@ -68,7 +67,6 @@ private:
 
     juce::Label emptyStateLabel;
     juce::TextButton browseButton;
-    juce::TextButton fitButton;       // "Fit" -- resize editor to show all strips
     bool isConnected = false;
 
     static constexpr int kStripWidth = 100;

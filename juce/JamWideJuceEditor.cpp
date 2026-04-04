@@ -27,8 +27,9 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
     // ChannelStripArea
     addAndMakeVisible(channelStripArea);
     channelStripArea.onBrowseClicked = [this]() { showServerBrowser(); };  // D-29
-    channelStripArea.onFitClicked = [this]() {
-        // Resize editor width to fit all channel strips at full size
+
+    // Fit button in ConnectionBar -- resize editor to show all channels
+    connectionBar.onFitClicked = [this]() {
         int chatW = chatSidebarVisible ? kChatPanelWidth : 0;
         int needed = channelStripArea.getDesiredWidth() + chatW + kChatToggleWidth + 4;
         needed = juce::jmax(kBaseWidth, needed);

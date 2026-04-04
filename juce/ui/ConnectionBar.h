@@ -24,6 +24,7 @@ public:
     std::function<void()> onBrowseClicked;
     std::function<void()> onConnectClicked;
     std::function<void(float)> onScaleChanged;  // D-23
+    std::function<void()> onFitClicked;
 
 private:
     void handleConnectClick();
@@ -46,6 +47,7 @@ private:
     juce::Label userCountLabel;
 
     juce::ComboBox codecSelector;
+    juce::TextButton fitButton;
 
     int currentStatus = -1;
 

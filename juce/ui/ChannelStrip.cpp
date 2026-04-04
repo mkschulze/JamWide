@@ -59,6 +59,61 @@ ChannelStrip::ChannelStrip()
 
     // VU Meter
     addAndMakeVisible(vuMeter);
+
+    // VbFader
+    addAndMakeVisible(fader);
+    fader.onValueChanged = [this](float val) {
+        if (onVolumeChanged)
+            onVolumeChanged(val);
+    };
+
+    // Pan slider (horizontal, -1.0 to 1.0)
+    addAndMakeVisible(panSlider);
+    panSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    panSlider.setRange(-1.0, 1.0, 0.01);
+    panSlider.setValue(0.0, juce::dontSendNotification);
+    panSlider.setDoubleClickReturnValue(true, 0.0);  // D-04: double-click resets to center
+    panSlider.setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
+    panSlider.setColour(juce::Slider::thumbColourId,
+                        juce::Colour(JamWideLookAndFeel::kTextPrimary));
+    panSlider.onValueChange = [this]() {
+        if (onPanChanged)
+            onPanChanged(static_cast<float>(panSlider.getValue()));
+    };
+
+    // Mute button per D-09
+    addAndMakeVisible(muteButton);
+    muteButton.setButtonText("M");
+    muteButton.setClickingTogglesState(true);
+    muteButton.setColour(juce::TextButton::buttonColourId,
+                         juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
+    muteButton.setColour(juce::TextButton::buttonOnColourId,
+                         juce::Colour(JamWideLookAndFeel::kAccentDestructive));  // 0xffE04040
+    muteButton.setColour(juce::TextButton::textColourOffId,
+                         juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    muteButton.setColour(juce::TextButton::textColourOnId,
+                         juce::Colour(JamWideLookAndFeel::kTextPrimary));
+    muteButton.onClick = [this]() {
+        if (onMuteToggled)
+            onMuteToggled(muteButton.getToggleState());
+    };
+
+    // Solo button per D-09
+    addAndMakeVisible(soloButton);
+    soloButton.setButtonText("S");
+    soloButton.setClickingTogglesState(true);
+    soloButton.setColour(juce::TextButton::buttonColourId,
+                         juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
+    soloButton.setColour(juce::TextButton::buttonOnColourId,
+                         juce::Colour(JamWideLookAndFeel::kAccentWarning));  // 0xffCCB833
+    soloButton.setColour(juce::TextButton::textColourOffId,
+                         juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    soloButton.setColour(juce::TextButton::textColourOnId,
+                         juce::Colour(0xff000000));  // Black text on yellow
+    soloButton.onClick = [this]() {
+        if (onSoloToggled)
+            onSoloToggled(soloButton.getToggleState());
+    };
 }
 
 void ChannelStrip::configure(StripType type, const juce::String& name,
@@ -105,6 +160,9 @@ void ChannelStrip::configure(StripType type, const juce::String& name,
             routingSelector.setVisible(false);
             subTxButton.setVisible(false);
             expandButton.setVisible(false);
+            // D-11: Master strip has no solo. Also no pan (master outputs to main mix stereo).
+            soloButton.setVisible(false);
+            panSlider.setVisible(false);
             break;
     }
 
@@ -131,6 +189,18 @@ void ChannelStrip::setTransmitting(bool tx)
 {
     subTxButton.setToggleState(tx, juce::dontSendNotification);
 }
+
+// Mixer control setters (update display without triggering callbacks)
+void ChannelStrip::setVolume(float vol) { fader.setValue(vol); }
+void ChannelStrip::setPan(float pan) { panSlider.setValue(pan, juce::dontSendNotification); }
+void ChannelStrip::setMuted(bool m) { muteButton.setToggleState(m, juce::dontSendNotification); }
+void ChannelStrip::setSoloed(bool s) { soloButton.setToggleState(s, juce::dontSendNotification); }
+
+// Component access for APVTS attachment in Plan 03
+VbFader& ChannelStrip::getFader() { return fader; }
+juce::Slider& ChannelStrip::getPanSlider() { return panSlider; }
+juce::TextButton& ChannelStrip::getMuteButton() { return muteButton; }
+juce::TextButton& ChannelStrip::getSoloButton() { return soloButton; }
 
 void ChannelStrip::paint(juce::Graphics& g)
 {
@@ -184,10 +254,57 @@ void ChannelStrip::resized()
             subTxButton.setBounds(subArea);
     }
 
-    // Footer zone (bottom 38px) -- placeholder for Phase 5 (pan + mute/solo)
+    // Footer zone (bottom 38px) per UI-SPEC footer layout
     auto footer = area.removeFromBottom(kFooterHeight);
-    (void)footer; // Phase 5: pan knob, mute/solo buttons
+    {
+        // Pan row: 16px tall, 4px left/right margin
+        auto panRow = footer.removeFromTop(16);
+        panSlider.setBounds(panRow.reduced(4, 0));
 
-    // VU meter fills the remaining center area
-    vuMeter.setBounds(area.reduced(4, 2));
+        // 2px gap
+        footer.removeFromTop(2);
+
+        // Button row: 16px tall
+        auto btnRow = footer.removeFromTop(16);
+        auto btnArea = btnRow.reduced(4, 0);
+        int btnW = (btnArea.getWidth() - 2) / 2;  // 2px gap between buttons
+        muteButton.setBounds(btnArea.removeFromLeft(btnW));
+        btnArea.removeFromLeft(2);  // gap
+        soloButton.setBounds(btnArea);
+
+        // remaining 4px is bottom padding
+    }
+
+    // Center zone: VU meter + fader side-by-side per D-10
+    auto center = area;  // remaining area after header and footer
+    int vuW = 24;
+    int gap = 6;
+    int faderW = VbFader::kThumbDiameter;  // 44px to accommodate the thumb
+    int totalControlW = vuW + gap + faderW;
+    int controlX = (center.getWidth() - totalControlW) / 2;
+
+    auto vuBounds = center.withX(center.getX() + controlX).withWidth(vuW);
+    vuMeter.setBounds(vuBounds.reduced(0, 2));
+
+    auto faderBounds = center.withX(center.getX() + controlX + vuW + gap).withWidth(faderW);
+    fader.setBounds(faderBounds.reduced(0, 2));
+}
+
+// D-02: scroll anywhere on strip adjusts fader
+// REVIEW CONCERN ADDRESSED: consume vertical scroll to prevent viewport conflict.
+void ChannelStrip::mouseWheelMove(const juce::MouseEvent& e,
+                                   const juce::MouseWheelDetails& wheel)
+{
+    // Only vertical wheel adjusts fader. Horizontal wheel is NOT consumed
+    // and propagates to the Viewport for horizontal scrolling of the strip area.
+    if (std::abs(wheel.deltaY) > 0.0f)
+    {
+        fader.adjustByDb(wheel.deltaY > 0 ? 0.5f : -0.5f);
+        // Do NOT call Component::mouseWheelMove -- consume vertical scroll event
+    }
+    else
+    {
+        // Horizontal scroll: let it propagate to viewport
+        Component::mouseWheelMove(e, wheel);
+    }
 }

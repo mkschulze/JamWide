@@ -71,8 +71,11 @@ private:
 
     std::unique_ptr<juce::ParameterAttachment> attachment_;
 
-    static constexpr int kTrackWidth = 10;
+public:
     static constexpr int kThumbDiameter = 44;
+
+private:
+    static constexpr int kTrackWidth = 10;
     static constexpr float kMinLinear = 0.0f;
     static constexpr float kMaxLinear = 2.0f;
 

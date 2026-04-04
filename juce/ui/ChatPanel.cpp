@@ -254,10 +254,14 @@ ChatPanel::ChatPanel(JamWideJuceProcessor& processor)
     sendButton.onClick = [this]() { handleSend(); };
     addAndMakeVisible(sendButton);
 
-    // Tip label -- Reaper keyboard hint + chat commands
-    tipLabel.setText("Tip: In REAPER, enable 'Send keyboard input to plugin' in FX menu. "
-                     "Commands: /msg <user> <text>, /topic <text>, /kick <user>, /bpm <n>, /bpi <n>",
-                     juce::dontSendNotification);
+    // Tip label -- chat commands, plus Reaper keyboard hint if running in Reaper
+    {
+        juce::String tipText = "Commands: /msg <user> <text>, /topic <text>, /kick <user>, /bpm <n>, /bpi <n>";
+        juce::PluginHostType hostType;
+        if (hostType.isReaper())
+            tipText = "Tip: Enable 'Send keyboard input to plugin' in REAPER FX menu. " + tipText;
+        tipLabel.setText(tipText, juce::dontSendNotification);
+    }
     tipLabel.setFont(juce::FontOptions(9.0f));
     tipLabel.setColour(juce::Label::textColourId,
         juce::Colour(JamWideLookAndFeel::kTextSecondary).withAlpha(0.6f));

@@ -59,6 +59,7 @@ private:
     juce::TextEditor chatInput;
     juce::TextButton sendButton;
     juce::TextButton jumpToBottomButton;
+    juce::Label tipLabel;
     bool autoScroll = true;
     bool isConnected_ = false;
 

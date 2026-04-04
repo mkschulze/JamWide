@@ -46,8 +46,9 @@ private:
     bool localExpanded_ = false;
 
     // Metronome controls in master strip footer
+    juce::Label metroLabel;         // "Metronome" label
     juce::Slider metroSlider;       // horizontal, 0.0-2.0, yellow fill
-    juce::TextButton metroMuteBtn;  // "MUTE" full-width
+    juce::TextButton metroMuteBtn;  // "M" toggle
 
     // APVTS attachments for local channel params
     // REVIEW CONCERN ADDRESSED: explicit ownership -- destroyed before strips in destructor

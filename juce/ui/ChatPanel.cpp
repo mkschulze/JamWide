@@ -254,6 +254,17 @@ ChatPanel::ChatPanel(JamWideJuceProcessor& processor)
     sendButton.onClick = [this]() { handleSend(); };
     addAndMakeVisible(sendButton);
 
+    // Tip label -- Reaper keyboard hint + chat commands
+    tipLabel.setText("Tip: In REAPER, enable 'Send keyboard input to plugin' in FX menu. "
+                     "Commands: /msg <user> <text>, /topic <text>, /kick <user>, /bpm <n>, /bpi <n>",
+                     juce::dontSendNotification);
+    tipLabel.setFont(juce::FontOptions(9.0f));
+    tipLabel.setColour(juce::Label::textColourId,
+        juce::Colour(JamWideLookAndFeel::kTextSecondary).withAlpha(0.6f));
+    tipLabel.setJustificationType(juce::Justification::centredLeft);
+    tipLabel.setMinimumHorizontalScale(0.7f);
+    addAndMakeVisible(tipLabel);
+
     // Jump-to-bottom button (hidden by default)
     jumpToBottomButton.setButtonText(juce::CharPointer_UTF8("\xe2\x86\x93")); // down arrow
     jumpToBottomButton.setColour(juce::TextButton::buttonColourId,
@@ -292,7 +303,10 @@ void ChatPanel::resized()
         topicLabel.setBounds(area.removeFromTop(0));
     }
 
-    // Input row at bottom
+    // Tip label at very bottom
+    tipLabel.setBounds(area.removeFromBottom(12));
+
+    // Input row above tip
     auto inputRow = area.removeFromBottom(28);
     sendButton.setBounds(inputRow.removeFromRight(48));
     inputRow.removeFromRight(4);

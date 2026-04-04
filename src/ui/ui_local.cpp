@@ -5,7 +5,6 @@
 
 #include "ui_local.h"
 #include "ui_meters.h"
-#include "ui_latency_guide.h"
 #include "ui_util.h"
 #include "threading/ui_command.h"
 #include "plugin/jamwide_plugin.h"
@@ -186,14 +185,6 @@ void ui_render_local_channel(jamwide::JamWidePlugin* plugin) {
         if (state.recording_enabled) {
             ImGui::SameLine();
             ImGui::TextDisabled("(OGG + WAV)");
-        }
-    }
-
-    if (state.status == NJClient::NJC_STATUS_OK) {
-        ImGui::Spacing();
-        ImGui::Checkbox("Timing Guide##toggle", &state.show_latency_guide);
-        if (state.show_latency_guide) {
-            ui_render_latency_guide(plugin);
         }
     }
 

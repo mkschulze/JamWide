@@ -79,11 +79,13 @@ Plans:
   3. User can see connection state, BPM/BPI, and user count in a status display
   4. User can browse and select from a list of public NINJAM servers
   5. User can switch codec between FLAC and Vorbis from the UI
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [ ] 04-01-PLAN.md -- Infrastructure: LookAndFeel, Processor event queues, NinjamRunThread callbacks, ChatMessageModel
+- [ ] 04-02-PLAN.md -- ConnectionBar + ChatPanel + Editor shell with timer-polled event drain
+- [ ] 04-03-PLAN.md -- VuMeter + ChannelStrip + BeatBar + ChannelStripArea (mixer visual layout)
+- [ ] 04-04-PLAN.md -- ServerBrowserOverlay + LicenseDialog + final editor assembly + Timing Guide removal
 
 ### Phase 5: Mixer UI and Channel Controls
 **Goal**: Users can mix remote participants and control local channels with full per-channel controls and visual feedback
@@ -161,7 +163,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 1. FLAC Lossless Codec | 3/3 | Complete   | 2026-03-07 |
 | 2. JUCE Scaffolding | 2/2 | Complete   | 2026-03-07 |
 | 3. NJClient Audio Bridge | 2/2 | Complete   | 2026-03-07 |
-| 4. Core UI Panels | 0/? | Not started | - |
+| 4. Core UI Panels | 0/4 | Planned | - |
 | 5. Mixer UI and Channel Controls | 0/? | Not started | - |
 | 6. Multichannel Output Routing | 0/? | Not started | - |
 | 7. DAW Sync and Session Polish | 0/? | Not started | - |

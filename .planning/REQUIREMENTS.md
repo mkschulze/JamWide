@@ -22,7 +22,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **JUCE-03**: NJClient audio processing integrated via processBlock()
 - [x] **JUCE-04**: NJClient Run() thread operates via juce::Thread
 - [x] **JUCE-05**: All UI rebuilt as JUCE Components (no Dear ImGui)
-- [ ] **JUCE-06**: Plugin state saves/restores via getStateInformation/setStateInformation
+- [x] **JUCE-06**: Plugin state saves/restores via getStateInformation/setStateInformation
 
 ### UI Panels
 
@@ -150,7 +150,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | JUCE-03 | Phase 3 | Complete |
 | JUCE-04 | Phase 2 | Complete |
 | JUCE-05 | Phase 4 | Complete |
-| JUCE-06 | Phase 5 | Pending |
+| JUCE-06 | Phase 5 | Complete |
 | UI-01 | Phase 4 | Complete |
 | UI-02 | Phase 4 | Complete |
 | UI-03 | Phase 4 | Complete |

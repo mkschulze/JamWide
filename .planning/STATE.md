@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-04-04T16:46:23.940Z"
+status: verifying
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-04-04T16:52:52.586Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 15
-  completed_plans: 14
+  completed_plans: 15
   percent: 100
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 
 Phase: 05 (mixer-ui-and-channel-controls) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-04
 
 Progress: [##########] 100%
@@ -82,6 +82,7 @@ Progress: [##########] 100%
 | Phase 05 P01 | 4min | 2 tasks | 6 files |
 | Phase 05 P02 | 11min | 2 tasks | 5 files |
 | Phase 05 P03 | 6min | 2 tasks | 9 files |
+| Phase 05 P04 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -139,6 +140,8 @@ Recent decisions affecting current work:
 - [Phase 05]: Metronome has volume + mute only (no pan) per D-18 locked decision
 - [Phase 05]: APVTS attachments destroyed before strip components in destructor per attachment lifecycle pattern
 - [Phase 05]: chatSidebarVisible, localTransmit, localInputSelector on processor (not APVTS) per D-21 review guidance
+- [Phase 05]: Non-APVTS state extracted BEFORE replaceState to prevent property loss across JUCE versions
+- [Phase 05]: scaleFactor validated by snap-to-nearest (1.0/1.5/2.0) not raw clamp on state restore
 
 ### Pending Todos
 
@@ -152,6 +155,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-04T16:46:23.936Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-04-04T16:52:52.582Z
+Stopped at: Completed 05-04-PLAN.md
 Resume with: Execute 04-04 (Wave 3 — final assembly with ServerBrowser, LicenseDialog, Timing Guide removal)

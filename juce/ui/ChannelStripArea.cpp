@@ -175,7 +175,7 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
 
     // Metronome label
     addAndMakeVisible(metroLabel);
-    metroLabel.setText("Metro", juce::dontSendNotification);
+    metroLabel.setText("Metronome", juce::dontSendNotification);
     metroLabel.setFont(juce::FontOptions(9.0f));
     metroLabel.setColour(juce::Label::textColourId,
                          juce::Colour(JamWideLookAndFeel::kTextSecondary));
@@ -701,19 +701,20 @@ void ChannelStripArea::resized()
         }
     }
 
-    // Position metronome controls over master strip's footer area.
+    // Position metronome controls below master strip's fader, inside footer area.
     // toFront() ensures they render above the masterStrip's background.
     auto masterBounds = masterStrip.getBounds();
     auto metroArea = juce::Rectangle<int>(
-        masterBounds.getX(), masterBounds.getBottom() - 50,
-        masterBounds.getWidth(), 50);
+        masterBounds.getX(), masterBounds.getBottom() - 38,
+        masterBounds.getWidth(), 38);
 
-    // "Metro" label row
-    auto labelRow = metroArea.removeFromTop(12);
+    // "Metronome" label row
+    auto labelRow = metroArea.removeFromTop(10);
     metroLabel.setBounds(labelRow.reduced(4, 0));
+    metroArea.removeFromTop(1);
 
     // Slider + mute button side by side
-    auto controlRow = metroArea.removeFromTop(16);
+    auto controlRow = metroArea.removeFromTop(14);
     auto controlArea = controlRow.reduced(4, 0);
     metroMuteBtn.setBounds(controlArea.removeFromRight(18));
     controlArea.removeFromRight(2);

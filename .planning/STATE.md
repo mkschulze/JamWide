@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 04-01-PLAN.md
+stopped_at: Completed 04-03-PLAN.md
 last_updated: "2026-04-04T10:23:35.163Z"
 last_activity: 2026-03-07 -- Phase 3 plans done; audio bridge needs debugging
 progress:
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 ## Current Position
 
 Phase: 4 of 7 (Core UI Panels)
-Plan: 0 of ? in current phase (NOT STARTED)
-Status: Between phases. Phase 3 code complete but audio transmission not yet verified working. Proceeding to Phase 4 UI to gain observability.
-Last activity: 2026-03-07 -- Phase 3 plans done; audio bridge needs debugging
+Plan: 3 of 4 in current phase
+Status: Executing Phase 4 plans in parallel
+Last activity: 2026-04-04 -- Phase 4 plans 01-03 complete
 
 Progress: [##########] 100%
 
@@ -77,6 +77,7 @@ Progress: [##########] 100%
 
 *Updated after each plan completion*
 | Phase 04 P01 | 16min | 2 tasks | 8 files |
+| Phase 04 P03 | 10min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -113,6 +114,9 @@ Recent decisions affecting current work:
 - [Phase 04]: GetPosition() public API used instead of protected m_interval_pos/m_interval_length members (Plan 04-01)
 - [Phase 04]: server_list.cpp added directly to JUCE target sources for link resolution (Plan 04-01)
 - [Phase 04]: License callback uses JUCE CriticalSection exit()/enter() for deadlock prevention (Plan 04-01)
+- [Phase 04]: VuMeter has NO internal timer -- centralized 30Hz timer in ChannelStripArea drives all VU updates (Plan 04-03, REVIEW FIX #7)
+- [Phase 04]: Remote VU reads live vu_left/vu_right from cachedUsers, not hardcoded zero (Plan 04-03, REVIEW FIX #6)
+- [Phase 04]: BeatBar adapts numbering density by BPI range: <=8 all, 9-24 downbeats, 32+ group markers (Plan 04-03)
 
 ### Pending Todos
 
@@ -126,6 +130,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-04T10:23:35.156Z
-Stopped at: Completed 04-01-PLAN.md
-Resume with: /gsd:discuss-phase 4 or /gsd:plan-phase 4 (Core UI Panels — will also help diagnose Phase 3 audio issue)
+Last session: 2026-04-04T10:51:11Z
+Stopped at: Completed 04-03-PLAN.md
+Resume with: Continue with remaining Phase 4 plans (04-02 Chat, 04-04 Integration)

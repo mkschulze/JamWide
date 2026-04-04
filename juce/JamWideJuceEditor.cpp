@@ -100,9 +100,9 @@ void JamWideJuceEditor::resized()
     if (chatSidebarVisible)
         chatPanel.setBounds(area.removeFromRight(chatWidth));
 
-    // Chat toggle button on the divider edge
+    // Chat toggle button overlapping the left edge of the chat panel
     int toggleX = chatSidebarVisible
-        ? (getWidth() - chatWidth - kChatToggleWidth)
+        ? (getWidth() - chatWidth)
         : (getWidth() - kChatToggleWidth);
     int toggleY = kConnectionBarHeight + kBeatBarHeight + (area.getHeight() - kChatToggleHeight) / 2;
     chatToggleButton.setBounds(toggleX, toggleY, kChatToggleWidth, kChatToggleHeight);

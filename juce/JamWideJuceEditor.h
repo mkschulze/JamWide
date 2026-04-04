@@ -48,32 +48,44 @@ private:
     struct ChatToggleButton : public juce::Component
     {
         bool pointsRight = true;
+        bool hovering = false;
         std::function<void()> onClick;
+
+        ChatToggleButton() { setRepaintsOnMouseActivity(true); }
 
         void paint(juce::Graphics& g) override
         {
-            auto b = getLocalBounds().toFloat().reduced(3.0f, 6.0f);
-            g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary));
+            auto bounds = getLocalBounds().toFloat();
+
+            // Background with subtle hover brightening
+            auto bgColour = juce::Colour(JamWideLookAndFeel::kBgElevated);
+            if (hovering)
+                bgColour = bgColour.brighter(0.15f);
+            g.setColour(bgColour);
+            g.fillRoundedRectangle(bounds, 2.0f);
+
+            // Arrow triangle
+            auto b = bounds.reduced(4.0f, 7.0f);
+            auto arrowColour = juce::Colour(JamWideLookAndFeel::kTextSecondary);
+            if (hovering)
+                arrowColour = arrowColour.brighter(0.4f);
+            g.setColour(arrowColour);
+
             juce::Path arrow;
             if (pointsRight)
-            {
                 arrow.addTriangle(b.getX(), b.getY(),
                                   b.getRight(), b.getCentreY(),
                                   b.getX(), b.getBottom());
-            }
             else
-            {
                 arrow.addTriangle(b.getRight(), b.getY(),
                                   b.getX(), b.getCentreY(),
                                   b.getRight(), b.getBottom());
-            }
             g.fillPath(arrow);
         }
 
-        void mouseDown(const juce::MouseEvent&) override
-        {
-            if (onClick) onClick();
-        }
+        void mouseEnter(const juce::MouseEvent&) override { hovering = true; repaint(); }
+        void mouseExit(const juce::MouseEvent&) override  { hovering = false; repaint(); }
+        void mouseDown(const juce::MouseEvent&) override   { if (onClick) onClick(); }
     } chatToggleButton;
 
     bool chatSidebarVisible = true;

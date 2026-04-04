@@ -162,7 +162,6 @@ add_library(jamwide-ui STATIC
     src/ui/ui_server_browser.cpp
     src/ui/ui_chat.cpp
     src/ui/ui_local.cpp
-    src/ui/ui_latency_guide.cpp
     src/ui/ui_master.cpp
     src/ui/ui_remote.cpp
     src/ui/ui_meters.cpp
@@ -268,6 +267,8 @@ if(JAMWIDE_BUILD_JUCE)
         juce/ui/ChannelStrip.cpp
         juce/ui/BeatBar.cpp
         juce/ui/ChannelStripArea.cpp
+        juce/ui/ServerBrowserOverlay.cpp
+        juce/ui/LicenseDialog.cpp
         src/net/server_list.cpp
     )
 

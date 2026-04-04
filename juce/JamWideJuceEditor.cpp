@@ -85,6 +85,31 @@ void JamWideJuceEditor::paint(juce::Graphics& g)
     g.fillAll(juce::Colour(JamWideLookAndFeel::kBgPrimary));
 }
 
+void JamWideJuceEditor::mouseDown(const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu())
+    {
+        juce::PopupMenu menu;
+        menu.addSectionHeader("UI Scale");
+        menu.addItem(1, "1x",   true, juce::approximatelyEqual(processorRef.scaleFactor, 1.0f));
+        menu.addItem(2, "1.5x", true, juce::approximatelyEqual(processorRef.scaleFactor, 1.5f));
+        menu.addItem(3, "2x",   true, juce::approximatelyEqual(processorRef.scaleFactor, 2.0f));
+        menu.showMenuAsync(juce::PopupMenu::Options(),
+            [this](int result) {
+                float newScale = 1.0f;
+                if (result == 2) newScale = 1.5f;
+                else if (result == 3) newScale = 2.0f;
+                else if (result != 1) return;
+                processorRef.scaleFactor = newScale;
+                applyScale(newScale);
+            });
+    }
+    else
+    {
+        AudioProcessorEditor::mouseDown(e);
+    }
+}
+
 void JamWideJuceEditor::resized()
 {
     auto area = getLocalBounds();

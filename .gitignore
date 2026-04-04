@@ -44,5 +44,6 @@
 build/
 build-release/
 logs/
+.cache/
 *.DS_Store
 *.log

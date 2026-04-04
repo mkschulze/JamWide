@@ -294,6 +294,15 @@ void NinjamRunThread::run()
                             true, 256,
                             true, processor.localTransmit[ch]);
                     }
+
+                    // Apply persisted routing mode for future auto-assign (per D-12)
+                    // REVIEW FIX: Use .load() since routingMode is std::atomic<int>
+                    int rm = processor.routingMode.load(std::memory_order_relaxed);
+                    client->config_remote_autochan = rm;
+                    // REVIEW FIX: nch=32 excludes metronome bus from auto-assign search
+                    client->config_remote_autochan_nch = (rm > 0) ? 32 : 0;
+                    // Set metronome to last bus (per D-11)
+                    client->SetMetronomeChannel(32);
                 }
             }
 
@@ -431,7 +440,8 @@ void NinjamRunThread::processCommands(NJClient* client)
                     c.set_vol, c.volume,
                     c.set_pan, c.pan,
                     c.set_mute, c.mute,
-                    c.set_solo, c.solo);
+                    c.set_solo, c.solo,
+                    c.set_outch, c.outchannel);
             }
             else if constexpr (std::is_same_v<T, jamwide::RequestServerListCommand>)
             {
@@ -454,6 +464,83 @@ void NinjamRunThread::processCommands(NJClient* client)
                     c.set_pan, c.pan,
                     c.set_mute, c.mute,
                     c.set_solo, c.solo);
+            }
+            else if constexpr (std::is_same_v<T, jamwide::SetRoutingModeCommand>)
+            {
+                // REVIEW FIX: Use nch=32 (not 34) to exclude metronome bus (channels 32-33)
+                // from auto-assign search space. find_unused_output_channel_pair() searches
+                // channels 2 through nch-1, so nch=32 limits to channels 2-31 (buses 1-15).
+                client->config_remote_autochan = c.mode;
+                client->config_remote_autochan_nch = (c.mode > 0) ? 32 : 0;
+
+                // Quick-assign sweep: reset all existing users then re-assign per D-02, Pitfall 4
+                if (c.mode > 0)
+                {
+                    // First pass: reset all channels to bus 0
+                    int numUsers = client->GetNumUsers();
+                    for (int u = 0; u < numUsers; ++u)
+                    {
+                        for (int ch = 0; ; ++ch)
+                        {
+                            int ci = client->EnumUserChannels(u, ch);
+                            if (ci < 0) break;
+                            client->SetUserChannelState(u, ci,
+                                false, false, false, 0.0f, false, 0.0f,
+                                false, false, false, false,
+                                true, 0);
+                        }
+                    }
+                    // Second pass: assign sequential buses using find_unused_output_channel_pair()
+                    for (int u = 0; u < numUsers; ++u)
+                    {
+                        int assignedBus = -1;  // For by-user mode: all channels of same user share one bus
+                        for (int ch = 0; ; ++ch)
+                        {
+                            int ci = client->EnumUserChannels(u, ch);
+                            if (ci < 0) break;
+                            if (c.mode == 2 && assignedBus >= 0)
+                            {
+                                // By-user: reuse same bus for all channels of this user (per D-03)
+                                client->SetUserChannelState(u, ci,
+                                    false, false, false, 0.0f, false, 0.0f,
+                                    false, false, false, false,
+                                    true, assignedBus);
+                            }
+                            else
+                            {
+                                int newBus = client->find_unused_output_channel_pair();
+                                // For a clean sweep (we just reset all to 0), any non-zero return is valid.
+                                if (newBus >= 2)
+                                {
+                                    client->SetUserChannelState(u, ci,
+                                        false, false, false, 0.0f, false, 0.0f,
+                                        false, false, false, false,
+                                        true, newBus);
+                                    if (c.mode == 2)
+                                        assignedBus = newBus;
+                                }
+                                // else: newBus < 2 means nch < 4 (shouldn't happen), stay on Main Mix
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // Manual mode: reset all channels to bus 0 (Main Mix) per D-01
+                    int numUsers = client->GetNumUsers();
+                    for (int u = 0; u < numUsers; ++u)
+                    {
+                        for (int ch = 0; ; ++ch)
+                        {
+                            int ci = client->EnumUserChannels(u, ch);
+                            if (ci < 0) break;
+                            client->SetUserChannelState(u, ci,
+                                false, false, false, 0.0f, false, 0.0f,
+                                false, false, false, false,
+                                true, 0);
+                        }
+                    }
+                }
             }
         }, std::move(cmd));
     });

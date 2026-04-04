@@ -180,6 +180,7 @@ public:
     bool solo = false;
     float vu_left = 0.0f;
     float vu_right = 0.0f;
+    int out_chan_index = 0;
   };
 
   struct RemoteUserInfo {

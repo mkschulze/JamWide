@@ -62,6 +62,8 @@ struct SetUserChannelStateCommand {
     bool mute = false;
     bool set_solo = false;
     bool solo = false;
+    bool set_outch = false;
+    int outchannel = 0;  // stereo pair channel index (0, 2, 4, ..., 30)
 };
 
 struct RequestServerListCommand {
@@ -78,6 +80,10 @@ struct SetEncoderFormatCommand {
     unsigned int fourcc = 0;  // NJ_ENCODER_FMT_FLAC or MAKE_NJ_FOURCC('O','G','G','v')
 };
 
+struct SetRoutingModeCommand {
+    int mode = 0;  // 0=manual, 1=by-channel, 2=by-user
+};
+
 using UiCommand = std::variant<
     ConnectCommand,
     DisconnectCommand,
@@ -87,7 +93,8 @@ using UiCommand = std::variant<
     SetUserChannelStateCommand,
     RequestServerListCommand,
     SendChatCommand,
-    SetEncoderFormatCommand
+    SetEncoderFormatCommand,
+    SetRoutingModeCommand
 >;
 
 } // namespace jamwide

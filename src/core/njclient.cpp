@@ -2750,6 +2750,7 @@ void NJClient::GetRemoteUsersSnapshot(std::vector<RemoteUserInfo>& out)
         ch_info.solo = (user->solomask & (1u << ch)) != 0;
         ch_info.vu_left = static_cast<float>(chan->decode_peak_vol[0]);
         ch_info.vu_right = static_cast<float>(chan->decode_peak_vol[1]);
+        ch_info.out_chan_index = chan->out_chan_index;
 
         info.channels.push_back(std::move(ch_info));
       }

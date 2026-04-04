@@ -187,12 +187,14 @@ void ConnectionBar::paint(juce::Graphics& g)
     g.setColour(dotColour);
     g.fillEllipse(dotX, dotY, 8.0f, 8.0f);
 
-    // Build rev in bottom-right corner
-    g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary).withAlpha(0.5f));
+    // Build rev below codec selector
+    g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary).withAlpha(0.4f));
     g.setFont(juce::FontOptions(9.0f));
+    auto codecBounds = codecSelector.getBounds();
     g.drawText("r" + juce::String(JAMWIDE_BUILD_NUMBER),
-               getLocalBounds().reduced(4, 2),
-               juce::Justification::bottomRight, false);
+               codecBounds.getX(), codecBounds.getBottom() - 1,
+               codecBounds.getWidth(), getHeight() - codecBounds.getBottom(),
+               juce::Justification::centredRight, false);
 }
 
 void ConnectionBar::mouseDown(const juce::MouseEvent& e)

@@ -106,6 +106,7 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
                         juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
     fitButton.setColour(juce::TextButton::textColourOffId,
                         juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    fitButton.setTooltip("Resize window to fit all channels");
     fitButton.onClick = [this]() {
         if (onFitClicked) onFitClicked();
     };

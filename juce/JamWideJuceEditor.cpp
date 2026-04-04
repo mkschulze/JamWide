@@ -40,6 +40,7 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
         needed = juce::jmax(kBaseWidth, needed);
         if (needed != getWidth())
             setSize(needed, kBaseHeight);
+        connectionBar.setFitHighlight(false);  // we just fit, no overflow
     };
 
     // ChatPanel

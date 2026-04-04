@@ -54,6 +54,22 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
     addChildComponent(licenseDialog);
     licenseDialog.onResponse = [this](bool accepted) { handleLicenseResponse(accepted); };
 
+    // Restore state if already connected (editor recreated while session active).
+    // HasUserInfoChanged() is destructive — the flag was consumed before the old
+    // editor was destroyed, so no UserInfoChangedEvent will fire. We must
+    // populate strips and set connected state from the processor's cached data.
+    {
+        auto* client = processorRef.getClient();
+        if (client && client->cached_status.load(std::memory_order_acquire) == NJClient::NJC_STATUS_OK)
+        {
+            channelStripArea.setConnectedState();
+            chatPanel.setConnectedState();
+            if (!processorRef.cachedUsers.empty())
+                channelStripArea.refreshFromUsers(processorRef.cachedUsers);
+            prevPollStatus_ = NJClient::NJC_STATUS_OK;
+        }
+    }
+
     // Start 20Hz timer for event drain and status polling
     startTimerHz(20);
 

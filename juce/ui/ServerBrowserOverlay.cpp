@@ -18,6 +18,15 @@ ServerBrowserOverlay::ServerBrowserOverlay()
     closeButton.onClick = [this]() { dismiss(); };
     addAndMakeVisible(closeButton);
 
+    refreshButton.setButtonText("Refresh");
+    refreshButton.setColour(juce::TextButton::textColourOffId,
+        juce::Colour(JamWideLookAndFeel::kAccentConnect));
+    refreshButton.onClick = [this]() {
+        setLoading();
+        if (onRefreshClicked) onRefreshClicked();
+    };
+    addAndMakeVisible(refreshButton);
+
     listBox.setModel(this);
     listBox.setRowHeight(56);
     listBox.setColour(juce::ListBox::backgroundColourId,
@@ -114,10 +123,12 @@ void ServerBrowserOverlay::resized()
     auto dialogBounds = getLocalBounds().withSizeKeepingCentre(kDialogWidth, kDialogHeight);
     auto area = dialogBounds.reduced(16);
 
-    // Title row
+    // Title row: title ... refresh ... close
     auto titleRow = area.removeFromTop(32);
-    titleLabel.setBounds(titleRow.removeFromLeft(titleRow.getWidth() - 32));
-    closeButton.setBounds(titleRow);
+    closeButton.setBounds(titleRow.removeFromRight(32));
+    titleRow.removeFromRight(4);
+    refreshButton.setBounds(titleRow.removeFromRight(70).withTrimmedTop(4).withTrimmedBottom(4));
+    titleLabel.setBounds(titleRow);
 
     area.removeFromTop(8);
 

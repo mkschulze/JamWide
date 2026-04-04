@@ -29,6 +29,7 @@ public:
     std::function<void(const juce::String&)> onServerSelected;       // single-click (D-11)
     std::function<void(const juce::String&)> onServerDoubleClicked;  // double-click (D-12)
     std::function<void()> onDismissed;
+    std::function<void()> onRefreshClicked;
 
 private:
     void mouseDown(const juce::MouseEvent& e) override;  // click outside dismisses
@@ -44,6 +45,7 @@ private:
     juce::Label titleLabel;
     juce::Label statusLabel;
     juce::TextButton closeButton;
+    juce::TextButton refreshButton;
 
     static constexpr int kDialogWidth = 600;
     static constexpr int kDialogHeight = 500;

@@ -45,6 +45,11 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
     addChildComponent(serverBrowser);
     serverBrowser.onServerSelected = [this](const juce::String& addr) { handleServerSelected(addr); };
     serverBrowser.onServerDoubleClicked = [this](const juce::String& addr) { handleServerDoubleClicked(addr); };
+    serverBrowser.onRefreshClicked = [this]() {
+        jamwide::RequestServerListCommand cmd;
+        cmd.url = "http://autosong.ninjam.com/serverlist.php";
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
 
     // LicenseDialog (hidden by default)
     addChildComponent(licenseDialog);

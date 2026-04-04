@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include "net/server_list.h"
 
 class JamWideJuceProcessor;
 class NJClient;
@@ -15,7 +16,9 @@ class NJClient;
  *   1. Drains cmd_queue from Processor and dispatches commands under clientLock
  *   2. Calls NJClient::Run() under clientLock for network I/O
  *   3. Tracks status changes and sets up default local channel on connect
- *   4. Adaptive sleep: 20ms connected, 50ms disconnected
+ *   4. Pushes events (status, chat, user info, server list, topic) to Processor queues
+ *   5. Updates UiAtomicSnapshot (BPM, BPI, beat position, VU levels)
+ *   6. Adaptive sleep: 20ms connected, 50ms disconnected
  */
 class NinjamRunThread : public juce::Thread
 {
@@ -29,6 +32,8 @@ private:
     void processCommands(NJClient* client);
 
     JamWideJuceProcessor& processor;
+    jamwide::ServerListFetcher serverListFetcher;
+    int lastStatus_ = -1;  // NJClient::NJC_STATUS_DISCONNECTED
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NinjamRunThread)
 };

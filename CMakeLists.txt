@@ -262,6 +262,7 @@ if(JAMWIDE_BUILD_JUCE)
         juce/JamWideJuceEditor.cpp
         juce/NinjamRunThread.cpp
         juce/ui/JamWideLookAndFeel.cpp
+        src/net/server_list.cpp
     )
 
     target_compile_definitions(JamWideJuce PUBLIC

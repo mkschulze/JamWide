@@ -590,6 +590,8 @@ void ChannelStripArea::setDisconnectedState()
 
     viewport.setVisible(false);
     masterStrip.setVisible(false);
+    metroSlider.setVisible(false);
+    metroMuteBtn.setVisible(false);
     emptyStateLabel.setVisible(true);
     browseButton.setVisible(true);
 
@@ -602,6 +604,8 @@ void ChannelStripArea::setConnectedState()
 
     viewport.setVisible(true);
     masterStrip.setVisible(true);
+    metroSlider.setVisible(true);
+    metroMuteBtn.setVisible(true);
     emptyStateLabel.setVisible(false);
     browseButton.setVisible(false);
 

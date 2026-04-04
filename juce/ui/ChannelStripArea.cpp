@@ -143,9 +143,9 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
                                    static_cast<int>(user.channels.size()), false);
 
             // Expand toggle rebuilds child visibility
-            parentStrip->onExpandToggled = [this, &users]()
+            parentStrip->onExpandToggled = [this]()
             {
-                rebuildStrips(users);
+                rebuildStrips();
             };
 
             remoteStrips.push_back(std::move(parentStrip));
@@ -176,10 +176,10 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
         }
     }
 
-    rebuildStrips(users);
+    rebuildStrips();
 }
 
-void ChannelStripArea::rebuildStrips(const std::vector<NJClient::RemoteUserInfo>& /*users*/)
+void ChannelStripArea::rebuildStrips()
 {
     // Remove all children from strip container
     stripContainer.removeAllChildren();
@@ -187,9 +187,32 @@ void ChannelStripArea::rebuildStrips(const std::vector<NJClient::RemoteUserInfo>
     // Add local strip
     stripContainer.addAndMakeVisible(localStrip);
 
-    // Add visible remote strips
+    // Add visible remote strips, respecting expand/collapse state.
+    // Parent strips with channelCount > 1 control child visibility:
+    // when collapsed, skip the child strips that follow the parent.
+    bool skipChildren = false;
     for (auto& strip : remoteStrips)
-        stripContainer.addAndMakeVisible(*strip);
+    {
+        if (strip->getType() == ChannelStrip::StripType::Remote)
+        {
+            // Parent strip — always visible
+            stripContainer.addAndMakeVisible(*strip);
+            // If this parent has multiple channels, collapse hides children
+            skipChildren = !strip->isExpanded()
+                           && strip->getChannelCount() > 1;
+        }
+        else if (strip->getType() == ChannelStrip::StripType::RemoteChild)
+        {
+            if (!skipChildren)
+                stripContainer.addAndMakeVisible(*strip);
+            else
+                strip->setVisible(false);
+        }
+        else
+        {
+            stripContainer.addAndMakeVisible(*strip);
+        }
+    }
 
     resized();
 }

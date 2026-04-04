@@ -374,6 +374,10 @@ void ChatPanel::setNotConnectedState()
     isConnected_ = false;
     chatInput.setEnabled(false);
     sendButton.setEnabled(false);
+    // Clear chat history when disconnecting so stale messages
+    // don't persist across server changes.
+    messageList.loadHistory({});
+    topicLabel.setText("", juce::dontSendNotification);
     repaint();
 }
 

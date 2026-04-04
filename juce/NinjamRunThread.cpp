@@ -292,7 +292,6 @@ void NinjamRunThread::run()
                 // REVIEW FIX #3 + GetRemoteUsersSnapshot: Use the thread-safe snapshot API
                 // instead of manual GetUserState/GetNumUsers enumeration.
                 // GetRemoteUsersSnapshot() locks internally and returns a complete copy.
-                // It also includes vu_left/vu_right per channel (REVIEW FIX #6: remote VU data).
                 std::vector<NJClient::RemoteUserInfo> snapshot;
                 client->GetRemoteUsersSnapshot(snapshot);
 
@@ -300,6 +299,24 @@ void NinjamRunThread::run()
                 processor.userCount.store(static_cast<int>(processor.cachedUsers.size()),
                                           std::memory_order_relaxed);
                 processor.evt_queue.try_push(jamwide::UserInfoChangedEvent{});
+            }
+
+            // Update remote VU levels every iteration (not just on user info change).
+            // VU levels change continuously with audio; the structural snapshot above
+            // only fires on join/leave/config changes.
+            {
+                auto& users = processor.cachedUsers;
+                for (size_t ui = 0; ui < users.size(); ++ui)
+                {
+                    for (size_t ci = 0; ci < users[ui].channels.size(); ++ci)
+                    {
+                        auto& ch = users[ui].channels[ci];
+                        ch.vu_left = client->GetUserChannelPeak(
+                            static_cast<int>(ui), static_cast<int>(ci), 0);
+                        ch.vu_right = client->GetUserChannelPeak(
+                            static_cast<int>(ui), static_cast<int>(ci), 1);
+                    }
+                }
             }
 
             // Update atomic snapshot for UI polling

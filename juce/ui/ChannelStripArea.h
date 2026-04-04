@@ -26,7 +26,7 @@ public:
 
 private:
     void timerCallback() override;  // 30Hz: tick all VU meters
-    void rebuildStrips(const std::vector<NJClient::RemoteUserInfo>& users);
+    void rebuildStrips();
 
     JamWideJuceProcessor& processorRef;
 

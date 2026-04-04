@@ -29,6 +29,7 @@ public:
 
     StripType getType() const { return stripType; }
     bool isExpanded() const { return expanded_; }
+    int getChannelCount() const { return channelCount_; }
 
 private:
     StripType stripType = StripType::Remote;

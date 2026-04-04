@@ -24,6 +24,11 @@ public:
     std::function<void()> onBrowseClicked;
     int getDesiredWidth() const;
 
+    // Look up current user_index and channel_index from stable identity.
+    // Returns {-1, -1} if user/channel no longer exists (e.g., user left).
+    std::pair<int, int> findRemoteIndex(const juce::String& userName,
+                                         const juce::String& channelName) const;
+
 private:
     void timerCallback() override;  // 30Hz: tick all VU meters
     void rebuildStrips();

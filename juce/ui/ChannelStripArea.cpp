@@ -9,8 +9,53 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
     // Configure local strip
     localStrip.configure(ChannelStrip::StripType::Local, "Local");
 
+    // Wire local strip mixer callbacks to SetLocalChannelMonitoringCommand
+    localStrip.onVolumeChanged = [this](float vol) {
+        jamwide::SetLocalChannelMonitoringCommand cmd;
+        cmd.channel = 0;
+        cmd.set_volume = true;
+        cmd.volume = vol;
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
+    localStrip.onPanChanged = [this](float pan) {
+        jamwide::SetLocalChannelMonitoringCommand cmd;
+        cmd.channel = 0;
+        cmd.set_pan = true;
+        cmd.pan = pan;
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
+    localStrip.onMuteToggled = [this](bool mute) {
+        jamwide::SetLocalChannelMonitoringCommand cmd;
+        cmd.channel = 0;
+        cmd.set_mute = true;
+        cmd.mute = mute;
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
+    localStrip.onSoloToggled = [this](bool solo) {
+        jamwide::SetLocalChannelMonitoringCommand cmd;
+        cmd.channel = 0;
+        cmd.set_solo = true;
+        cmd.solo = solo;
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
+
     // Configure master strip
     masterStrip.configure(ChannelStrip::StripType::Master, "Master");
+
+    // Wire master strip fader to APVTS masterVol parameter
+    masterStrip.onVolumeChanged = [this](float vol) {
+        if (auto* param = processorRef.apvts.getParameter("masterVol"))
+            param->setValueNotifyingHost(
+                param->getNormalisableRange().convertTo0to1(vol));
+    };
+    masterStrip.onMuteToggled = [this](bool mute) {
+        if (auto* param = processorRef.apvts.getParameter("masterMute"))
+            param->setValueNotifyingHost(mute ? 1.0f : 0.0f);
+    };
+
+    // Set initial master fader value from APVTS
+    masterStrip.setVolume(*processorRef.apvts.getRawParameterValue("masterVol"));
+    masterStrip.setMuted(*processorRef.apvts.getRawParameterValue("masterMute") >= 0.5f);
 
     // Set up viewport with strip container
     addAndMakeVisible(viewport);
@@ -52,6 +97,26 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
 ChannelStripArea::~ChannelStripArea()
 {
     stopTimer();
+}
+
+// Stable identity lookup: resolve current user_index and channel_index
+// from username + channel name. Returns {-1, -1} if user/channel gone.
+std::pair<int, int> ChannelStripArea::findRemoteIndex(
+    const juce::String& userName, const juce::String& channelName) const
+{
+    const auto& users = processorRef.cachedUsers;
+    for (int u = 0; u < static_cast<int>(users.size()); ++u)
+    {
+        if (juce::String(users[u].name) == userName)
+        {
+            for (int c = 0; c < static_cast<int>(users[u].channels.size()); ++c)
+            {
+                if (juce::String(users[u].channels[c].name) == channelName)
+                    return {u, users[u].channels[c].channel_index};
+            }
+        }
+    }
+    return {-1, -1};
 }
 
 // REVIEW FIX #7: single centralized timer drives all VU meters
@@ -101,6 +166,10 @@ void ChannelStripArea::updateVuLevels()
 
 void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserInfo>& users)
 {
+    // REVIEW CONCERN: Attachment lifetime during strip rebuilds.
+    // Detach any APVTS parameter attachments before destroying strips.
+    for (auto& strip : remoteStrips)
+        strip->getFader().detachFromParameter();  // Safe no-op if not attached
     remoteStrips.clear();
 
     for (size_t userIdx = 0; userIdx < users.size(); ++userIdx)
@@ -121,18 +190,74 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
 
             if (!user.channels.empty())
             {
-                strip->setSubscribed(user.channels[0].subscribed);
+                const auto& ch = user.channels[0];
+                strip->setSubscribed(ch.subscribed);
 
-                // Wire subscribe toggle to push command
-                const int uIdx = static_cast<int>(userIdx);
-                const int chIdx = user.channels[0].channel_index;
-                strip->onSubscribeToggled = [this, uIdx, chIdx](bool sub)
+                // Set initial mixer state from cached data
+                strip->setVolume(ch.volume);
+                strip->setPan(ch.pan);
+                strip->setMuted(ch.mute);
+                strip->setSoloed(ch.solo);
+
+                // Capture stable identity, NOT indices (REVIEW CONCERN: stale user_index)
+                juce::String uName(user.name);
+                juce::String cName(ch.name);
+
+                // Wire subscribe toggle to push command (also uses stable identity)
+                strip->onSubscribeToggled = [this, uName, cName](bool sub)
                 {
+                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
+                    if (uIdx < 0) return;  // User left, ignore
                     jamwide::SetUserChannelStateCommand cmd;
                     cmd.user_index = uIdx;
-                    cmd.channel_index = chIdx;
+                    cmd.channel_index = cIdx;
                     cmd.set_sub = true;
                     cmd.subscribed = sub;
+                    processorRef.cmd_queue.try_push(std::move(cmd));
+                };
+
+                // Wire volume/pan/mute/solo callbacks with stable identity
+                strip->onVolumeChanged = [this, uName, cName](float vol) {
+                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
+                    if (uIdx < 0) return;
+                    jamwide::SetUserChannelStateCommand cmd;
+                    cmd.user_index = uIdx;
+                    cmd.channel_index = cIdx;
+                    cmd.set_vol = true;
+                    cmd.volume = vol;
+                    processorRef.cmd_queue.try_push(std::move(cmd));
+                };
+
+                strip->onPanChanged = [this, uName, cName](float pan) {
+                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
+                    if (uIdx < 0) return;
+                    jamwide::SetUserChannelStateCommand cmd;
+                    cmd.user_index = uIdx;
+                    cmd.channel_index = cIdx;
+                    cmd.set_pan = true;
+                    cmd.pan = pan;
+                    processorRef.cmd_queue.try_push(std::move(cmd));
+                };
+
+                strip->onMuteToggled = [this, uName, cName](bool mute) {
+                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
+                    if (uIdx < 0) return;
+                    jamwide::SetUserChannelStateCommand cmd;
+                    cmd.user_index = uIdx;
+                    cmd.channel_index = cIdx;
+                    cmd.set_mute = true;
+                    cmd.mute = mute;
+                    processorRef.cmd_queue.try_push(std::move(cmd));
+                };
+
+                strip->onSoloToggled = [this, uName, cName](bool solo) {
+                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
+                    if (uIdx < 0) return;
+                    jamwide::SetUserChannelStateCommand cmd;
+                    cmd.user_index = uIdx;
+                    cmd.channel_index = cIdx;
+                    cmd.set_solo = true;
+                    cmd.solo = solo;
                     processorRef.cmd_queue.try_push(std::move(cmd));
                 };
             }
@@ -163,15 +288,69 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
                                       juce::String(ch.name));
                 childStrip->setSubscribed(ch.subscribed);
 
-                const int uIdx = static_cast<int>(userIdx);
-                const int cIdx = ch.channel_index;
-                childStrip->onSubscribeToggled = [this, uIdx, cIdx](bool sub)
+                // Set initial mixer state from cached data
+                childStrip->setVolume(ch.volume);
+                childStrip->setPan(ch.pan);
+                childStrip->setMuted(ch.mute);
+                childStrip->setSoloed(ch.solo);
+
+                // Capture stable identity, NOT indices
+                juce::String uName(user.name);
+                juce::String cName(ch.name);
+
+                childStrip->onSubscribeToggled = [this, uName, cName](bool sub)
                 {
+                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
+                    if (uIdx < 0) return;
                     jamwide::SetUserChannelStateCommand cmd;
                     cmd.user_index = uIdx;
                     cmd.channel_index = cIdx;
                     cmd.set_sub = true;
                     cmd.subscribed = sub;
+                    processorRef.cmd_queue.try_push(std::move(cmd));
+                };
+
+                childStrip->onVolumeChanged = [this, uName, cName](float vol) {
+                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
+                    if (uIdx < 0) return;
+                    jamwide::SetUserChannelStateCommand cmd;
+                    cmd.user_index = uIdx;
+                    cmd.channel_index = cIdx;
+                    cmd.set_vol = true;
+                    cmd.volume = vol;
+                    processorRef.cmd_queue.try_push(std::move(cmd));
+                };
+
+                childStrip->onPanChanged = [this, uName, cName](float pan) {
+                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
+                    if (uIdx < 0) return;
+                    jamwide::SetUserChannelStateCommand cmd;
+                    cmd.user_index = uIdx;
+                    cmd.channel_index = cIdx;
+                    cmd.set_pan = true;
+                    cmd.pan = pan;
+                    processorRef.cmd_queue.try_push(std::move(cmd));
+                };
+
+                childStrip->onMuteToggled = [this, uName, cName](bool mute) {
+                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
+                    if (uIdx < 0) return;
+                    jamwide::SetUserChannelStateCommand cmd;
+                    cmd.user_index = uIdx;
+                    cmd.channel_index = cIdx;
+                    cmd.set_mute = true;
+                    cmd.mute = mute;
+                    processorRef.cmd_queue.try_push(std::move(cmd));
+                };
+
+                childStrip->onSoloToggled = [this, uName, cName](bool solo) {
+                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
+                    if (uIdx < 0) return;
+                    jamwide::SetUserChannelStateCommand cmd;
+                    cmd.user_index = uIdx;
+                    cmd.channel_index = cIdx;
+                    cmd.set_solo = true;
+                    cmd.solo = solo;
                     processorRef.cmd_queue.try_push(std::move(cmd));
                 };
 

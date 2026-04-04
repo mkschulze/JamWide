@@ -33,7 +33,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **UI-05**: Local channel controls (volume, pan, mute, monitoring)
 - [x] **UI-06**: Metronome controls (volume, pan, mute)
 - [x] **UI-07**: Server browser with public server list
-- [ ] **UI-08**: VU meters for local and remote channels
+- [x] **UI-08**: VU meters for local and remote channels
 - [x] **UI-09**: Codec selector (FLAC/Vorbis toggle per local channel)
 
 ### Multichannel Output
@@ -158,7 +158,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UI-05 | Phase 5 | Complete |
 | UI-06 | Phase 5 | Complete |
 | UI-07 | Phase 4 | Complete |
-| UI-08 | Phase 5 | Pending |
+| UI-08 | Phase 5 | Complete |
 | UI-09 | Phase 4 | Complete |
 | MOUT-01 | Phase 6 | Pending |
 | MOUT-02 | Phase 6 | Pending |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-04-04T16:20:38.118Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-04-04T16:35:31.916Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 15
-  completed_plans: 12
+  completed_plans: 13
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-03-07)
 ## Current Position
 
 Phase: 05 (mixer-ui-and-channel-controls) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-04-04
 
@@ -80,6 +80,7 @@ Progress: [##########] 100%
 | Phase 04 P03 | 10min | 2 tasks | 9 files |
 | Phase 04 P04 | 9min | 2 tasks | 10 files |
 | Phase 05 P01 | 4min | 2 tasks | 6 files |
+| Phase 05 P02 | 11min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -130,6 +131,9 @@ Recent decisions affecting current work:
 - [Phase 05]: uiScale and chatVisible excluded from APVTS (UI-only state, not automatable)
 - [Phase 05]: Pan vs metronome slider detection via component name (MetroSlider) in drawLinearSlider
 - [Phase 05]: Power curve exponent 2.5 for fader mapping gives more travel to low/mid dB range
+- [Phase 05]: Remote mixer callbacks use stable identity (username+channelName) not stale captured indices
+- [Phase 05]: VbFader::kThumbDiameter made public for ChannelStrip layout access
+- [Phase 05]: Master strip hides solo button and pan slider per D-11
 
 ### Pending Todos
 
@@ -143,6 +147,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-04T16:20:38.114Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-04-04T16:35:31.912Z
+Stopped at: Completed 05-02-PLAN.md
 Resume with: Execute 04-04 (Wave 3 — final assembly with ServerBrowser, LicenseDialog, Timing Guide removal)

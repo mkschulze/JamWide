@@ -36,10 +36,14 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
     if (!history.empty())
         chatPanel.loadHistory(history);
 
+    // Sync chat visibility from processor (survives editor reconstruction, per D-23)
+    chatSidebarVisible = processorRef.chatSidebarVisible;
+
     // Chat toggle button (custom painted arrow)
     chatToggleButton.pointsRight = chatSidebarVisible;
     chatToggleButton.onClick = [this]() { toggleChatSidebar(); };
     addAndMakeVisible(chatToggleButton);
+    chatPanel.setVisible(chatSidebarVisible);
 
     // ServerBrowserOverlay (hidden by default)
     addChildComponent(serverBrowser);
@@ -288,6 +292,7 @@ void JamWideJuceEditor::refreshChannelStrips()
 void JamWideJuceEditor::toggleChatSidebar()
 {
     chatSidebarVisible = !chatSidebarVisible;
+    processorRef.chatSidebarVisible = chatSidebarVisible;  // Persist to processor
     chatToggleButton.pointsRight = chatSidebarVisible;
     chatToggleButton.repaint();
     chatPanel.setVisible(chatSidebarVisible);

@@ -92,10 +92,7 @@ private:
     bool chatSidebarVisible = true;
     int prevPollStatus_ = -1;  // REVIEW FIX: member, not static
 
-    void updateEditorWidth();
-
-    static constexpr int kMinWidth = 600;
-    static constexpr int kMaxWidth = 1800;
+    static constexpr int kBaseWidth = 1000;
     static constexpr int kBaseHeight = 700;
     static constexpr int kConnectionBarHeight = 44;
     static constexpr int kBeatBarHeight = 22;

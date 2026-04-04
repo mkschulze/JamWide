@@ -262,6 +262,8 @@ if(JAMWIDE_BUILD_JUCE)
         juce/JamWideJuceEditor.cpp
         juce/NinjamRunThread.cpp
         juce/ui/JamWideLookAndFeel.cpp
+        juce/ui/VuMeter.cpp
+        juce/ui/ChannelStrip.cpp
         src/net/server_list.cpp
     )
 

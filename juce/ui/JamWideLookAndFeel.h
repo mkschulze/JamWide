@@ -54,6 +54,9 @@ public:
                        bool isScrollbarVertical, int thumbStartPosition,
                        int thumbSize, bool isMouseOver, bool isMouseDown) override;
     void drawLabel(juce::Graphics&, juce::Label&) override;
+    void drawLinearSlider(juce::Graphics&, int x, int y, int width, int height,
+                          float sliderPos, float minSliderPos, float maxSliderPos,
+                          juce::Slider::SliderStyle, juce::Slider&) override;
 
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(JamWideLookAndFeel)

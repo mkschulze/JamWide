@@ -75,6 +75,27 @@ JamWideJuceProcessor::createParameterLayout()
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"metroMute", 1}, "Metronome Mute", false));
 
+    // Local channel parameters (4 channels x 3 params = 12 new params)
+    for (int ch = 0; ch < 4; ++ch)
+    {
+        juce::String suffix = juce::String(ch);
+
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{"localVol_" + suffix, 1},
+            "Local Ch" + juce::String(ch + 1) + " Volume",
+            juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.0f));
+
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{"localPan_" + suffix, 1},
+            "Local Ch" + juce::String(ch + 1) + " Pan",
+            juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f));
+
+        params.push_back(std::make_unique<juce::AudioParameterBool>(
+            juce::ParameterID{"localMute_" + suffix, 1},
+            "Local Ch" + juce::String(ch + 1) + " Mute",
+            false));
+    }
+
     return { params.begin(), params.end() };
 }
 

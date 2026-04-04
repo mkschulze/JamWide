@@ -263,6 +263,7 @@ if(JAMWIDE_BUILD_JUCE)
         juce/ui/JamWideLookAndFeel.cpp
         juce/ui/ConnectionBar.cpp
         juce/ui/ChatPanel.cpp
+        juce/ui/VbFader.cpp
         juce/ui/VuMeter.cpp
         juce/ui/ChannelStrip.cpp
         juce/ui/BeatBar.cpp

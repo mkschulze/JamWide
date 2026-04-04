@@ -157,3 +157,80 @@ void JamWideLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label)
                                                      / label.getFont().getHeight())),
                      label.getMinimumHorizontalScale());
 }
+
+//==============================================================================
+void JamWideLookAndFeel::drawLinearSlider(juce::Graphics& g,
+                                           int x, int y, int width, int height,
+                                           float sliderPos,
+                                           float minSliderPos, float maxSliderPos,
+                                           juce::Slider::SliderStyle style,
+                                           juce::Slider& slider)
+{
+    // Only handle horizontal sliders; delegate everything else to base
+    if (style != juce::Slider::LinearHorizontal)
+    {
+        LookAndFeel_V4::drawLinearSlider(g, x, y, width, height,
+                                          sliderPos, minSliderPos, maxSliderPos,
+                                          style, slider);
+        return;
+    }
+
+    const float fx = static_cast<float>(x);
+    const float fy = static_cast<float>(y);
+    const float fw = static_cast<float>(width);
+    const float fh = static_cast<float>(height);
+
+    const float trackHeight = 4.0f;
+    const float trackY = fy + (fh - trackHeight) / 2.0f;
+
+    // Detect slider type by component name
+    const bool isMetro = (slider.getName() == "MetroSlider");
+
+    // 1. Track background: 4px tall, full width, kBorderSubtle
+    g.setColour(juce::Colour(kBorderSubtle)); // 0xff3A3D58
+    g.fillRoundedRectangle(fx, trackY, fw, trackHeight, 2.0f);
+
+    if (isMetro)
+    {
+        // Metronome slider: yellow fill from left to thumb
+        const float fillWidth = sliderPos - fx;
+        if (fillWidth > 0.0f)
+        {
+            g.setColour(juce::Colour(kAccentWarning)); // 0xffCCB833
+            g.fillRoundedRectangle(fx, trackY, fillWidth, trackHeight, 2.0f);
+        }
+
+        // Thumb: 12px yellow circle with kBgPrimary border
+        constexpr float thumbDia = 12.0f;
+        const float thumbCentreY = trackY + trackHeight / 2.0f;
+
+        g.setColour(juce::Colour(kAccentWarning)); // 0xffCCB833
+        g.fillEllipse(sliderPos - thumbDia / 2.0f,
+                      thumbCentreY - thumbDia / 2.0f,
+                      thumbDia, thumbDia);
+
+        g.setColour(juce::Colour(kBgPrimary)); // 0xff1A1D2E
+        g.drawEllipse(sliderPos - thumbDia / 2.0f + 0.5f,
+                      thumbCentreY - thumbDia / 2.0f + 0.5f,
+                      thumbDia - 1.0f, thumbDia - 1.0f,
+                      1.0f);
+    }
+    else
+    {
+        // Pan slider: center notch, no directional fill
+        const float centreX = fx + fw / 2.0f;
+        g.setColour(juce::Colour(kTextSecondary)); // 0xff8888AA
+        g.drawVerticalLine(static_cast<int>(centreX),
+                           trackY - 2.0f,
+                           trackY + trackHeight + 2.0f);
+
+        // Thumb: 12px white circle
+        constexpr float thumbDia = 12.0f;
+        const float thumbCentreY = trackY + trackHeight / 2.0f;
+
+        g.setColour(juce::Colour(kTextPrimary)); // 0xffE0E0E0
+        g.fillEllipse(sliderPos - thumbDia / 2.0f,
+                      thumbCentreY - thumbDia / 2.0f,
+                      thumbDia, thumbDia);
+    }
+}

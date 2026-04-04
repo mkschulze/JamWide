@@ -322,21 +322,10 @@ void ChannelStrip::resized()
     fader.setBounds(faderBounds.reduced(0, 2));
 }
 
-// D-02: scroll anywhere on strip adjusts fader
-// REVIEW CONCERN ADDRESSED: consume vertical scroll to prevent viewport conflict.
+// Pass all scroll events through to parent (viewport).
+// Faders are not scroll-wheel controlled per user preference.
 void ChannelStrip::mouseWheelMove(const juce::MouseEvent& e,
                                    const juce::MouseWheelDetails& wheel)
 {
-    // Only vertical wheel adjusts fader. Horizontal wheel is NOT consumed
-    // and propagates to the Viewport for horizontal scrolling of the strip area.
-    if (std::abs(wheel.deltaY) > 0.0f)
-    {
-        fader.adjustByDb(wheel.deltaY > 0 ? 0.5f : -0.5f);
-        // Do NOT call Component::mouseWheelMove -- consume vertical scroll event
-    }
-    else
-    {
-        // Horizontal scroll: let it propagate to viewport
-        Component::mouseWheelMove(e, wheel);
-    }
+    Component::mouseWheelMove(e, wheel);
 }

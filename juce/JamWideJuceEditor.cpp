@@ -303,25 +303,10 @@ void JamWideJuceEditor::toggleChatSidebar()
 
 void JamWideJuceEditor::applyScale(float factor)
 {
-    // REVIEW FIX #1: Transform ONLY. Do NOT call setSize with scaled dimensions.
-    // Plugin hosts see the component bounds as the "real" size. If we both
-    // transform AND resize, the host applies its own DPI scaling on top,
-    // resulting in incorrect 2x or 3x scaling.
-    //
-    // setSize stays at kBaseWidth x kBaseHeight. The AffineTransform handles
-    // the visual scaling. The host constrains the window to base dimensions,
-    // and the transform makes content appear larger within those bounds.
+    // Tell the host our new size. setSize() informs the host to resize the
+    // plugin window. setTransform() then scales the rendering so layout code
+    // still works at kBaseWidth x kBaseHeight logical coordinates.
+    setSize(static_cast<int>(kBaseWidth * factor),
+            static_cast<int>(kBaseHeight * factor));
     setTransform(juce::AffineTransform::scale(factor));
-
-    // In standalone mode only, the window can grow.
-    // In plugin mode, the host manages the window size.
-    if (auto* peer = getPeer())
-    {
-        if (peer->getStyleFlags() & juce::ComponentPeer::windowHasTitleBar)
-        {
-            // Standalone: resize window to fit scaled content
-            setSize(static_cast<int>(kBaseWidth * factor),
-                    static_cast<int>(kBaseHeight * factor));
-        }
-    }
 }

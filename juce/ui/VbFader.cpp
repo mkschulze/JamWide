@@ -80,32 +80,22 @@ void VbFader::paint(juce::Graphics& g)
                                2.0f);
     }
 
-    // 3. dB scale ticks to the right of track
+    // 3. dB scale ticks on the track itself (small horizontal marks)
+    // Labels removed -- dB readout on thumb provides the value, tick marks
+    // are visual landmarks only. Keeps rendering within component bounds.
     {
-        const float tickX = trackX + static_cast<float>(kTrackWidth) + 4.0f;
-        g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary)); // 0xff8888AA
-        g.setFont(juce::Font(9.0f));
+        g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary).withAlpha(0.5f));
 
-        struct TickMark { float linear; const char* label; };
-        const TickMark ticks[] = {
-            { 2.0f,    "+6"   },
-            { 1.0f,    "0"    },
-            { 0.5012f, "-6"   },
-            { 0.1259f, "-18"  },
-            { 0.0f,    "-inf" }
-        };
-
-        for (const auto& tick : ticks)
+        const float tickLinears[] = { 2.0f, 1.0f, 0.5012f, 0.1259f, 0.0f };
+        for (float lin : tickLinears)
         {
-            float tickY = valueToY(tick.linear);
-            // 1px horizontal tick mark
-            g.drawHorizontalLine(static_cast<int>(tickY), tickX, tickX + 4.0f);
-            // Label
-            g.drawText(tick.label,
-                       static_cast<int>(tickX + 6.0f),
-                       static_cast<int>(tickY - 5.0f),
-                       30, 10,
-                       juce::Justification::centredLeft, false);
+            float tickY = valueToY(lin);
+            // Small marks extending left and right of the track
+            g.drawHorizontalLine(static_cast<int>(tickY),
+                                 trackX - 3.0f, trackX);
+            g.drawHorizontalLine(static_cast<int>(tickY),
+                                 trackX + static_cast<float>(kTrackWidth),
+                                 trackX + static_cast<float>(kTrackWidth) + 3.0f);
         }
     }
 
@@ -144,6 +134,14 @@ void VbFader::paint(juce::Graphics& g)
 //==============================================================================
 void VbFader::mouseDown(const juce::MouseEvent& e)
 {
+    // Forward right-clicks up to the editor for the scale menu
+    if (e.mods.isPopupMenu())
+    {
+        if (auto* top = getTopLevelComponent())
+            top->mouseDown(e.getEventRelativeTo(top));
+        return;
+    }
+
     dragStartY_ = e.y;
     dragStartValue_ = value_;
     gestureActive_ = true;
@@ -176,27 +174,12 @@ void VbFader::mouseDoubleClick(const juce::MouseEvent& /*e*/)
     setValue(defaultValue_);
 }
 
-void VbFader::mouseWheelMove(const juce::MouseEvent& /*e*/,
+void VbFader::mouseWheelMove(const juce::MouseEvent& e,
                               const juce::MouseWheelDetails& wheel)
 {
-    // Convert current value to dB
-    float currentDb = (value_ <= 0.0001f) ? -100.0f
-                                           : 20.0f * std::log10(value_);
-
-    // 0.5 dB per scroll step
-    currentDb += (wheel.deltaY > 0.0f) ? 0.5f : -0.5f;
-
-    // Clamp dB range
-    currentDb = juce::jlimit(-100.0f, 6.0f, currentDb);
-
-    // Convert back to linear
-    float newLinear = (currentDb <= -100.0f) ? 0.0f
-                                              : std::pow(10.0f, currentDb / 20.0f);
-
-    setValue(juce::jlimit(kMinLinear, kMaxLinear, newLinear));
-
-    // Consume the event -- do NOT call Component::mouseWheelMove()
-    // to prevent viewport scrolling conflict
+    // Pass scroll events through to parent (viewport) -- faders are not
+    // scroll-wheel controlled per user preference.
+    Component::mouseWheelMove(e, wheel);
 }
 
 //==============================================================================

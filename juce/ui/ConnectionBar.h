@@ -46,7 +46,6 @@ private:
     juce::Label userCountLabel;
 
     juce::ComboBox codecSelector;
-    juce::TextButton scaleButton;
 
     int currentStatus = -1;
 

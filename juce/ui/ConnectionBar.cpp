@@ -99,42 +99,6 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
     codecSelector.setColour(juce::ComboBox::outlineColourId, juce::Colour(JamWideLookAndFeel::kBorderSubtle));
     codecSelector.onChange = [this]() { handleCodecChange(); };
     addAndMakeVisible(codecSelector);
-
-    // Scale button -- shows current scale, click opens scale menu
-    scaleButton.setButtonText("1x");
-    scaleButton.setColour(juce::TextButton::buttonColourId,
-                          juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
-    scaleButton.setColour(juce::TextButton::textColourOffId,
-                          juce::Colour(JamWideLookAndFeel::kTextSecondary));
-    scaleButton.onClick = [this]() {
-        juce::PopupMenu menu;
-        menu.addItem(1, "1x",   true, juce::approximatelyEqual(processorRef.scaleFactor, 1.0f));
-        menu.addItem(2, "1.5x", true, juce::approximatelyEqual(processorRef.scaleFactor, 1.5f));
-        menu.addItem(3, "2x",   true, juce::approximatelyEqual(processorRef.scaleFactor, 2.0f));
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&scaleButton),
-            [this](int result) {
-                float newScale = 1.0f;
-                if (result == 2) newScale = 1.5f;
-                else if (result == 3) newScale = 2.0f;
-                else if (result != 1) return;
-                processorRef.scaleFactor = newScale;
-                // Update button label
-                if (juce::approximatelyEqual(newScale, 1.5f))
-                    scaleButton.setButtonText("1.5x");
-                else if (juce::approximatelyEqual(newScale, 2.0f))
-                    scaleButton.setButtonText("2x");
-                else
-                    scaleButton.setButtonText("1x");
-                if (onScaleChanged) onScaleChanged(newScale);
-            });
-    };
-    addAndMakeVisible(scaleButton);
-
-    // Sync initial scale label
-    if (juce::approximatelyEqual(processorRef.scaleFactor, 1.5f))
-        scaleButton.setButtonText("1.5x");
-    else if (juce::approximatelyEqual(processorRef.scaleFactor, 2.0f))
-        scaleButton.setButtonText("2x");
 }
 
 void ConnectionBar::resized()
@@ -175,8 +139,6 @@ void ConnectionBar::resized()
 
     // Right-aligned section
     int rightX = area.getRight();
-    scaleButton.setBounds(rightX - 36, y, 36, h);
-    rightX -= 36 + gap;
     codecSelector.setBounds(rightX - 80, y, 80, h);
     rightX -= 80 + gap;
 

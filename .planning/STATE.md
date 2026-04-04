@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 5 UI-SPEC approved
-last_updated: "2026-04-04T14:56:34.604Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-04-04T16:20:38.118Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
+  total_plans: 15
+  completed_plans: 12
   percent: 100
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-07)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Phase 4: Core UI Panels -- Not yet planned
+**Current focus:** Phase 05 — mixer-ui-and-channel-controls
 
 ## Current Position
 
-Phase: 5 of 7 (mixer ui and channel controls)
-Plan: Not started
+Phase: 05 (mixer-ui-and-channel-controls) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
 Last activity: 2026-04-04
 
@@ -79,6 +79,7 @@ Progress: [##########] 100%
 | Phase 04 P01 | 16min | 2 tasks | 8 files |
 | Phase 04 P03 | 10min | 2 tasks | 9 files |
 | Phase 04 P04 | 9min | 2 tasks | 10 files |
+| Phase 05 P01 | 4min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -125,6 +126,10 @@ Recent decisions affecting current work:
 - [Phase 04]: LicenseDialog: no mouseDown override -- scrim blocks but only Accept/Decline dismiss (prevents hanging run thread)
 - [Phase 04]: Double-click auto-connect uses existing password from ConnectionBar.getPassword()
 - [Phase 04]: Chat toggle redistributes within bounds, no setSize (REVIEW FIX #5)
+- [Phase 05]: VbFader is juce::Component (not Slider subclass) per research anti-pattern
+- [Phase 05]: uiScale and chatVisible excluded from APVTS (UI-only state, not automatable)
+- [Phase 05]: Pan vs metronome slider detection via component name (MetroSlider) in drawLinearSlider
+- [Phase 05]: Power curve exponent 2.5 for fader mapping gives more travel to low/mid dB range
 
 ### Pending Todos
 
@@ -138,6 +143,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-04T14:56:34.588Z
-Stopped at: Phase 5 UI-SPEC approved
+Last session: 2026-04-04T16:20:38.114Z
+Stopped at: Completed 05-01-PLAN.md
 Resume with: Execute 04-04 (Wave 3 — final assembly with ServerBrowser, LicenseDialog, Timing Guide removal)

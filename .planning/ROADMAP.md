@@ -100,7 +100,7 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 05-01-PLAN.md -- VbFader custom component, LookAndFeel pan/metro slider overrides, APVTS local channel parameters
+- [x] 05-01-PLAN.md -- VbFader custom component, LookAndFeel pan/metro slider overrides, APVTS local channel parameters
 - [ ] 05-02-PLAN.md -- ChannelStrip controls (footer + fader + scroll), remote mixer wiring with stable identity
 - [ ] 05-03-PLAN.md -- Multi-bus processBlock, local 4-channel expand/collapse, metronome controls, APVTS attachments
 - [ ] 05-04-PLAN.md -- State persistence (getStateInformation/setStateInformation), editor state sync

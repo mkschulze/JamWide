@@ -13,7 +13,7 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
       chatPanel(p)
 {
     setLookAndFeel(&lookAndFeel);
-    setSize(kBaseWidth, kBaseHeight);
+    setSize(kMinWidth, kBaseHeight);
     setResizable(false, false);  // D-22: not resizable
 
     // ConnectionBar
@@ -232,6 +232,7 @@ void JamWideJuceEditor::pollStatus()
         {
             channelStripArea.setDisconnectedState();
             chatPanel.setNotConnectedState();
+            updateEditorWidth();  // Shrink back to min width on disconnect
         }
         prevPollStatus_ = status;
     }
@@ -287,6 +288,19 @@ void JamWideJuceEditor::handleServerDoubleClicked(const juce::String& address)
 void JamWideJuceEditor::refreshChannelStrips()
 {
     channelStripArea.refreshFromUsers(processorRef.cachedUsers);
+    updateEditorWidth();
+}
+
+void JamWideJuceEditor::updateEditorWidth()
+{
+    // Desired width = strip area + chat panel + toggle + some padding
+    int stripWidth = channelStripArea.getDesiredWidth();
+    int chatWidth = chatSidebarVisible ? kChatPanelWidth : 0;
+    int totalWidth = stripWidth + chatWidth + kChatToggleWidth + 4;
+
+    totalWidth = juce::jlimit(kMinWidth, kMaxWidth, totalWidth);
+    if (totalWidth != getWidth())
+        setSize(totalWidth, kBaseHeight);
 }
 
 void JamWideJuceEditor::toggleChatSidebar()
@@ -296,17 +310,12 @@ void JamWideJuceEditor::toggleChatSidebar()
     chatToggleButton.pointsRight = chatSidebarVisible;
     chatToggleButton.repaint();
     chatPanel.setVisible(chatSidebarVisible);
-    // REVIEW FIX #5: Do NOT call setSize(). Redistribute space within current bounds.
-    // The channel strip area expands to fill the space freed by hiding chat.
-    resized();
+    updateEditorWidth();
 }
 
 void JamWideJuceEditor::applyScale(float factor)
 {
-    // Tell the host our new size. setSize() informs the host to resize the
-    // plugin window. setTransform() then scales the rendering so layout code
-    // still works at kBaseWidth x kBaseHeight logical coordinates.
-    setSize(static_cast<int>(kBaseWidth * factor),
-            static_cast<int>(kBaseHeight * factor));
+    // setTransform scales rendering; JUCE communicates physical size to host.
+    // Do NOT also call setSize with scaled dims -- that causes double scaling.
     setTransform(juce::AffineTransform::scale(factor));
 }

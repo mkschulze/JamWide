@@ -229,6 +229,23 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
             onBrowseClicked();
     };
 
+    // Fit button -- compress strips to fit viewport without scrolling
+    addChildComponent(fitButton);
+    fitButton.setButtonText("Fit");
+    fitButton.setColour(juce::TextButton::buttonColourId,
+                        juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
+    fitButton.setColour(juce::TextButton::buttonOnColourId,
+                        juce::Colour(JamWideLookAndFeel::kAccentConnect));
+    fitButton.setColour(juce::TextButton::textColourOffId,
+                        juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    fitButton.setColour(juce::TextButton::textColourOnId,
+                        juce::Colour(JamWideLookAndFeel::kTextPrimary));
+    fitButton.setClickingTogglesState(true);
+    fitButton.onClick = [this]() {
+        fitMode_ = fitButton.getToggleState();
+        resized();
+    };
+
     // Add master strip (outside viewport, pinned right)
     addAndMakeVisible(masterStrip);
 
@@ -592,6 +609,7 @@ void ChannelStripArea::setDisconnectedState()
     masterStrip.setVisible(false);
     metroSlider.setVisible(false);
     metroMuteBtn.setVisible(false);
+    fitButton.setVisible(false);
     emptyStateLabel.setVisible(true);
     browseButton.setVisible(true);
 
@@ -606,6 +624,7 @@ void ChannelStripArea::setConnectedState()
     masterStrip.setVisible(true);
     metroSlider.setVisible(true);
     metroMuteBtn.setVisible(true);
+    fitButton.setVisible(true);
     emptyStateLabel.setVisible(false);
     browseButton.setVisible(false);
 
@@ -644,6 +663,10 @@ void ChannelStripArea::resized()
         return;
     }
 
+    // Fit button: bottom-left corner of the strip area, above viewport
+    fitButton.setBounds(area.getX() + 2, area.getBottom() - 22, 32, 20);
+    fitButton.toFront(false);
+
     // Master strip pinned right
     auto masterArea = area.removeFromRight(kMasterWidth);
     masterStrip.setBounds(masterArea);
@@ -654,30 +677,42 @@ void ChannelStripArea::resized()
     // Viewport with local + remote strips
     viewport.setBounds(area);
 
-    // Layout strips inside container
+    // Count strips
     int localStripCount = 1 + (localExpanded_ ? static_cast<int>(localChildStrips.size()) : 0);
     int visibleRemoteStrips = 0;
     for (auto& strip : remoteStrips)
         if (strip->isVisible())
             ++visibleRemoteStrips;
     const int totalStrips = localStripCount + visibleRemoteStrips;
-    const int containerWidth = totalStrips * kStripPitch;
+
+    // Calculate strip dimensions -- normal or compressed to fit
+    int stripW = kStripWidth;
+    int stripP = kStripPitch;
+    if (fitMode_ && totalStrips > 0)
+    {
+        int availableW = area.getWidth();
+        stripP = juce::jmax(kStripWidthMin + 2, availableW / totalStrips);
+        stripW = stripP - (kStripPitch - kStripWidth);  // keep same gap ratio
+        stripW = juce::jmax(kStripWidthMin, stripW);
+    }
+
+    const int containerWidth = totalStrips * stripP;
     const int containerHeight = area.getHeight();
     stripContainer.setBounds(0, 0, containerWidth, containerHeight);
 
     int x = 0;
 
     // Local strip
-    localStrip.setBounds(x, 0, kStripWidth, containerHeight);
-    x += kStripPitch;
+    localStrip.setBounds(x, 0, stripW, containerHeight);
+    x += stripP;
 
     // Local child strips (when expanded)
     if (localExpanded_)
     {
         for (auto& child : localChildStrips)
         {
-            child->setBounds(x, 0, kStripWidth, containerHeight);
-            x += kStripPitch;
+            child->setBounds(x, 0, stripW, containerHeight);
+            x += stripP;
         }
     }
 
@@ -686,8 +721,8 @@ void ChannelStripArea::resized()
     {
         if (strip->isVisible())
         {
-            strip->setBounds(x, 0, kStripWidth, containerHeight);
-            x += kStripPitch;
+            strip->setBounds(x, 0, stripW, containerHeight);
+            x += stripP;
         }
     }
 

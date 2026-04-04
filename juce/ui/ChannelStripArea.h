@@ -67,10 +67,13 @@ private:
 
     juce::Label emptyStateLabel;
     juce::TextButton browseButton;
+    juce::TextButton fitButton;       // "Fit" toggle -- compress strips to fit viewport
     bool isConnected = false;
+    bool fitMode_ = false;            // true = compress strips to fit without scrolling
 
     static constexpr int kStripWidth = 100;
     static constexpr int kStripPitch = 106;
+    static constexpr int kStripWidthMin = 54;  // minimum compressed strip width
     static constexpr int kMasterWidth = 110;
     static constexpr int kMaxVisibleStrips = 13;
 

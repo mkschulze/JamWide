@@ -37,7 +37,7 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
         chatPanel.loadHistory(history);
 
     // Chat toggle button
-    chatToggleButton.setButtonText(chatSidebarVisible ? "<" : ">");
+    chatToggleButton.setButtonText(chatSidebarVisible ? juce::String::charToString(0x25B6) : juce::String::charToString(0x25C0));
     chatToggleButton.setColour(juce::TextButton::buttonColourId,
         juce::Colour(JamWideLookAndFeel::kBgElevated));
     chatToggleButton.setColour(juce::TextButton::textColourOffId,
@@ -262,7 +262,7 @@ void JamWideJuceEditor::refreshChannelStrips()
 void JamWideJuceEditor::toggleChatSidebar()
 {
     chatSidebarVisible = !chatSidebarVisible;
-    chatToggleButton.setButtonText(chatSidebarVisible ? "<" : ">");
+    chatToggleButton.setButtonText(chatSidebarVisible ? juce::String::charToString(0x25B6) : juce::String::charToString(0x25C0));
     chatPanel.setVisible(chatSidebarVisible);
     // REVIEW FIX #5: Do NOT call setSize(). Redistribute space within current bounds.
     // The channel strip area expands to fill the space freed by hiding chat.

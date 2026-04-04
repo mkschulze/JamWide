@@ -154,35 +154,60 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     if (client && client->cached_status.load(std::memory_order_acquire)
                   == NJClient::NJC_STATUS_OK)
     {
-        // In-place buffer safety: copy input to scratch before AudioProc
-        // (AudioProc may write to outbuf which is the same buffer object)
-        const int nch = juce::jmin(2, totalChannels);
-        inputScratch.setSize(2, numSamples, false, false, true);
-        for (int ch = 0; ch < nch; ++ch)
-            inputScratch.copyFrom(ch, 0, buffer, ch, 0, numSamples);
+        // Collect inputs from all active stereo input buses
+        // BusesProperties declares 4 stereo inputs: Local 1..4
+        // NJClient::AudioProc expects mono channel pointers
+        const int numInputBuses = getBusCount(true);
+        const int maxInputChannels = numInputBuses * 2;  // up to 8 mono channels
 
-        // DEBUG: Log input level periodically
-        static int dbgCounter = 0;
-        if (++dbgCounter >= 500)
+        // Size scratch buffer for all input channels
+        inputScratch.setSize(maxInputChannels, numSamples, false, false, true);
+
+        int numInputChannels = 0;
+        for (int bus = 0; bus < numInputBuses; ++bus)
         {
-            dbgCounter = 0;
-            float peakL = inputScratch.getMagnitude(0, 0, numSamples);
-            float peakR = inputScratch.getMagnitude(1, 0, numSamples);
-            fprintf(stderr, "[processBlock] AudioProc path: nch=%d totalCh=%d inPeakL=%.6f inPeakR=%.6f srate=%d\n",
-                    nch, totalChannels, peakL, peakR, (int)storedSampleRate);
+            auto* inputBus = getBus(true, bus);
+            if (inputBus == nullptr || !inputBus->isEnabled())
+            {
+                // Disabled bus: zero its channels in scratch
+                inputScratch.clear(bus * 2,     0, numSamples);
+                inputScratch.clear(bus * 2 + 1, 0, numSamples);
+                numInputChannels += 2;  // Still count them for NJClient channel mapping
+                continue;
+            }
+            // Get the buffer range for this input bus
+            auto busBuffer = getBusBuffer(buffer, true, bus);
+            int busChannels = busBuffer.getNumChannels();
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                int scratchCh = bus * 2 + ch;
+                if (ch < busChannels)
+                    inputScratch.copyFrom(scratchCh, 0, busBuffer, ch, 0, numSamples);
+                else
+                    inputScratch.clear(scratchCh, 0, numSamples);
+            }
+            numInputChannels += 2;
         }
-        // Zero any scratch channels beyond what buffer provides
-        for (int ch = nch; ch < 2; ++ch)
-            inputScratch.clear(ch, 0, numSamples);
 
-        float* inPtrs[2] = { inputScratch.getWritePointer(0),
-                              inputScratch.getWritePointer(1) };
-        float* outPtrs[2] = { buffer.getWritePointer(0),
-                               totalChannels > 1 ? buffer.getWritePointer(1)
-                                                 : buffer.getWritePointer(0) };
+        // Build input pointer array for AudioProc
+        float* inPtrs[8] = {};
+        for (int ch = 0; ch < numInputChannels && ch < 8; ++ch)
+            inPtrs[ch] = inputScratch.getWritePointer(ch);
 
-        client->AudioProc(inPtrs, 2, outPtrs, 2, numSamples,
+        // Output remains stereo on bus 0 (Phase 6 adds multichannel output)
+        float* outPtrs[2] = {
+            buffer.getWritePointer(0),
+            totalChannels > 1 ? buffer.getWritePointer(1) : buffer.getWritePointer(0)
+        };
+
+        client->AudioProc(inPtrs, numInputChannels, outPtrs, 2, numSamples,
                           static_cast<int>(storedSampleRate));
+
+        // Master VU (after AudioProc writes output)
+        float masterPeakL = buffer.getMagnitude(0, 0, numSamples);
+        float masterPeakR = totalChannels > 1 ? buffer.getMagnitude(1, 0, numSamples) : masterPeakL;
+        uiSnapshot.master_vu_left.store(masterPeakL, std::memory_order_relaxed);
+        uiSnapshot.master_vu_right.store(masterPeakR, std::memory_order_relaxed);
 
         // Clear any remaining output channels beyond stereo
         for (int ch = 2; ch < totalChannels; ++ch)

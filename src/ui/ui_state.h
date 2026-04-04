@@ -131,6 +131,10 @@ struct UiAtomicSnapshot {
     std::atomic<float> master_vu_right{0.0f};
     std::atomic<float> local_vu_left{0.0f};
     std::atomic<float> local_vu_right{0.0f};
+
+    // Local VU for channels 0-3
+    std::array<std::atomic<float>, 4> local_ch_vu_left{};
+    std::array<std::atomic<float>, 4> local_ch_vu_right{};
 };
 
 #endif // UI_STATE_H

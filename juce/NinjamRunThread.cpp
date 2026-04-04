@@ -274,13 +274,26 @@ void NinjamRunThread::run()
 
                 lastStatus_ = currentStatus;
 
-                // On connect: set up default local channel
+                // On connect: set up all 4 local channels per D-12
                 if (currentStatus == NJClient::NJC_STATUS_OK)
                 {
-                    client->SetLocalChannelInfo(0, "Channel",
-                        true, 0 | (1 << 10),    // stereo input
+                    // Channel 0: stereo input, transmit=true (default)
+                    client->SetLocalChannelInfo(0, "Ch1",
+                        true, processor.localInputSelector[0] | (1 << 10),  // stereo pair
                         true, 256,               // 256 kbps
-                        true, true);             // transmit enabled
+                        true, processor.localTransmit[0]);
+
+                    // Channels 1-3: stereo input pairs, transmit=false by default (D-15)
+                    // Use input bus and transmit state from processor (persisted per D-14, D-21)
+                    for (int ch = 1; ch < 4; ++ch)
+                    {
+                        juce::String name = "Ch" + juce::String(ch + 1);
+                        int srcch = processor.localInputSelector[ch] | (1 << 10);  // stereo pair
+                        client->SetLocalChannelInfo(ch, name.toRawUTF8(),
+                            true, srcch,
+                            true, 256,
+                            true, processor.localTransmit[ch]);
+                    }
                 }
             }
 
@@ -333,11 +346,21 @@ void NinjamRunThread::run()
             int beat = (iLen > 0) ? (bpi * iPos / iLen) : 0;
             processor.uiSnapshot.beat_position.store(beat, std::memory_order_relaxed);
 
-            // Local VU
+            // Local VU for all 4 channels
+            for (int ch = 0; ch < 4; ++ch)
+            {
+                processor.uiSnapshot.local_ch_vu_left[ch].store(
+                    client->GetLocalChannelPeak(ch, 0), std::memory_order_relaxed);
+                processor.uiSnapshot.local_ch_vu_right[ch].store(
+                    client->GetLocalChannelPeak(ch, 1), std::memory_order_relaxed);
+            }
+            // Keep backward compat: also write channel 0 to the original fields
             processor.uiSnapshot.local_vu_left.store(
-                client->GetLocalChannelPeak(0, 0), std::memory_order_relaxed);
+                processor.uiSnapshot.local_ch_vu_left[0].load(std::memory_order_relaxed),
+                std::memory_order_relaxed);
             processor.uiSnapshot.local_vu_right.store(
-                client->GetLocalChannelPeak(0, 1), std::memory_order_relaxed);
+                processor.uiSnapshot.local_ch_vu_right[0].load(std::memory_order_relaxed),
+                std::memory_order_relaxed);
 
             // Master VU (output peak)
             processor.uiSnapshot.master_vu_left.store(
@@ -396,7 +419,7 @@ void NinjamRunThread::processCommands(NJClient* client)
             else if constexpr (std::is_same_v<T, jamwide::SetLocalChannelInfoCommand>)
             {
                 client->SetLocalChannelInfo(c.channel, c.name.c_str(),
-                    false, 0,
+                    c.set_srcch, c.srcch,
                     c.set_bitrate, c.bitrate,
                     c.set_transmit, c.transmit);
             }

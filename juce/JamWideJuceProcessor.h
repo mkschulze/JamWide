@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include <array>
 #include <memory>
 #include <mutex>
 #include <condition_variable>
@@ -108,6 +109,16 @@ public:
     juce::String lastServerAddress{"ninbot.com"};
     juce::String lastUsername{"anonymous"};
     float scaleFactor{1.0f};
+
+    // Chat sidebar visibility (persisted via ValueTree, NOT APVTS param per review)
+    bool chatSidebarVisible{true};
+
+    // Local channel transmit state (persisted via ValueTree, per D-21 and D-15)
+    std::array<bool, 4> localTransmit{true, false, false, false};
+
+    // Local channel input selector (persisted via ValueTree, per D-21 and D-14)
+    // Stores 0-based stereo pair index (0=Input 1-2, 1=Input 3-4, etc.)
+    std::array<int, 4> localInputSelector{0, 1, 2, 3};
 
     // License sync primitives (mirrors CLAP plugin pattern)
     std::mutex license_mutex;

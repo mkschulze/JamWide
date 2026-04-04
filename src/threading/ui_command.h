@@ -27,6 +27,8 @@ struct SetLocalChannelInfoCommand {
     int bitrate = 0;
     bool set_transmit = false;
     bool transmit = false;
+    bool set_srcch = false;
+    int srcch = 0;  // Input bus selector (stereo pair index with bit 10 set)
 };
 
 struct SetLocalChannelMonitoringCommand {

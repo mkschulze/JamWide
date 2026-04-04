@@ -205,7 +205,7 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
     // Set up viewport with strip container
     addAndMakeVisible(viewport);
     viewport.setViewedComponent(&stripContainer, false);
-    viewport.setScrollBarsShown(false, true); // horizontal scroll only
+    viewport.setScrollBarsShown(false, false); // no scrollbar -- Fit button + mouse wheel to navigate
 
     // Empty state label (D-28)
     addChildComponent(emptyStateLabel);

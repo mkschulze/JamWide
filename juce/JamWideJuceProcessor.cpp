@@ -276,8 +276,31 @@ void JamWideJuceProcessor::changeProgramName(int /*index*/, const juce::String& 
 //==============================================================================
 void JamWideJuceProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
+    // Start with APVTS state tree (contains all 16 parameter values)
     auto state = apvts.copyState();
+
+    // Add state version for forward-compatible migration
     state.setProperty("stateVersion", currentStateVersion, nullptr);
+
+    // Non-APVTS persistent state (D-22: server/username)
+    state.setProperty("lastServer", lastServerAddress, nullptr);
+    state.setProperty("lastUsername", lastUsername, nullptr);
+
+    // Non-APVTS persistent state (D-23: UI prefs)
+    // NOTE: These are NOT APVTS params per review concern -- stored as ValueTree
+    // properties only. They will NOT appear in host automation lanes.
+    state.setProperty("scaleFactor", static_cast<double>(scaleFactor), nullptr);
+    state.setProperty("chatSidebarVisible", chatSidebarVisible, nullptr);
+
+    // Local channel input selectors and transmit state (D-21, D-14, D-15)
+    for (int ch = 0; ch < 4; ++ch)
+    {
+        state.setProperty("localCh" + juce::String(ch) + "Input",
+                          localInputSelector[static_cast<size_t>(ch)], nullptr);
+        state.setProperty("localCh" + juce::String(ch) + "Tx",
+                          localTransmit[static_cast<size_t>(ch)], nullptr);
+    }
+
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -285,14 +308,46 @@ void JamWideJuceProcessor::getStateInformation(juce::MemoryBlock& destData)
 void JamWideJuceProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     std::unique_ptr<juce::XmlElement> xml(getXmlFromBinary(data, sizeInBytes));
-    if (xml && xml->hasTagName(apvts.state.getType()))
+    if (!xml || !xml->hasTagName(apvts.state.getType()))
+        return;
+
+    auto tree = juce::ValueTree::fromXml(*xml);
+    int version = tree.getProperty("stateVersion", 0);
+    juce::ignoreUnused(version);  // Future: migrate state based on version
+
+    // STEP 1: Extract non-APVTS state BEFORE replaceState
+    // (replaceState may strip unknown properties depending on JUCE version)
+    lastServerAddress = tree.getProperty("lastServer", "ninbot.com").toString();
+    lastUsername = tree.getProperty("lastUsername", "anonymous").toString();
+
+    // Validate scaleFactor to one of the allowed values (1.0, 1.5, 2.0)
+    double rawScale = tree.getProperty("scaleFactor", 1.0);
+    if (rawScale >= 1.9)
+        scaleFactor = 2.0f;
+    else if (rawScale >= 1.4)
+        scaleFactor = 1.5f;
+    else
+        scaleFactor = 1.0f;
+
+    chatSidebarVisible = tree.getProperty("chatSidebarVisible", true);
+
+    // Restore and validate local channel settings (D-21, D-14)
+    for (int ch = 0; ch < 4; ++ch)
     {
-        auto tree = juce::ValueTree::fromXml(*xml);
-        int version = tree.getProperty("stateVersion", 0);
-        // Future phases: migrate state based on version
-        juce::ignoreUnused(version);
-        apvts.replaceState(tree);
+        int rawInput = tree.getProperty(
+            "localCh" + juce::String(ch) + "Input", ch);
+        // Validate: clamp to valid range 0-3 (review concern: input bus validation)
+        localInputSelector[static_cast<size_t>(ch)] = juce::jlimit(0, 3, rawInput);
+
+        localTransmit[static_cast<size_t>(ch)] = tree.getProperty(
+            "localCh" + juce::String(ch) + "Tx", ch == 0);
     }
+
+    // STEP 2: Restore APVTS parameters
+    // replaceState handles masterVol, masterMute, metroVol, metroMute,
+    // localVol_0..3, localPan_0..3, localMute_0..3
+    // Missing parameters get their defaults (forward-compatible, per pitfall 3)
+    apvts.replaceState(tree);
 }
 
 //==============================================================================

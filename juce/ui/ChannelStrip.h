@@ -53,6 +53,7 @@ public:
     // Input bus selector access
     juce::ComboBox& getInputBusSelector();
     void setInputBus(int busIndex);  // Update display (for state restore). 0-based pair index.
+    void setRoutingBus(int busIndex);  // Update routing selector display without firing callback
 
     StripType getType() const { return stripType; }
     bool isExpanded() const { return expanded_; }

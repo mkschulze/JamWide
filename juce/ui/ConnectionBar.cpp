@@ -111,6 +111,47 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
         if (onFitClicked) onFitClicked();
     };
     addAndMakeVisible(fitButton);
+
+    // Route button (quick-assign per D-02)
+    routeButton.setButtonText("Route");
+    routeButton.setColour(juce::TextButton::buttonColourId,
+        juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
+    routeButton.setColour(juce::TextButton::textColourOffId,
+        juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    routeButton.setTooltip("Enable additional outputs in your DAW's plugin I/O settings");
+    routeButton.onClick = [this]()
+    {
+        // REVIEW FIX: Use .load() for atomic routingMode access
+        int currentMode = processorRef.routingMode.load(std::memory_order_relaxed);
+
+        // Menu item IDs: 1=Manual, 2=By User, 3=By Channel
+        // Mode values:   0=manual, 2=by-user, 1=by-channel
+        juce::PopupMenu menu;
+        menu.addItem(1, "Manual (Main Mix)", true, currentMode == 0);
+        menu.addItem(2, "Assign by User",    true, currentMode == 2);
+        menu.addItem(3, "Assign by Channel", true, currentMode == 1);
+
+        menu.showMenuAsync(juce::PopupMenu::Options()
+            .withTargetComponent(&routeButton)
+            .withMinimumWidth(160),
+            [this](int result)
+            {
+                if (result == 0) return;  // dismissed
+                // Map menu item IDs to mode values:
+                // Item 1 -> mode 0 (Manual)
+                // Item 2 -> mode 2 (By User)
+                // Item 3 -> mode 1 (By Channel)
+                int mode = 0;
+                if (result == 2) mode = 2;       // By User
+                else if (result == 3) mode = 1;  // By Channel
+                // REVIEW FIX: Use .store() for atomic routingMode access
+                processorRef.routingMode.store(mode, std::memory_order_relaxed);
+                setRoutingModeHighlight(mode);
+                if (onRouteModeChanged)
+                    onRouteModeChanged(mode);
+            });
+    };
+    addAndMakeVisible(routeButton);
 }
 
 void ConnectionBar::resized()
@@ -153,6 +194,8 @@ void ConnectionBar::resized()
     int rightX = area.getRight();
     codecSelector.setBounds(rightX - 80, y, 80, h);
     rightX -= 80 + gap;
+    routeButton.setBounds(rightX - 52, y, 52, h);
+    rightX -= 52 + gap;
     fitButton.setBounds(rightX - 36, y, 36, h);
     rightX -= 36 + gap;
 
@@ -280,6 +323,21 @@ void ConnectionBar::setFitHighlight(bool overflow)
         fitButton.setColour(juce::TextButton::textColourOffId,
                             juce::Colour(JamWideLookAndFeel::kTextSecondary));
     }
+}
+
+void ConnectionBar::setRoutingModeHighlight(int mode)
+{
+    if (mode > 0)
+    {
+        routeButton.setColour(juce::TextButton::textColourOffId,
+            juce::Colour(JamWideLookAndFeel::kAccentConnect));
+    }
+    else
+    {
+        routeButton.setColour(juce::TextButton::textColourOffId,
+            juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    }
+    routeButton.repaint();
 }
 
 void ConnectionBar::handleCodecChange()

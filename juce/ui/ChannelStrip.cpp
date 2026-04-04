@@ -30,13 +30,23 @@ ChannelStrip::ChannelStrip()
 
     // Routing selector
     addChildComponent(routingSelector);
-    for (int i = 0; i < 16; ++i)
-        routingSelector.addItem("Out " + juce::String(i + 1) + "/" + juce::String(i + 2), i + 1);
+    routingSelector.addItem("Main Mix", 1);
+    for (int i = 0; i < 15; ++i)  // 15 remote buses (1-15), bus 16 reserved for metronome
+        routingSelector.addItem("Remote " + juce::String(i + 1), i + 2);
     routingSelector.setSelectedId(1, juce::dontSendNotification);
     routingSelector.onChange = [this]()
     {
+        int selectedId = routingSelector.getSelectedId();
+        int busIndex = selectedId - 1;  // ID 1 = bus 0 (Main Mix), ID 2 = bus 1, etc.
+        // Green text when routed to dedicated bus, normal when Main Mix
+        if (busIndex > 0)
+            routingSelector.setColour(juce::ComboBox::textColourId,
+                juce::Colour(0xFF40E070));  // kAccentConnect
+        else
+            routingSelector.setColour(juce::ComboBox::textColourId,
+                juce::Colour(0xFFDDDDEE));  // kTextPrimary
         if (onRoutingChanged)
-            onRoutingChanged(routingSelector.getSelectedId() - 1);
+            onRoutingChanged(busIndex);
     };
 
     // Subscribe / Transmit toggle button
@@ -225,6 +235,19 @@ juce::TextButton& ChannelStrip::getSoloButton() { return soloButton; }
 juce::ComboBox& ChannelStrip::getInputBusSelector() { return inputBusSelector; }
 void ChannelStrip::setInputBus(int busIndex) {
     inputBusSelector.setSelectedId(busIndex + 1, juce::dontSendNotification);
+}
+
+void ChannelStrip::setRoutingBus(int busIndex)
+{
+    int selectorId = busIndex + 1;  // bus 0 = ID 1 (Main Mix), bus 1 = ID 2 (Remote 1), etc.
+    routingSelector.setSelectedId(selectorId, juce::dontSendNotification);
+    // Update text color: green for dedicated bus, normal for Main Mix
+    if (busIndex > 0)
+        routingSelector.setColour(juce::ComboBox::textColourId,
+            juce::Colour(0xFF40E070));  // kAccentConnect
+    else
+        routingSelector.setColour(juce::ComboBox::textColourId,
+            juce::Colour(0xFFDDDDEE));  // kTextPrimary
 }
 
 void ChannelStrip::paint(juce::Graphics& g)

@@ -26,6 +26,9 @@ public:
     std::function<void()> onConnectClicked;
     std::function<void(float)> onScaleChanged;  // D-23
     std::function<void()> onFitClicked;
+    std::function<void(int)> onRouteModeChanged;  // 0=manual, 1=by-channel, 2=by-user
+
+    void setRoutingModeHighlight(int mode);  // Updates Route button text color
 
 private:
     void handleConnectClick();
@@ -49,6 +52,7 @@ private:
 
     juce::ComboBox codecSelector;
     juce::TextButton fitButton;
+    juce::TextButton routeButton;
 
     int currentStatus = -1;
 

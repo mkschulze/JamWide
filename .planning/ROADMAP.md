@@ -150,7 +150,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 08-01-PLAN.md -- Fix codec selector default, wire remote codec badge, surface error_msg
+- [x] 08-01-PLAN.md -- Fix codec selector default, wire remote codec badge, surface error_msg
 
 ## Future Milestones
 

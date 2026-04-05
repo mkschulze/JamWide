@@ -283,12 +283,9 @@ void JamWideJuceEditor::pollStatus()
     if (!client) return;
 
     int status = client->cached_status.load(std::memory_order_acquire);
-    float bpm = processorRef.uiSnapshot.bpm.load(std::memory_order_relaxed);
-    int bpi = processorRef.uiSnapshot.bpi.load(std::memory_order_relaxed);
-    int beat = processorRef.uiSnapshot.beat_position.load(std::memory_order_relaxed);
     int numUsers = processorRef.userCount.load(std::memory_order_relaxed);
 
-    connectionBar.updateStatus(status, bpm, bpi, beat, numUsers);
+    connectionBar.updateStatus(status, numUsers);
 
     // REVIEW FIX: Use member variable prevPollStatus_ instead of static int lastStatus.
     // This prevents state leaking across editor reconstructions.

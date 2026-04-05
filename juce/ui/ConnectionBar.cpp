@@ -78,12 +78,6 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
     statusLabel.setColour(juce::Label::textColourId, juce::Colour(JamWideLookAndFeel::kTextSecondary));
     addAndMakeVisible(statusLabel);
 
-    // BPM/BPI label
-    bpmBpiLabel.setFont(juce::FontOptions(13.0f).withStyle("Bold"));
-    bpmBpiLabel.setText("", juce::dontSendNotification);
-    bpmBpiLabel.setColour(juce::Label::textColourId, juce::Colour(JamWideLookAndFeel::kTextPrimary));
-    addAndMakeVisible(bpmBpiLabel);
-
     // User count label
     userCountLabel.setFont(juce::FontOptions(11.0f));
     userCountLabel.setText("", juce::dontSendNotification);
@@ -217,12 +211,6 @@ void ConnectionBar::resized()
     rightX -= 36 + gap;
 
     userCountLabel.setBounds(rightX - 70, y, 70, h);
-    rightX -= 70 + gap;
-
-    // BPM/BPI gets remaining space
-    int bpmWidth = rightX - x;
-    if (bpmWidth > 0)
-        bpmBpiLabel.setBounds(x, y, bpmWidth, h);
 }
 
 void ConnectionBar::paint(juce::Graphics& g)
@@ -374,7 +362,7 @@ void ConnectionBar::handleCodecChange()
     }
 }
 
-void ConnectionBar::updateStatus(int njcStatus, float bpm, int bpi, int beat, int numUsers)
+void ConnectionBar::updateStatus(int njcStatus, int numUsers)
 {
     currentStatus = njcStatus;
 
@@ -411,15 +399,10 @@ void ConnectionBar::updateStatus(int njcStatus, float bpm, int bpi, int beat, in
     // Update BPM/BPI/beat and user count
     if (njcStatus == NJClient::NJC_STATUS_OK)
     {
-        bpmBpiLabel.setText(juce::String(static_cast<int>(bpm)) + " BPM | "
-                          + juce::String(bpi) + " BPI | Beat "
-                          + juce::String(beat),
-                          juce::dontSendNotification);
         userCountLabel.setText(juce::String(numUsers) + " users", juce::dontSendNotification);
     }
     else
     {
-        bpmBpiLabel.setText("", juce::dontSendNotification);
         userCountLabel.setText("", juce::dontSendNotification);
     }
 

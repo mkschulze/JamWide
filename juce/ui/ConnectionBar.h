@@ -13,7 +13,7 @@ public:
     void paint(juce::Graphics& g) override;
     void mouseDown(const juce::MouseEvent& e) override;
 
-    void updateStatus(int njcStatus, float bpm, int bpi, int beat, int numUsers);
+    void updateStatus(int njcStatus, int numUsers);
     void setServerAddress(const juce::String& addr);
 
     juce::String getServerAddress() const;
@@ -49,7 +49,6 @@ private:
     juce::TextButton browseButton;
 
     juce::Label statusLabel;
-    juce::Label bpmBpiLabel;
     juce::Label userCountLabel;
 
     juce::ComboBox codecSelector;

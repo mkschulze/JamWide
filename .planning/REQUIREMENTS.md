@@ -1,7 +1,7 @@
 # Requirements: JamWide v1.1
 
 **Defined:** 2026-04-05
-**Core Value:** Musicians can jam together online with lossless audio quality and per-user mixing — in any DAW or standalone.
+**Core Value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
 
 ## v1.1 Requirements
 
@@ -66,13 +66,35 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| — | — | — |
+| OSC-01 | Phase 9 | Pending |
+| OSC-02 | Phase 9 | Pending |
+| OSC-03 | Phase 9 | Pending |
+| OSC-04 | Phase 10 | Pending |
+| OSC-05 | Phase 10 | Pending |
+| OSC-06 | Phase 9 | Pending |
+| OSC-07 | Phase 9 | Pending |
+| OSC-08 | Phase 10 | Pending |
+| OSC-09 | Phase 9 | Pending |
+| OSC-10 | Phase 9 | Pending |
+| OSC-11 | Phase 10 | Pending |
+| VID-01 | Phase 11 | Pending |
+| VID-02 | Phase 11 | Pending |
+| VID-03 | Phase 11 | Pending |
+| VID-04 | Phase 11 | Pending |
+| VID-05 | Phase 11 | Pending |
+| VID-06 | Phase 11 | Pending |
+| VID-07 | Phase 13 | Pending |
+| VID-08 | Phase 12 | Pending |
+| VID-09 | Phase 12 | Pending |
+| VID-10 | Phase 12 | Pending |
+| VID-11 | Phase 13 | Pending |
+| VID-12 | Phase 12 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 23 total
-- Mapped to phases: 0
-- Unmapped: 23 ⚠️
+- Mapped to phases: 23
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-05*
-*Last updated: 2026-04-05 after initial definition*
+*Last updated: 2026-04-05 after roadmap creation*

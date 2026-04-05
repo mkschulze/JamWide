@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: OSC + Video
-status: defining
+status: ready_to_plan
 stopped_at: null
 last_updated: "2026-04-05"
 last_activity: 2026-04-05
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,31 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-05)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Defining requirements for v1.1
+**Current focus:** Phase 9 - OSC Server Core
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-04-05 — Milestone v1.1 started
+Phase: 9 of 13 (OSC Server Core) -- first phase of v1.1
+Plan: 0 of 0 in current phase (not yet planned)
+Status: Ready to plan
+Last activity: 2026-04-05 -- v1.1 roadmap created (5 phases, 23 requirements mapped)
+
+Progress: [..........] 0% (v1.1 milestone)
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 21 (v1.0)
+- v1.1 plans completed: 0
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| 1-8 (v1.0) | 21 | -- | -- |
+| 9-13 (v1.1) | TBD | -- | -- |
+
+*Updated after each plan completion*
 
 ## Accumulated Context
 
@@ -37,19 +54,27 @@ Last activity: 2026-04-05 — Milestone v1.1 started
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- VDO.Ninja browser companion (not embedded WebView) — keeps plugin lightweight, browser handles video rendering
-- OSC via juce_osc (IEM pattern) — no external deps, proven across 20+ IEM plugins
-- Index-based OSC addressing for remote users — stable fader mapping, name broadcast on roster change
-- VDO.Ninja iframe-based API is the only official integration method; companion page approach avoids this complexity
-- FLAC is default codec (CODEC-05)
-- Non-APVTS state extracted BEFORE replaceState to prevent property loss across JUCE versions
+- VDO.Ninja browser companion (not embedded WebView) -- keeps plugin lightweight
+- OSC via juce_osc (IEM pattern) -- no external deps, proven across 20+ IEM plugins
+- Index-based OSC addressing for remote users -- stable fader mapping, name broadcast on roster change
+- OSC before Video in v1.1 -- zero new deps, proven patterns, immediate user value
+- Phase 11 (Video) independent of OSC phases -- architecturally decoupled
+- Companion page on GitHub Pages HTTPS, plugin runs local WebSocket only (mixed-content constraint)
+- OSC callbacks must dispatch via callAsync() to preserve SPSC cmd_queue single-producer invariant
+- State version bump 1 to 2 for OSC config persistence
 
 ### Pending Todos
 
 (Carried from v1.0)
-- Phase 3 audio transmission not working end-to-end — needs debugging (user reported; will address during v1.1)
+- Phase 3 audio transmission not working end-to-end -- needs debugging
 
 ### Blockers/Concerns
 
-- libFLAC integration approach decided: git submodule at libs/libflac (xiph/flac @ 1.5.0), WITH_OGG OFF.
-- JUCE license resolved: GPL, no splash screen required (JUCE_DISPLAY_SPLASH_SCREEN=0).
+- [Phase 11]: OpenSSL linkage on Windows CI unvalidated -- project has no OpenSSL dependency yet
+- [Phase 12]: VDO.Ninja external API is self-labeled DRAFT -- may require adaptation
+
+## Session Continuity
+
+Last session: 2026-04-05
+Stopped at: v1.1 roadmap created, ready to plan Phase 9
+Resume file: None

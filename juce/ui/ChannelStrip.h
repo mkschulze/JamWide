@@ -76,7 +76,7 @@ private:
     int channelCount_ = 1;
 
     static constexpr int kStripWidth = 100;
-    static constexpr int kHeaderHeight = 66;
+    static constexpr int kHeaderHeight = 84;
     static constexpr int kFooterHeight = 38;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ChannelStrip)

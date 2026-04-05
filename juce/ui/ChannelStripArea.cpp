@@ -71,8 +71,11 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
     for (int ch = 1; ch < 4; ++ch)
     {
         auto child = std::make_unique<ChannelStrip>();
-        child->configure(ChannelStrip::StripType::RemoteChild,
+        child->configure(ChannelStrip::StripType::Local,
                          "Ch" + juce::String(ch + 1));
+
+        // Set initial TX state from persisted array
+        child->setTransmitting(processorRef.localTransmit[ch]);
 
         // Show input bus selector on local child strips (per D-14)
         child->getInputBusSelector().setVisible(true);

@@ -377,7 +377,13 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
         {
             // Single channel user: one strip
             auto strip = std::make_unique<ChannelStrip>();
-            juce::String codecStr;  // Codec badge -- could be extended later
+            juce::String codecStr;
+            if (!user.channels.empty())
+            {
+                unsigned int fourcc = user.channels[0].codec_fourcc;
+                if (fourcc == 0x43414C46) codecStr = "FLAC";       // 'FLAC'
+                else if (fourcc == 0x7647474F) codecStr = "Vorbis"; // 'OGGv'
+            }
             strip->configure(ChannelStrip::StripType::Remote, userName, codecStr);
 
             if (!user.channels.empty())
@@ -475,7 +481,15 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
         {
             // Multi-channel user: parent strip + child strips
             auto parentStrip = std::make_unique<ChannelStrip>();
-            parentStrip->configure(ChannelStrip::StripType::Remote, userName, {},
+            // Use first channel's codec for parent badge
+            juce::String parentCodec;
+            if (!user.channels.empty())
+            {
+                unsigned int fourcc = user.channels[0].codec_fourcc;
+                if (fourcc == 0x43414C46) parentCodec = "FLAC";
+                else if (fourcc == 0x7647474F) parentCodec = "Vorbis";
+            }
+            parentStrip->configure(ChannelStrip::StripType::Remote, userName, parentCodec,
                                    static_cast<int>(user.channels.size()), false);
 
             // Expand toggle rebuilds child visibility
@@ -491,8 +505,11 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
             {
                 const auto& ch = user.channels[chIdx];
                 auto childStrip = std::make_unique<ChannelStrip>();
+                juce::String childCodec;
+                if (ch.codec_fourcc == 0x43414C46) childCodec = "FLAC";
+                else if (ch.codec_fourcc == 0x7647474F) childCodec = "Vorbis";
                 childStrip->configure(ChannelStrip::StripType::RemoteChild,
-                                      juce::String(ch.name));
+                                      juce::String(ch.name), childCodec);
                 childStrip->setSubscribed(ch.subscribed);
 
                 // Set initial mixer state from cached data

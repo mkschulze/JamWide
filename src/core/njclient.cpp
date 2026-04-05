@@ -2751,6 +2751,7 @@ void NJClient::GetRemoteUsersSnapshot(std::vector<RemoteUserInfo>& out)
         ch_info.vu_left = static_cast<float>(chan->decode_peak_vol[0]);
         ch_info.vu_right = static_cast<float>(chan->decode_peak_vol[1]);
         ch_info.out_chan_index = chan->out_chan_index;
+        ch_info.codec_fourcc = chan->codec_fourcc;
 
         info.channels.push_back(std::move(ch_info));
       }

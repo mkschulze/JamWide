@@ -8,16 +8,14 @@ JamWide is a cross-platform NINJAM client for real-time online music collaborati
 
 Musicians can jam together online with lossless audio quality and per-user mixing — in any DAW or standalone.
 
-## Current State (v1.0 shipped 2026-04-05)
+## Current Milestone: v1.1 OSC + Video
 
-- **18,300 LOC** C++ across 8 phases, 21 plans
-- Full JUCE plugin: VST3, AU, CLAP, Standalone — pluginval validated
-- FLAC lossless + Vorbis codecs with interval-boundary switching
-- 34-channel multichannel output routing (by user / by channel / manual)
-- DAW transport sync with BPM/BPI voting
-- Custom Voicemeeter Banana dark theme LookAndFeel
-- VU meters, faders, chat, server browser, session recording
-- macOS, Windows, Linux builds via GitHub Actions
+**Goal:** Add remote control via OSC and video collaboration via VDO.Ninja companion, expanding JamWide from audio-only to a full visual jam experience.
+
+**Target features:**
+- OSC server for remote control via TouchOSC (bidirectional, full parameter mapping)
+- VDO.Ninja video companion synced to NINJAM interval timing
+- Video grid + per-user popout display modes (multi-monitor support)
 
 ## Requirements
 
@@ -93,5 +91,22 @@ Full codebase analysis at `.planning/codebase/`:
 | OSC via juce_osc (IEM pattern) | No external deps, proven across 20+ IEM plugins | — Pending (v1.1) |
 | Index-based OSC addressing for remote users | Stable fader mapping, name broadcast on roster change | — Pending (v1.1) |
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd-complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-04-05 after v1.0 milestone*
+*Last updated: 2026-04-05 after v1.1 milestone start*

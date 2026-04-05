@@ -126,6 +126,10 @@ struct UiAtomicSnapshot {
     std::atomic<bool>  transient_detected{false};
     std::atomic<float> transient_threshold{0.12f};
 
+    // Session tracking (Phase 7 — SYNC-03)
+    std::atomic<int>          interval_count{0};      // m_loopcnt from NJClient
+    std::atomic<unsigned int> session_elapsed_ms{0};   // GetSessionPosition() from NJClient
+
     // VU levels (audio thread writes)
     std::atomic<float> master_vu_left{0.0f};
     std::atomic<float> master_vu_right{0.0f};

@@ -56,9 +56,45 @@ struct ServerListEvent {
     std::string error;
 };
 
+// DAW Sync reason codes (Phase 7 — addresses review consensus #2: event model lacks reason payloads)
+enum class SyncReason : int {
+    UserRequest = 0,        // User clicked sync button
+    UserCancel = 1,         // User cancelled while WAITING
+    UserDisable = 2,        // User disabled while ACTIVE
+    TransportStarted = 3,   // DAW transport started (WAITING -> ACTIVE)
+    ServerBpmChanged = 4,   // Server BPM changed, auto-disabled (D-05)
+    TransportSeek = 5,      // Transport seek/loop detected, auto-disabled
+    HostTimingUnavailable = 6  // Host does not provide PPQ data
+};
+
+/**
+ * Server BPM changed (detected by run thread).
+ */
+struct BpmChangedEvent {
+    float oldBpm;
+    float newBpm;
+};
+
+/**
+ * Server BPI changed (detected by run thread).
+ */
+struct BpiChangedEvent {
+    int oldBpi;
+    int newBpi;
+};
+
+/**
+ * Sync state machine transitioned.
+ * Includes reason payload for UI context (why the state changed).
+ */
+struct SyncStateChangedEvent {
+    int newState;       // 0=IDLE, 1=WAITING, 2=ACTIVE
+    SyncReason reason;  // Why the state changed
+};
+
 /**
  * Variant type for all UI events.
- * 
+ *
  * Note: License handling uses a dedicated atomic slot (license_pending,
  * license_response, license_text, license_cv) rather than the event queue,
  * to support blocking wait in the Run thread callback.
@@ -68,7 +104,10 @@ using UiEvent = std::variant<
     StatusChangedEvent,
     UserInfoChangedEvent,
     TopicChangedEvent,
-    ServerListEvent
+    ServerListEvent,
+    BpmChangedEvent,
+    BpiChangedEvent,
+    SyncStateChangedEvent
 >;
 
 } // namespace jamwide

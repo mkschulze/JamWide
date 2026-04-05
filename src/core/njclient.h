@@ -161,6 +161,9 @@ public:
   float GetActualBPM() { return (float) m_active_bpm; }
   int GetBPI() { return m_active_bpi; }
   void GetPosition(int *pos, int *length);  // positions in samples
+  // Set interval position for DAW sync offset alignment (Phase 7 — SYNC-02).
+  // Safe: only called from processBlock (audio thread), same thread as AudioProc.
+  void SetIntervalPosition(int pos) { m_interval_pos = pos; }
   int GetLoopCount() { return m_loopcnt; }
   unsigned int GetSessionPosition(); // returns milliseconds
 

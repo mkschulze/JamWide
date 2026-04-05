@@ -84,6 +84,11 @@ struct SetRoutingModeCommand {
     int mode = 0;  // 0=manual, 1=by-channel, 2=by-user
 };
 
+// DAW Sync commands (Phase 7 — SYNC-01, SYNC-02)
+struct SyncCommand {};           // User requests sync (IDLE -> WAITING)
+struct SyncCancelCommand {};     // User cancels sync (WAITING -> IDLE)
+struct SyncDisableCommand {};    // User disables sync (ACTIVE -> IDLE)
+
 using UiCommand = std::variant<
     ConnectCommand,
     DisconnectCommand,
@@ -94,7 +99,10 @@ using UiCommand = std::variant<
     RequestServerListCommand,
     SendChatCommand,
     SetEncoderFormatCommand,
-    SetRoutingModeCommand
+    SetRoutingModeCommand,
+    SyncCommand,
+    SyncCancelCommand,
+    SyncDisableCommand
 >;
 
 } // namespace jamwide

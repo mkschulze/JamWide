@@ -137,7 +137,7 @@ public:
     bool infoStripVisible{true};
 
     // Local channel transmit state (persisted via ValueTree, per D-21 and D-15)
-    std::array<bool, 4> localTransmit{true, false, false, false};
+    std::array<bool, 4> localTransmit{true, true, true, true};
 
     // Local channel input selector (persisted via ValueTree, per D-21 and D-14)
     // Stores 0-based stereo pair index (0=Input 1-2, 1=Input 3-4, etc.)

@@ -288,7 +288,7 @@ void NinjamRunThread::run()
                         true, 256,               // 256 kbps
                         true, processor.localTransmit[0]);
 
-                    // Channels 1-3: stereo input pairs, transmit=false by default (D-15)
+                    // Channels 1-3: stereo input pairs, transmit from processor state
                     // Use input bus and transmit state from processor (persisted per D-14, D-21)
                     for (int ch = 1; ch < 4; ++ch)
                     {

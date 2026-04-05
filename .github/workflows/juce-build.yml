@@ -236,7 +236,7 @@ jobs:
           zip -r ../JamWide-Windows.zip JamWide-Windows/
           zip -r ../JamWide-Linux.zip JamWide-Linux/
 
-      - name: Create release
+      - name: Create or update release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
@@ -245,11 +245,21 @@ jobs:
           if echo "$TAG_NAME" | grep -qE "beta|alpha|rc"; then
             PRERELEASE_FLAG="--prerelease"
           fi
-          gh release create "$TAG_NAME" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "$TAG_NAME" \
-            --generate-notes \
-            $PRERELEASE_FLAG \
-            JamWide-macOS.zip \
-            JamWide-Windows.zip \
-            JamWide-Linux.zip
+          if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $TAG_NAME already exists — uploading assets"
+            gh release upload "$TAG_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber \
+              JamWide-macOS.zip \
+              JamWide-Windows.zip \
+              JamWide-Linux.zip
+          else
+            gh release create "$TAG_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG_NAME" \
+              --generate-notes \
+              $PRERELEASE_FLAG \
+              JamWide-macOS.zip \
+              JamWide-Windows.zip \
+              JamWide-Linux.zip
+          fi

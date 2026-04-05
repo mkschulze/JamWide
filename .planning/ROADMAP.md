@@ -138,6 +138,20 @@ Plans:
 - [x] 07-02-PLAN.md -- Sync UI: Sync button, BPM/BPI vote in BeatBar, flash animation, SessionInfoStrip, state persistence
 - [x] 07-03-PLAN.md -- Research deliverables: Video feasibility, OSC evaluation, MCP assessment
 
+### Phase 8: JUCE Integration Polish
+**Goal**: Fix cross-phase wiring gaps found in v1.0 milestone audit — codec UI defaults, remote codec badges, and error detail surfacing
+**Depends on**: Phase 7
+**Requirements**: CODEC-03, CODEC-05, UI-01, UI-03
+**Gap Closure**: Closes integration gaps from v1.0-MILESTONE-AUDIT.md
+**Success Criteria** (what must be TRUE):
+  1. Codec selector shows FLAC as the default on plugin load, matching NJClient's actual default encoder
+  2. Remote channel strips display the codec each participant is using (FLAC or Vorbis badge)
+  3. Connection error messages from the server are displayed in the status label (not hardcoded strings)
+**Plans**: 1 plan
+
+Plans:
+- [ ] 08-01-PLAN.md -- Fix codec selector default, wire remote codec badge, surface error_msg
+
 ## Future Milestones
 
 ### v2: Codec & Transport Redesign
@@ -159,14 +173,15 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. FLAC Lossless Codec | 3/3 | Complete   | 2026-03-07 |
-| 2. JUCE Scaffolding | 2/2 | Complete   | 2026-03-07 |
-| 3. NJClient Audio Bridge | 2/2 | Complete   | 2026-03-07 |
-| 4. Core UI Panels | 3/4 | In Progress | - |
-| 5. Mixer UI and Channel Controls | 0/4 | Not started | - |
-| 6. Multichannel Output Routing | 0/2 | Not started | - |
-| 7. DAW Sync and Session Polish | 0/3 | Not started | - |
+| 1. FLAC Lossless Codec | 3/3 | Complete | 2026-03-07 |
+| 2. JUCE Scaffolding | 2/2 | Complete | 2026-03-07 |
+| 3. NJClient Audio Bridge | 2/2 | Complete | 2026-03-07 |
+| 4. Core UI Panels | 4/4 | Complete | 2026-04-04 |
+| 5. Mixer UI and Channel Controls | 4/4 | Complete | 2026-04-04 |
+| 6. Multichannel Output Routing | 2/2 | Complete | 2026-04-04 |
+| 7. DAW Sync and Session Polish | 3/3 | Complete | 2026-04-05 |
+| 8. JUCE Integration Polish | 0/1 | Not started | - |

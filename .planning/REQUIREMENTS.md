@@ -38,19 +38,19 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Multichannel Output
 
-- [ ] **MOUT-01**: Each remote user routable to a separate stereo output pair in the DAW
-- [ ] **MOUT-02**: Auto-assign mode: by user (one stereo pair per user)
-- [ ] **MOUT-03**: Auto-assign mode: by channel (one stereo pair per remote channel)
-- [ ] **MOUT-04**: Metronome routable to its own output pair
-- [ ] **MOUT-05**: Main mix always on output bus 0
+- [x] **MOUT-01**: Each remote user routable to a separate stereo output pair in the DAW
+- [x] **MOUT-02**: Auto-assign mode: by user (one stereo pair per user)
+- [x] **MOUT-03**: Auto-assign mode: by channel (one stereo pair per remote channel)
+- [x] **MOUT-04**: Metronome routable to its own output pair
+- [x] **MOUT-05**: Main mix always on output bus 0
 
 ### DAW Sync
 
-- [ ] **SYNC-01**: Plugin reads host transport state (playing/stopped) via AudioPlayHead
-- [ ] **SYNC-02**: Broadcasting only occurs when DAW is playing
-- [ ] **SYNC-03**: Session position tracked across intervals
-- [ ] **SYNC-04**: Live BPM/BPI changes applied at interval boundaries without reconnect
-- [ ] **SYNC-05**: Standalone mode provides pseudo-transport with server BPM
+- [x] **SYNC-01**: Plugin reads host transport state (playing/stopped) via AudioPlayHead
+- [x] **SYNC-02**: Broadcasting only occurs when DAW is playing
+- [x] **SYNC-03**: Session position tracked across intervals
+- [x] **SYNC-04**: Live BPM/BPI changes applied at interval boundaries without reconnect
+- [x] **SYNC-05**: Standalone mode provides pseudo-transport with server BPM
 
 ### Session Recording
 
@@ -59,9 +59,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Research Deliverables
 
-- [ ] **RES-01**: Video feasibility document (JamTaba approach analysis)
-- [ ] **RES-02**: OSC cross-DAW sync evaluation (per-DAW support matrix)
-- [ ] **RES-03**: MCP bridge feasibility assessment
+- [x] **RES-01**: Video feasibility document (JamTaba approach analysis)
+- [x] **RES-02**: OSC cross-DAW sync evaluation (per-DAW support matrix)
+- [x] **RES-03**: MCP bridge feasibility assessment
 
 ## v2 Requirements
 
@@ -142,39 +142,39 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | CODEC-01 | Phase 1 | Complete |
 | CODEC-02 | Phase 1 | Complete |
-| CODEC-03 | Phase 1 | Complete |
+| CODEC-03 | Phase 1, Phase 8 | Complete (badge gap — Phase 8 fix) |
 | CODEC-04 | Phase 1 | Complete |
-| CODEC-05 | Phase 1 | Complete |
+| CODEC-05 | Phase 1, Phase 8 | Complete (UI default gap — Phase 8 fix) |
 | JUCE-01 | Phase 2 | Complete |
 | JUCE-02 | Phase 2 | Complete |
 | JUCE-03 | Phase 3 | Complete |
 | JUCE-04 | Phase 2 | Complete |
 | JUCE-05 | Phase 4 | Complete |
 | JUCE-06 | Phase 5 | Complete |
-| UI-01 | Phase 4 | Complete |
+| UI-01 | Phase 4, Phase 8 | Complete (error detail gap — Phase 8 fix) |
 | UI-02 | Phase 4 | Complete |
-| UI-03 | Phase 4 | Complete |
+| UI-03 | Phase 4, Phase 8 | Complete (error detail gap — Phase 8 fix) |
 | UI-04 | Phase 5 | Complete |
 | UI-05 | Phase 5 | Complete |
 | UI-06 | Phase 5 | Complete |
 | UI-07 | Phase 4 | Complete |
 | UI-08 | Phase 5 | Complete |
 | UI-09 | Phase 4 | Complete |
-| MOUT-01 | Phase 6 | Pending |
-| MOUT-02 | Phase 6 | Pending |
-| MOUT-03 | Phase 6 | Pending |
-| MOUT-04 | Phase 6 | Pending |
-| MOUT-05 | Phase 6 | Pending |
-| SYNC-01 | Phase 7 | Pending |
-| SYNC-02 | Phase 7 | Pending |
-| SYNC-03 | Phase 7 | Pending |
-| SYNC-04 | Phase 7 | Pending |
-| SYNC-05 | Phase 7 | Pending |
+| MOUT-01 | Phase 6 | Complete |
+| MOUT-02 | Phase 6 | Complete |
+| MOUT-03 | Phase 6 | Complete |
+| MOUT-04 | Phase 6 | Complete |
+| MOUT-05 | Phase 6 | Complete |
+| SYNC-01 | Phase 7 | Complete |
+| SYNC-02 | Phase 7 | Complete |
+| SYNC-03 | Phase 7 | Complete |
+| SYNC-04 | Phase 7 | Complete |
+| SYNC-05 | Phase 7 | Complete |
 | REC-01 | Phase 1 | Complete |
 | REC-02 | Phase 1 | Complete |
-| RES-01 | Phase 7 | Pending |
-| RES-02 | Phase 7 | Pending |
-| RES-03 | Phase 7 | Pending |
+| RES-01 | Phase 7 | Complete |
+| RES-02 | Phase 7 | Complete |
+| RES-03 | Phase 7 | Complete |
 
 **Coverage:**
 - v1 requirements: 35 total
@@ -183,4 +183,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-07*
-*Last updated: 2026-03-07 after roadmap creation*
+*Last updated: 2026-04-05 after v1.0 milestone audit — Phase 8 gap closure added, MOUT/SYNC/RES checkboxes updated*

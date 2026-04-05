@@ -10,7 +10,7 @@ public:
     static constexpr juce::uint32 kBgPrimary       = 0xff1A1D2E;
     static constexpr juce::uint32 kBgElevated       = 0xff222540;
     static constexpr juce::uint32 kSurfaceStrip     = 0xff2A2D48;
-    static constexpr juce::uint32 kSurfaceChild     = 0xff252845;
+    static constexpr juce::uint32 kSurfaceChild     = 0xff20233D;
     static constexpr juce::uint32 kSurfaceInput     = 0xff252840;
     static constexpr juce::uint32 kSurfaceOverlay   = 0xff1E2138;
     // REVIEW FIX: kSurfaceScrim must be AARRGGBB format for JUCE.

@@ -39,6 +39,15 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
         processorRef.cmd_queue.try_push(std::move(cmd));
     };
 
+    localStrip.onTransmitToggled = [this](bool tx) {
+        processorRef.localTransmit[0] = tx;
+        jamwide::SetLocalChannelInfoCommand cmd;
+        cmd.channel = 0;
+        cmd.set_transmit = true;
+        cmd.transmit = tx;
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
+
     // Make expand button visible on local strip (4ch badge)
     localStrip.onExpandToggled = [this]() {
         localExpanded_ = !localExpanded_;

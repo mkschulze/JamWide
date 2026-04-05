@@ -34,16 +34,26 @@ juce::Colour colorForType(ChatMessageType type)
 
 //==============================================================================
 // Format a chat message for display
+// Strip @IP suffix from NINJAM usernames for display
+juce::String stripIpFromSender(const std::string& sender)
+{
+    auto s = juce::String(sender);
+    int atIdx = s.indexOfChar('@');
+    return (atIdx > 0) ? s.substring(0, atIdx) : s;
+}
+
 juce::String formatMessage(const ChatMessage& msg)
 {
     juce::String prefix = msg.timestamp.empty()
         ? juce::String()
         : juce::String("[") + juce::String(msg.timestamp) + "] ";
 
+    auto displayName = stripIpFromSender(msg.sender);
+
     switch (msg.type)
     {
         case ChatMessageType::Action:
-            return prefix + "* " + juce::String(msg.sender) + " " + juce::String(msg.content);
+            return prefix + "* " + displayName + " " + juce::String(msg.content);
         case ChatMessageType::Join:
         case ChatMessageType::Part:
         case ChatMessageType::System:
@@ -51,10 +61,10 @@ juce::String formatMessage(const ChatMessage& msg)
         case ChatMessageType::Topic:
             return prefix + "* " + juce::String(msg.content);
         case ChatMessageType::PrivateMessage:
-            return prefix + "[PM] <" + juce::String(msg.sender) + "> " + juce::String(msg.content);
+            return prefix + "[PM] <" + displayName + "> " + juce::String(msg.content);
         case ChatMessageType::Message:
         default:
-            return prefix + "<" + juce::String(msg.sender) + "> " + juce::String(msg.content);
+            return prefix + "<" + displayName + "> " + juce::String(msg.content);
     }
 }
 

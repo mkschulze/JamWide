@@ -127,7 +127,12 @@ void chat_callback(void* user_data, NJClient* /*client*/,
             ChatMessage msg;
             msg.type = (type == "JOIN") ? ChatMessageType::Join : ChatMessageType::Part;
             msg.sender = user;
-            msg.content = user + ((type == "JOIN")
+            // Strip @IP for display
+            std::string displayName = user;
+            auto atPos = displayName.find('@');
+            if (atPos != std::string::npos && atPos > 0)
+                displayName = displayName.substr(0, atPos);
+            msg.content = displayName + ((type == "JOIN")
                 ? " has joined the server"
                 : " has left the server");
             msg.timestamp = ts;

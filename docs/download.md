@@ -5,18 +5,22 @@ title: Download
 
 # Download JamWide
 
-Get the latest version of JamWide for your platform.
-
 ---
 
-## Latest Release
+## v1.1 Beta — JUCE Rewrite
+
+The new JUCE-based version of JamWide is available as a beta. This is a complete rewrite with FLAC lossless audio, multichannel output routing, DAW transport sync, standalone mode, and Linux support.
+
+**This is beta software** — it may contain bugs. Please report issues on [GitHub](https://github.com/mkschulze/JamWide/issues).
 
 <div class="download-section">
-  <a href="https://github.com/mkschulze/JamWide/releases/latest" class="btn btn-primary btn-large">
-    Download Latest Release
+  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.2" class="btn btn-primary btn-large">
+    Download v1.1-beta.2
   </a>
-  <p class="version-info">Check the releases page for the latest version</p>
+  <p class="version-info">macOS (Universal) / Windows (x64) / Linux (x64)</p>
 </div>
+
+> **Looking for the stable v1.0 release?** The previous CLAP/ImGui version is still available on the [releases page](https://github.com/mkschulze/JamWide/releases/tag/v1.0.0).
 
 ---
 

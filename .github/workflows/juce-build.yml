@@ -37,10 +37,10 @@ jobs:
       - name: Verify artifacts
         run: |
           echo "=== Build artifacts ==="
-          ls -la "build/JamWide_artefacts/Release/VST3/JamWide.vst3/" || echo "VST3 not found"
-          ls -la "build/JamWide_artefacts/Release/AU/JamWide.component/" || echo "AU not found"
-          ls -la "build/JamWide_artefacts/Release/CLAP/JamWide.clap/" || echo "CLAP not found"
-          ls -la "build/JamWide_artefacts/Release/Standalone/JamWide.app/" || echo "Standalone not found"
+          ls -la "build/JamWideJuce_artefacts/Release/VST3/JamWide.vst3/" || echo "VST3 not found"
+          ls -la "build/JamWideJuce_artefacts/Release/AU/JamWide.component/" || echo "AU not found"
+          ls -la "build/JamWideJuce_artefacts/Release/CLAP/JamWide.clap/" || echo "CLAP not found"
+          ls -la "build/JamWideJuce_artefacts/Release/Standalone/JamWide.app/" || echo "Standalone not found"
 
       - name: Download pluginval
         run: |
@@ -56,7 +56,7 @@ jobs:
             --validate-in-process \
             --strictness-level 5 \
             --timeout-ms 120000 \
-            --validate "build/JamWide_artefacts/Release/VST3/JamWide.vst3"
+            --validate "build/JamWideJuce_artefacts/Release/VST3/JamWide.vst3"
 
       - name: Validate AU
         continue-on-error: true
@@ -65,7 +65,7 @@ jobs:
             --validate-in-process \
             --strictness-level 5 \
             --timeout-ms 120000 \
-            --validate "build/JamWide_artefacts/Release/AU/JamWide.component"
+            --validate "build/JamWideJuce_artefacts/Release/AU/JamWide.component"
 
       - name: Validate Standalone
         continue-on-error: true
@@ -74,17 +74,17 @@ jobs:
             --validate-in-process \
             --strictness-level 5 \
             --timeout-ms 120000 \
-            --validate "build/JamWide_artefacts/Release/Standalone/JamWide.app"
+            --validate "build/JamWideJuce_artefacts/Release/Standalone/JamWide.app"
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: JamWide-macOS
           path: |
-            build/JamWide_artefacts/Release/VST3/
-            build/JamWide_artefacts/Release/AU/
-            build/JamWide_artefacts/Release/CLAP/
-            build/JamWide_artefacts/Release/Standalone/
+            build/JamWideJuce_artefacts/Release/VST3/
+            build/JamWideJuce_artefacts/Release/AU/
+            build/JamWideJuce_artefacts/Release/CLAP/
+            build/JamWideJuce_artefacts/Release/Standalone/
           retention-days: 30
 
   build-windows:
@@ -114,7 +114,7 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "=== Build artifacts ==="
-          Get-ChildItem -Path "build/JamWide_artefacts" -Recurse -Include "*.vst3","*.clap" -Directory | Select-Object FullName
+          Get-ChildItem -Path "build/JamWideJuce_artefacts" -Recurse -Include "*.vst3","*.clap" -Directory | Select-Object FullName
 
       - name: Download pluginval
         shell: pwsh
@@ -124,15 +124,15 @@ jobs:
 
       - name: Validate VST3
         run: |
-          pluginval\pluginval.exe --validate-in-process --strictness-level 5 --timeout-ms 120000 --validate "build\JamWide_artefacts\Release\VST3\JamWide.vst3"
+          pluginval\pluginval.exe --validate-in-process --strictness-level 5 --timeout-ms 120000 --validate "build\JamWideJuce_artefacts\Release\VST3\JamWide.vst3"
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: JamWide-Windows
           path: |
-            build/JamWide_artefacts/Release/VST3/
-            build/JamWide_artefacts/Release/CLAP/
+            build/JamWideJuce_artefacts/Release/VST3/
+            build/JamWideJuce_artefacts/Release/CLAP/
           retention-days: 30
 
   build-linux:
@@ -174,7 +174,7 @@ jobs:
       - name: Verify artifacts
         run: |
           echo "=== Build artifacts ==="
-          find build/JamWide_artefacts -name "*.vst3" -o -name "*.clap" -o -name "*.so" | head -20
+          find build/JamWideJuce_artefacts -name "*.vst3" -o -name "*.clap" -o -name "*.so" | head -20
 
       - name: Download pluginval
         run: |
@@ -189,15 +189,15 @@ jobs:
             --validate-in-process \
             --strictness-level 5 \
             --timeout-ms 120000 \
-            --validate "build/JamWide_artefacts/Release/VST3/JamWide.vst3"
+            --validate "build/JamWideJuce_artefacts/Release/VST3/JamWide.vst3"
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
           name: JamWide-Linux
           path: |
-            build/JamWide_artefacts/Release/VST3/
-            build/JamWide_artefacts/Release/CLAP/
+            build/JamWideJuce_artefacts/Release/VST3/
+            build/JamWideJuce_artefacts/Release/CLAP/
           retention-days: 30
 
   release:

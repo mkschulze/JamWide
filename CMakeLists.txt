@@ -330,7 +330,7 @@ if(JAMWIDE_BUILD_JUCE)
         set(_pluginval_exe "${CMAKE_BINARY_DIR}/_pluginval/pluginval.exe")
     endif()
 
-    if(DEFINED _pluginval_url)
+    if(APPLE AND DEFINED _pluginval_url)
         add_custom_target(validate
             COMMAND ${CMAKE_COMMAND}
                 -D "PLUGINVAL_URL=${_pluginval_url}"

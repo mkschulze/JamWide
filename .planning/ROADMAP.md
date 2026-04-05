@@ -131,11 +131,12 @@ Plans:
   3. Session position (interval count, beat position) is tracked and visible to the user
   4. Standalone mode provides a pseudo-transport driven by the server's BPM
   5. Video feasibility document, OSC evaluation matrix, and MCP assessment are written and available
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 07-01: TBD
-- [ ] 07-02: TBD
+- [ ] 07-01-PLAN.md -- Transport sync core: AudioPlayHead integration, sync state machine, NJClient API, BPM change detection
+- [ ] 07-02-PLAN.md -- Sync UI: Sync button, BPM/BPI vote in BeatBar, flash animation, SessionInfoStrip, state persistence
+- [ ] 07-03-PLAN.md -- Research deliverables: Video feasibility, OSC evaluation, MCP assessment
 
 ## Future Milestones
 
@@ -168,4 +169,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 4. Core UI Panels | 3/4 | In Progress | - |
 | 5. Mixer UI and Channel Controls | 0/4 | Not started | - |
 | 6. Multichannel Output Routing | 0/2 | Not started | - |
-| 7. DAW Sync and Session Polish | 0/? | Not started | - |
+| 7. DAW Sync and Session Polish | 0/3 | Not started | - |

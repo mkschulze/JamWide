@@ -206,7 +206,7 @@ endif()
 make_clapfirst_plugins(
     TARGET_NAME jamwide
     IMPL_TARGET jamwide-impl
-    OUTPUT_NAME "JamWide"
+    OUTPUT_NAME "JamWide Legacy"
     ENTRY_SOURCE "src/plugin/clap_entry_export.cpp"
     BUNDLE_IDENTIFIER "com.jamwide.client"
     BUNDLE_VERSION "1.0.0"
@@ -236,7 +236,7 @@ if(JAMWIDE_BUILD_JUCE)
     add_subdirectory(libs/juce EXCLUDE_FROM_ALL)
 
     juce_add_plugin(JamWideJuce
-        PRODUCT_NAME "JamWide JUCE"
+        PRODUCT_NAME "JamWide"
         COMPANY_NAME "JamWide"
         BUNDLE_ID "${JAMWIDE_JUCE_BUNDLE_ID}"
         PLUGIN_MANUFACTURER_CODE ${JAMWIDE_JUCE_MANUFACTURER_CODE}

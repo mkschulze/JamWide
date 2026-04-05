@@ -599,8 +599,8 @@ NJClient::NJClient()
   config_masterpan.store(0.0f, std::memory_order_relaxed);
   config_mastermute.store(false, std::memory_order_relaxed);
   config_play_prebuffer.store(DEFAULT_CONFIG_PREBUFFER, std::memory_order_relaxed);
-  m_encoder_fmt_requested.store(NJ_ENCODER_FMT_FLAC, std::memory_order_relaxed);
-  m_encoder_fmt_active = NJ_ENCODER_FMT_FLAC;
+  m_encoder_fmt_requested.store(NJ_ENCODER_FMT_TYPE, std::memory_order_relaxed);  // Vorbis default
+  m_encoder_fmt_active = NJ_ENCODER_FMT_TYPE;
   m_encoder_fmt_prev = 0;
   config_remote_autochan = config_remote_autochan_nch = 0;
 

@@ -43,7 +43,8 @@ JamWideJuceProcessor::JamWideJuceProcessor()
     tempDir.createDirectory();
     client->SetWorkDir(const_cast<char*>(tempDir.getFullPathName().toRawUTF8()));
 
-    client->SetEncoderFormat(MAKE_NJ_FOURCC('F','L','A','C'));
+    // Vorbis default for compatibility (most NINJAM clients use Vorbis)
+    // User can switch to FLAC via codec selector in ConnectionBar
     client->config_autosubscribe = 1;
 }
 

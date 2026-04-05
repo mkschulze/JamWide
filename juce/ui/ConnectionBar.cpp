@@ -84,10 +84,10 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
     userCountLabel.setColour(juce::Label::textColourId, juce::Colour(JamWideLookAndFeel::kTextSecondary));
     addAndMakeVisible(userCountLabel);
 
-    // Codec selector -- FLAC default (matches NJClient default in Processor constructor)
+    // Codec selector -- Vorbis default for compatibility (most NINJAM clients use Vorbis)
     codecSelector.addItem("FLAC", 1);
     codecSelector.addItem("Vorbis", 2);
-    codecSelector.setSelectedId(1);  // FLAC default (CODEC-05)
+    codecSelector.setSelectedId(2);  // Vorbis default for compatibility
     codecSelector.setColour(juce::ComboBox::backgroundColourId, juce::Colour(JamWideLookAndFeel::kSurfaceInput));
     codecSelector.setColour(juce::ComboBox::textColourId, juce::Colour(JamWideLookAndFeel::kTextPrimary));
     codecSelector.setColour(juce::ComboBox::outlineColourId, juce::Colour(JamWideLookAndFeel::kBorderSubtle));

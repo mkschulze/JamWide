@@ -44,7 +44,10 @@
   3. User can configure OSC send/receive ports and target IP in a settings dialog, and those settings persist across DAW sessions
   4. User can observe BPM, BPI, beat position, and connection status updating live on their TouchOSC layout
   5. User can see an OSC status indicator in the plugin footer showing active, error, or off state
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 09-01-PLAN.md — OSC server engine: juce_osc linkage, OscAddressMap, OscServer (bidirectional OSC, dirty-flag sender, echo suppression, telemetry, VU)
+- [ ] 09-02-PLAN.md — OSC UI and persistence: OscStatusDot, OscConfigDialog, ConnectionBar integration, state version 2
 **UI hint**: yes
 
 ### Phase 10: OSC Remote Users and Template
@@ -114,7 +117,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 6. Multichannel Output Routing | v1.0 | 2/2 | Complete | 2026-04-04 |
 | 7. DAW Sync and Session Polish | v1.0 | 3/3 | Complete | 2026-04-05 |
 | 8. JUCE Integration Polish | v1.0 | 1/1 | Complete | 2026-04-05 |
-| 9. OSC Server Core | v1.1 | 0/0 | Not started | - |
+| 9. OSC Server Core | v1.1 | 0/2 | In Progress | - |
 | 10. OSC Remote Users and Template | v1.1 | 0/0 | Not started | - |
 | 11. Video Companion Foundation | v1.1 | 0/0 | Not started | - |
 | 12. Video Sync and Roster Discovery | v1.1 | 0/0 | Not started | - |

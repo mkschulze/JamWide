@@ -478,6 +478,7 @@ void JamWideJuceProcessor::getStateInformation(juce::MemoryBlock& destData)
     // properties only. They will NOT appear in host automation lanes.
     state.setProperty("scaleFactor", static_cast<double>(scaleFactor), nullptr);
     state.setProperty("chatSidebarVisible", chatSidebarVisible, nullptr);
+    state.setProperty("infoStripVisible", infoStripVisible, nullptr);
 
     // Local channel input selectors and transmit state (D-21, D-14, D-15)
     for (int ch = 0; ch < 4; ++ch)
@@ -520,6 +521,9 @@ void JamWideJuceProcessor::setStateInformation(const void* data, int sizeInBytes
         scaleFactor = 1.0f;
 
     chatSidebarVisible = tree.getProperty("chatSidebarVisible", true);
+
+    if (tree.hasProperty("infoStripVisible"))
+        infoStripVisible = static_cast<bool>(tree.getProperty("infoStripVisible"));
 
     // Restore and validate local channel settings (D-21, D-14)
     for (int ch = 0; ch < 4; ++ch)

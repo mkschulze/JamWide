@@ -31,6 +31,12 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
 
     // BeatBar
     addAndMakeVisible(beatBar);
+    beatBar.setProcessor(processorRef);
+
+    // SessionInfoStrip (hidden by default, toggleable via context menu)
+    addChildComponent(sessionInfoStrip);
+    infoStripVisible = processorRef.infoStripVisible;
+    sessionInfoStrip.setVisible(infoStripVisible);
 
     // ChannelStripArea
     addAndMakeVisible(channelStripArea);
@@ -126,14 +132,22 @@ void JamWideJuceEditor::mouseDown(const juce::MouseEvent& e)
         menu.addItem(1, "1x",   true, juce::approximatelyEqual(processorRef.scaleFactor, 1.0f));
         menu.addItem(2, "1.5x", true, juce::approximatelyEqual(processorRef.scaleFactor, 1.5f));
         menu.addItem(3, "2x",   true, juce::approximatelyEqual(processorRef.scaleFactor, 2.0f));
+        menu.addSeparator();
+        menu.addItem(4, "Show Session Info", true, infoStripVisible);
         menu.showMenuAsync(juce::PopupMenu::Options(),
             [this](int result) {
-                float newScale = 1.0f;
-                if (result == 2) newScale = 1.5f;
-                else if (result == 3) newScale = 2.0f;
-                else if (result != 1) return;
-                processorRef.scaleFactor = newScale;
-                applyScale(newScale);
+                if (result >= 1 && result <= 3)
+                {
+                    float newScale = 1.0f;
+                    if (result == 2) newScale = 1.5f;
+                    else if (result == 3) newScale = 2.0f;
+                    processorRef.scaleFactor = newScale;
+                    applyScale(newScale);
+                }
+                else if (result == 4)
+                {
+                    toggleSessionInfoStrip();
+                }
             });
     }
     else
@@ -151,6 +165,10 @@ void JamWideJuceEditor::resized()
 
     // BeatBar below connection bar: full width, kBeatBarHeight tall
     beatBar.setBounds(area.removeFromTop(kBeatBarHeight));
+
+    // Conditional session info strip below BeatBar
+    if (infoStripVisible)
+        sessionInfoStrip.setBounds(area.removeFromTop(kSessionInfoStripHeight));
 
     // Chat panel at right (if visible)
     int chatWidth = chatSidebarVisible ? kChatPanelWidth : 0;
@@ -184,6 +202,22 @@ void JamWideJuceEditor::timerCallback()
     int iLen = processorRef.uiSnapshot.interval_length.load(std::memory_order_relaxed);
     beatBar.update(bpi, beat, iPos, iLen);
 
+    // Update BeatBar BPM for label area display
+    beatBar.setBpm(processorRef.uiSnapshot.bpm.load(std::memory_order_relaxed));
+
+    // Update SessionInfoStrip if visible
+    if (infoStripVisible)
+    {
+        int intervalCount = processorRef.uiSnapshot.interval_count.load(std::memory_order_relaxed);
+        unsigned int elapsedMs = processorRef.uiSnapshot.session_elapsed_ms.load(std::memory_order_relaxed);
+        bool isStandalone = (processorRef.wrapperType == juce::AudioProcessor::wrapperType_Standalone);
+
+        // Read sync state from single atomic int (not two booleans -- review fix)
+        int syncState = processorRef.syncState_.load(std::memory_order_relaxed);
+
+        sessionInfoStrip.update(intervalCount, elapsedMs, beat, bpi, syncState, isStandalone);
+    }
+
     // Note: VU updates are driven by ChannelStripArea's own 30Hz timer (REVIEW FIX #7)
     // The editor does NOT need to call channelStripArea.updateVuLevels() here.
 }
@@ -213,6 +247,20 @@ void JamWideJuceEditor::drainEvents()
             else if constexpr (std::is_same_v<T, jamwide::UserInfoChangedEvent>)
             {
                 refreshChannelStrips();
+            }
+            else if constexpr (std::is_same_v<T, jamwide::BpmChangedEvent>)
+            {
+                beatBar.triggerFlash();
+            }
+            else if constexpr (std::is_same_v<T, jamwide::BpiChangedEvent>)
+            {
+                beatBar.triggerFlash();
+            }
+            else if constexpr (std::is_same_v<T, jamwide::SyncStateChangedEvent>)
+            {
+                connectionBar.updateSyncState(e.newState);
+                // Reason is available in e.reason for future UI feedback
+                // (e.g., toast notification on ServerBpmChanged)
             }
         }, std::move(evt));
     });
@@ -325,6 +373,19 @@ void JamWideJuceEditor::toggleChatSidebar()
     chatToggleButton.repaint();
     chatPanel.setVisible(chatSidebarVisible);
     resized();
+}
+
+void JamWideJuceEditor::toggleSessionInfoStrip()
+{
+    infoStripVisible = !infoStripVisible;
+    sessionInfoStrip.setVisible(infoStripVisible);
+    processorRef.infoStripVisible = infoStripVisible;
+    resized();
+}
+
+int JamWideJuceEditor::getCurrentSyncState() const
+{
+    return processorRef.syncState_.load(std::memory_order_relaxed);
 }
 
 void JamWideJuceEditor::applyScale(float factor)

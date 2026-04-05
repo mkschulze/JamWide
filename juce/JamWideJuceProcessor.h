@@ -133,6 +133,9 @@ public:
     // Chat sidebar visibility (persisted via ValueTree, NOT APVTS param per review)
     bool chatSidebarVisible{true};
 
+    // Session info strip visibility (persisted via ValueTree per D-21)
+    bool infoStripVisible{false};  // D-15: hidden by default
+
     // Local channel transmit state (persisted via ValueTree, per D-21 and D-15)
     std::array<bool, 4> localTransmit{true, false, false, false};
 

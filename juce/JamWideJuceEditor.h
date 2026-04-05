@@ -6,6 +6,7 @@
 #include "ui/ChatPanel.h"
 #include "ui/BeatBar.h"
 #include "ui/ChannelStripArea.h"
+#include "ui/SessionInfoStrip.h"
 #include "ui/ServerBrowserOverlay.h"
 #include "ui/LicenseDialog.h"
 
@@ -33,12 +34,15 @@ private:
     void handleServerDoubleClicked(const juce::String& address);
     void handleLicenseResponse(bool accepted);
     void toggleChatSidebar();
+    void toggleSessionInfoStrip();
+    int getCurrentSyncState() const;
 
     JamWideJuceProcessor& processorRef;
     JamWideLookAndFeel lookAndFeel;
 
     ConnectionBar connectionBar;
     BeatBar beatBar;
+    SessionInfoStrip sessionInfoStrip;
     ChannelStripArea channelStripArea;
     ChatPanel chatPanel;
 
@@ -90,6 +94,7 @@ private:
     } chatToggleButton;
 
     bool chatSidebarVisible = true;
+    bool infoStripVisible = false;  // D-15: hidden by default
     int prevPollStatus_ = -1;  // REVIEW FIX: member, not static
 
     static constexpr int kBaseWidth = 1000;
@@ -99,6 +104,7 @@ private:
     static constexpr int kChatPanelWidth = 260;
     static constexpr int kChatToggleWidth = 16;
     static constexpr int kChatToggleHeight = 28;
+    static constexpr int kSessionInfoStripHeight = 20;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(JamWideJuceEditor)
 };

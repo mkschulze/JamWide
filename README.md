@@ -1,67 +1,72 @@
 # JamWide
 
-A cross-platform audio plugin client for [NINJAM](https://www.cockos.com/ninjam/) — the open-source, internet-based real-time collaboration software for musicians.
+A cross-platform audio plugin and standalone app for [NINJAM](https://www.cockos.com/ninjam/) — the open-source, internet-based real-time collaboration software for musicians.
 
-🌐 **Website:** [jamwide.audio](https://jamwide.audio)
+Built with [JUCE](https://juce.com/) for native performance across macOS, Windows, and Linux.
+
+[jamwide.audio](https://jamwide.audio)
 
 ![License](https://img.shields.io/badge/license-GPL--2.0-blue.svg)
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
-![Formats](https://img.shields.io/badge/formats-CLAP%20%7C%20VST3%20%7C%20AU-blue.svg)
-![Version](https://img.shields.io/badge/version-v1.0.0-blue.svg)
-![Status](https://img.shields.io/badge/status-stable-green.svg)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)
+![Formats](https://img.shields.io/badge/formats-VST3%20%7C%20AU%20%7C%20CLAP%20%7C%20Standalone-blue.svg)
+![Build](https://github.com/mkschulze/JamWide/actions/workflows/juce-build.yml/badge.svg)
 
 ## What is NINJAM?
 
 NINJAM (Novel Intervallic Network Jamming Architecture for Music) allows musicians to jam together over the internet in real-time. Unlike traditional approaches that try to minimize latency, NINJAM embraces it by using a time-synchronized approach where everyone plays along with what was recorded in the previous interval. This creates a unique collaborative experience where musicians can perform together regardless of geographic location.
 
-## About This Plugin
+## About JamWide
 
-JamWide ports the NINJAM client functionality into a cross-platform CLAP audio plugin, allowing you to:
+JamWide brings the full NINJAM experience into your DAW as a plugin, or runs as a standalone application:
 
 - **Use NINJAM directly in your DAW** — Connect to jam sessions without leaving your production environment
-- **Route audio flexibly** — Use your DAW's mixer for monitoring and processing
-- **Record sessions natively** — Capture everything directly in your DAW's timeline
-- **Apply effects** — Process incoming audio from other musicians with your favorite plugins
+- **Multichannel output routing** — Route each remote participant to a separate stereo track for independent mixing
+- **FLAC lossless audio** — Send and receive uncompressed audio quality alongside Vorbis
+- **DAW transport sync** — Plugin only broadcasts when the DAW is playing
+- **Standalone mode** — Use JamWide without a DAW, with built-in audio device selection
 
 ## Features
 
-### Core Functionality
-- Connect to any NINJAM server
-- Real-time audio streaming with OGG/Vorbis encoding
-- Automatic BPM/BPI synchronization with the server
-- BPM/BPI voting via chat commands
-- Local and remote channel management
-- Chat room with message history and timestamps
-
 ### Audio
-- Stereo input/output
-- Master and metronome volume/pan/mute controls
-- Per-channel volume, pan, mute, and solo
-- VU meters for all channels
-- Visual timing guide for beat alignment
-- Soft clipping on master output
+- FLAC lossless and OGG/Vorbis encoding with per-session codec selection
+- 17 stereo output buses (main mix + 15 remote + metronome)
+- Auto-assign routing modes: by user or by channel
+- 4 stereo local input channels with per-channel controls
+- DAW transport sync — broadcasting gates on play/stop
+- Live BPM/BPI changes applied at interval boundaries without reconnect
+- Session position tracking (interval count, elapsed time, beat position)
+
+### Mixer
+- Per-channel volume, pan, mute, and solo for remote participants
+- Local channel controls with input bus selection and transmit toggle
+- Metronome with dedicated output bus (independent of master volume)
+- Real-time VU meters for all channels (30 Hz refresh)
+- Custom fader with power-curve mapping for precise low-end control
+- Full state persistence across DAW save/load cycles
 
 ### User Interface
-- Dear ImGui interface
-- Native rendering (Metal on macOS, D3D11 on Windows)
-- Server browser with live user lists
-- Real-time status and connection display
-- Collapsible panels for all sections
+- Custom JUCE LookAndFeel (dark theme inspired by VB-Audio Voicemeeter)
+- Connection bar with server address, codec selector, routing mode, and sync controls
+- Chat panel with color-coded messages, auto-scroll, and jump-to-bottom
+- Server browser with public server list and double-click connect
+- Beat/interval progress bar with BPM/BPI voting via inline edit
+- Session info strip with interval count and elapsed time
+- Scalable UI (1x, 1.5x, 2x) via right-click context menu
 
-## Supported Hosts
+## Supported Formats
 
-Works with any DAW that supports CLAP, VST3, or Audio Unit plugins:
-
-| Format | Hosts |
-|--------|-------|
-| **CLAP** | Bitwig Studio, REAPER, 
-| **VST3** | Ableton Live, Bitwig, Cubase, REAPER, Studio One |
-| **AU v2** | GarageBand |
+| Format | Platform | Hosts |
+|--------|----------|-------|
+| **VST3** | macOS, Windows, Linux | Ableton Live, Bitwig, Cubase, REAPER, Studio One |
+| **AU v2** | macOS | Logic Pro, GarageBand, MainStage |
+| **CLAP** | macOS, Windows, Linux | Bitwig Studio, REAPER |
+| **Standalone** | macOS, Windows, Linux | No DAW required |
 
 ### System Requirements
 
+- **macOS**: macOS 10.15 (Catalina) or later (Intel and Apple Silicon universal binary)
 - **Windows**: Windows 10 or later (64-bit)
-- **macOS**: macOS 10.15 (Catalina) or later
+- **Linux**: Ubuntu 22.04+ or equivalent (X11, ALSA/JACK)
 
 ## Building
 
@@ -69,17 +74,17 @@ Works with any DAW that supports CLAP, VST3, or Audio Unit plugins:
 
 - CMake 3.20 or later
 - C++20 compatible compiler
-  - macOS: Xcode 14+ / Apple Clang 14+ (macOS 10.15+)
-  - Windows: Visual Studio 2022 / MSVC 19.30+ (Windows 10+)
+  - macOS: Xcode 14+ / Apple Clang 14+
+  - Windows: Visual Studio 2022 / MSVC 19.30+
+  - Linux: GCC 12+ or Clang 15+
 - Git (for submodule dependencies)
 
 ### Dependencies (included as submodules)
 
-- [CLAP](https://github.com/free-audio/clap) — Plugin API
-- [Dear ImGui](https://github.com/ocornut/imgui) — User interface
+- [JUCE](https://juce.com/) 8.0.12 — Plugin framework and UI
+- [libFLAC](https://github.com/xiph/flac) 1.5.0 — Lossless audio codec
 - [libogg](https://github.com/xiph/ogg) — Audio container format
-- [libvorbis](https://github.com/xiph/vorbis) — Audio codec
-- [picojson](https://github.com/kazuho/picojson) — JSON parser
+- [libvorbis](https://github.com/xiph/vorbis) — Lossy audio codec
 
 ### Build Instructions
 
@@ -87,210 +92,167 @@ Works with any DAW that supports CLAP, VST3, or Audio Unit plugins:
 # Clone the repository
 git clone --recursive https://github.com/mkschulze/JamWide.git
 cd JamWide
-
-# Initialize submodules if not cloned with --recursive
-git submodule update --init --recursive
 ```
 
 #### macOS
 
 ```bash
-# Configure - Dev build with verbose logging
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DJAMWIDE_DEV_BUILD=ON
-
-# Configure - Production build with minimal logging  
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DJAMWIDE_DEV_BUILD=OFF
+# Configure (universal binary: arm64 + x86_64)
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+  -DJAMWIDE_BUILD_JUCE=ON
 
 # Build
 cmake --build build --config Release
-
-# Quick install (builds and installs to user plugin folders)
-./install.sh
 ```
 
 #### Windows
 
-**Requirements:**
-- Visual Studio 2022 (or newer) with C++ Desktop Development workload
-- CMake 3.20+ (included with Visual Studio)
-- Git for Windows
-
 ```powershell
-# Configure with Visual Studio 2022 (or Visual Studio 18 for VS 2026)
-cmake -B build -G "Visual Studio 17 2022" -A x64 -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE
+# Configure
+cmake -B build -G "Visual Studio 17 2022" -A x64 -DJAMWIDE_BUILD_JUCE=ON
 
-# Build with MSBuild
-$MSBUILD = "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe"
-& $MSBUILD build\jamwide.sln /p:Configuration=Release /v:minimal
-
-# Quick install (builds and installs to user plugin folders)
-.\install-win.ps1
+# Build
+cmake --build build --config Release
 ```
 
-**Note:** The `-DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE` flag automatically downloads VST3 SDK and other dependencies.
+#### Linux
 
-### Quick Install
-
-#### macOS
 ```bash
-./install.sh
-# Installs to:
-# - ~/Library/Audio/Plug-Ins/CLAP/JamWide.clap
-# - ~/Library/Audio/Plug-Ins/VST3/JamWide.vst3
-# - ~/Library/Audio/Plug-Ins/Components/JamWide.component
-```
+# Install dependencies (Ubuntu/Debian)
+sudo apt-get install -y build-essential cmake pkg-config \
+  libasound2-dev libjack-jackd2-dev libfreetype-dev \
+  libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+  libxcomposite-dev libgl1-mesa-dev libcurl4-openssl-dev \
+  libwebkit2gtk-4.1-dev
 
-#### Windows
-```powershell
-.\install-win.ps1
-# Installs to:
-# - %LOCALAPPDATA%\Programs\Common\CLAP\JamWide.clap
-# - %LOCALAPPDATA%\Programs\Common\VST3\JamWide.vst3
+# Configure and build
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DJAMWIDE_BUILD_JUCE=ON
+cmake --build build --config Release
 ```
 
 ### Build Output
 
-#### macOS
-- `build/JamWide.clap` — CLAP plugin
-- `build/JamWide.vst3` — VST3 plugin
-- `build/JamWide.component` — Audio Unit v2
-
-#### Windows
-- `build/CLAP/Release/JamWide.clap` — CLAP plugin
-- `build/Release/JamWide.vst3` — VST3 plugin
+| Platform | VST3 | AU | CLAP | Standalone |
+|----------|------|-----|------|------------|
+| macOS | `build/JamWide_artefacts/Release/VST3/JamWide.vst3` | `build/JamWide_artefacts/Release/AU/JamWide.component` | `build/JamWide_artefacts/Release/CLAP/JamWide.clap` | `build/JamWide_artefacts/Release/Standalone/JamWide.app` |
+| Windows | `build\JamWide_artefacts\Release\VST3\JamWide.vst3` | — | `build\JamWide_artefacts\Release\CLAP\JamWide.clap` | `build\JamWide_artefacts\Release\Standalone\JamWide.exe` |
+| Linux | `build/JamWide_artefacts/Release/VST3/JamWide.vst3` | — | `build/JamWide_artefacts/Release/CLAP/JamWide.clap` | `build/JamWide_artefacts/Release/Standalone/JamWide` |
 
 ## Installation
 
-### macOS (CLAP)
-Copy `JamWide.clap` to:
-- `~/Library/Audio/Plug-Ins/CLAP/` (user)
+### macOS
+Copy to:
+- `~/Library/Audio/Plug-Ins/VST3/JamWide.vst3`
+- `~/Library/Audio/Plug-Ins/Components/JamWide.component`
+- `~/Library/Audio/Plug-Ins/CLAP/JamWide.clap`
+- `/Applications/JamWide.app` (standalone)
 
-### macOS (VST3)
-Copy `JamWide.vst3` to:
-- `~/Library/Audio/Plug-Ins/VST3/` (user)
+### Windows
+Copy to:
+- `%LOCALAPPDATA%\Programs\Common\VST3\JamWide.vst3`
+- `%LOCALAPPDATA%\Programs\Common\CLAP\JamWide.clap`
 
-### macOS (Audio Unit)
-Copy `JamWide.component` to:
-- `~/Library/Audio/Plug-Ins/Components/` (user)
-
-### Windows (CLAP)
-Copy `JamWide.clap` to:
-- `%LOCALAPPDATA%\Programs\Common\CLAP\` (user)
-
-### Windows (VST3)
-Copy `JamWide.vst3` to:
-- `%LOCALAPPDATA%\Programs\Common\VST3\` (user)
+### Linux
+Copy to:
+- `~/.vst3/JamWide.vst3`
+- `~/.clap/JamWide.clap`
 
 ## Usage
 
-1. Load the JamWide plugin on a track in your DAW
-2. Open the plugin GUI
-3. Enter a server address (e.g., `ninbot.com:2049`) or select from the list
-4. Enter your username and optional password
-5. Click **Connect**
-6. Route audio to the plugin's input for your local channel
-7. The plugin output contains the mixed audio from all participants
+1. Load JamWide on a track in your DAW (or launch standalone)
+2. Enter a server address or browse the server list
+3. Click **Connect**
+4. Route audio to the plugin's input channels
+5. Use the mixer to adjust remote participants' levels
+6. Enable multichannel routing to send each user to a separate DAW track
 
-### Parameters
+### Multichannel Routing
 
-| Parameter | Range | Description |
-|-----------|-------|-------------|
-| Master Volume | 0.0 – 1.0 | Overall output level |
-| Metronome Volume | 0.0 – 1.0 | Click track level |
-| Metronome Pan | -1.0 – 1.0 | Click track stereo position |
-| Monitor Input | On/Off | Hear your own input |
-| Connected | On/Off | Connection state |
+JamWide provides 17 stereo output buses:
+- **Bus 0 (Main Mix)**: All participants mixed together (always active)
+- **Bus 1-15 (Remote)**: Individual participant routing
+- **Bus 16 (Metronome)**: Dedicated metronome output
 
-## Project Status
+Click the **Route** button to switch between:
+- **Manual** — All audio on main mix
+- **Assign by User** — Each user on a separate bus
+- **Assign by Channel** — Each channel on a separate bus
 
-✅ **Stable Release** — Tested on macOS and Windows in Ableton Live, REAPER, Bitwig Studio, Logic Pro, and GarageBand
+### DAW Transport Sync
 
-### Features
-- [x] Core NJClient port (audio engine, networking)
-- [x] CLAP, VST3, and Audio Unit v2 plugin formats
-- [x] Platform GUI (macOS Metal, Windows D3D11)
-- [x] Full UI: status, connection, chat, local/remote channels, master controls
-- [x] Server browser with live user lists (autosong.ninjam.com)
-- [x] VU meters and visual timing guide
-- [x] BPM/BPI voting via chat
-- [x] Anonymous login support
-- [x] Thread-safe command queue architecture
-- [x] GitHub Actions CI/CD for Windows and macOS
-
-### Future
-- [ ] Linux support (X11/Wayland + OpenGL)
-- [ ] UI styling and graphics improvements
-- [ ] Per-channel receive toggle
+When enabled, JamWide only broadcasts audio while your DAW transport is playing. Stop the transport to mute your send. In standalone mode, audio broadcasts continuously.
 
 ## Architecture
 
 ```
 JamWide/
+├── juce/                # JUCE plugin and UI
+│   ├── JamWideJuceProcessor.h/cpp   # AudioProcessor, processBlock, state
+│   ├── JamWideJuceEditor.h/cpp      # Editor shell, event drain, layout
+│   ├── NinjamRunThread.h/cpp        # NJClient run loop, command dispatch
+│   └── ui/              # JUCE UI components
+│       ├── ConnectionBar.h/cpp      # Server, codec, routing, sync controls
+│       ├── ChatPanel.h/cpp          # Chat messages
+│       ├── ChannelStrip.h/cpp       # Per-channel mixer controls
+│       ├── ChannelStripArea.h/cpp   # Mixer container with VU timer
+│       ├── VbFader.h/cpp            # Custom fader component
+│       ├── BeatBar.h/cpp            # Beat/interval display
+│       ├── SessionInfoStrip.h/cpp   # Session position info
+│       ├── VuMeter.h/cpp            # LED VU meter
+│       ├── ServerBrowserOverlay.h/cpp
+│       ├── LicenseDialog.h/cpp
+│       └── JamWideLookAndFeel.h/cpp # Custom dark theme
 ├── src/
-│   ├── core/           # NJClient port (networking, audio decode/encode)
-│   ├── plugin/         # CLAP entry point and wrapper
-│   ├── platform/       # OS-specific GUI (Metal/D3D11 + ImGui)
-│   ├── threading/      # Run thread, command queue, SPSC ring
-│   ├── net/            # Server list fetcher
-│   ├── ui/             # ImGui UI panels
-│   └── debug/          # Logging utilities
-├── wdl/                # WDL libraries (jnetlib, sha, etc.)
-├── libs/               # Third-party submodules
+│   ├── core/            # NJClient (networking, audio encode/decode)
+│   ├── threading/       # Command/event types, SPSC ring buffers
+│   ├── net/             # Server list fetcher
+│   └── ui/              # Shared state types
+├── wdl/                 # WDL libraries (jnetlib, sha, FLAC/Vorbis codecs)
+├── libs/                # Submodules (JUCE, libFLAC, libogg, libvorbis)
 └── CMakeLists.txt
 ```
 
 ### Threading Model
 
-The plugin uses a command queue architecture for thread safety:
+| Thread | Responsibility | Communication |
+|--------|---------------|---------------|
+| **Audio Thread** | `processBlock` → `AudioProc`, transport sync, VU peaks | Lock-free atomics |
+| **Run Thread** | `NJClient::Run()`, command dispatch, network I/O | SPSC cmd_queue (UI→Run), evt_queue (Run→UI) |
+| **UI Thread** | JUCE Components, 20 Hz timer, event drain | SPSC evt_queue + chat_queue |
 
-- **UI Thread** - Renders ImGui, sends commands to run thread
-- **Run Thread** - Processes NJClient, handles network I/O
-- **Audio Thread** - Calls AudioProc() for sample processing
-
-Communication is lock-free via SPSC ring buffers.
+All inter-thread communication is lock-free via SPSC ring buffers and atomics.
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
 
-### Development Setup
-
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-
-### UI ID Check
-
-To avoid Dear ImGui ID collisions, run the local checker:
-
-```bash
-python3 tools/check_imgui_ids.py
-```
-
-It flags unscoped widget labels that are not wrapped in `ImGui::PushID(...)`.
+3. Commit your changes
+4. Push to the branch
 5. Open a Pull Request
 
 ## License
 
 This project is licensed under the **GNU General Public License v2.0** — see the [LICENSE](LICENSE) file for details.
 
-NINJAM and the original client code are Copyright © Cockos Incorporated.
+NINJAM and the original client code are Copyright Cockos Incorporated.
 
 ## Acknowledgments
 
 - [Cockos](https://www.cockos.com/) for creating NINJAM and making it open source
 - [WDL](https://www.cockos.com/wdl/) library by Cockos
-- The [CLAP](https://cleveraudio.org/) team for the excellent plugin API
-- [Omar Cornut](https://github.com/ocornut) for Dear ImGui
+- [JUCE](https://juce.com/) framework by Raw Material Software
+- The [CLAP](https://cleveraudio.org/) team for the plugin format extensions
 
 ## See Also
 
 - [NINJAM Official Site](https://www.cockos.com/ninjam/)
 - [NINJAM Server List](https://ninbot.com/)
-- [CLAP Audio Plugin Standard](https://cleveraudio.org/)
+- [JUCE Framework](https://juce.com/)
 - [ReaNINJAM](https://github.com/justinfrankel/ninjam) — Original REAPER extension
 
 ---
 
-*Made with ♪ for musicians who want to jam together, anywhere in the world.*
+*Made with music for musicians who want to jam together, anywhere in the world.*

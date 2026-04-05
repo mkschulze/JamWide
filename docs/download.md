@@ -22,38 +22,38 @@ Get the latest version of JamWide for your platform.
 
 ## Available Formats
 
-### macOS
+### macOS (Universal: Intel + Apple Silicon)
 
 | Format | File | Install Location |
 |--------|------|------------------|
-| CLAP | `JamWide.clap` | `~/Library/Audio/Plug-Ins/CLAP/` |
 | VST3 | `JamWide.vst3` | `~/Library/Audio/Plug-Ins/VST3/` |
 | Audio Unit | `JamWide.component` | `~/Library/Audio/Plug-Ins/Components/` |
+| CLAP | `JamWide.clap` | `~/Library/Audio/Plug-Ins/CLAP/` |
+| Standalone | `JamWide.app` | `/Applications/` |
 
-### Windows
+### Windows (64-bit)
 
 | Format | File | Install Location |
 |--------|------|------------------|
-| CLAP | `JamWide.clap` | `%LOCALAPPDATA%\Programs\Common\CLAP\` |
 | VST3 | `JamWide.vst3` | `%LOCALAPPDATA%\Programs\Common\VST3\` |
+| CLAP | `JamWide.clap` | `%LOCALAPPDATA%\Programs\Common\CLAP\` |
+| Standalone | `JamWide.exe` | Anywhere you like |
+
+### Linux (64-bit)
+
+| Format | File | Install Location |
+|--------|------|------------------|
+| VST3 | `JamWide.vst3` | `~/.vst3/` |
+| CLAP | `JamWide.clap` | `~/.clap/` |
+| Standalone | `JamWide` | Anywhere you like |
 
 ---
 
 ## Installation
 
-### macOS
-
-1. Download the `.zip` file for your desired format
-2. Extract the plugin file
-3. Copy to the appropriate folder (see table above)
-4. Restart your DAW
-5. Scan for new plugins if necessary
-
-### Windows
-
-1. Download the `.zip` file for your desired format
-2. Extract the plugin file
-3. Copy to the appropriate folder (see table above)
+1. Download the `.zip` file for your platform from the [releases page](https://github.com/mkschulze/JamWide/releases)
+2. Extract the plugin files
+3. Copy to the appropriate folder (see tables above)
 4. Restart your DAW
 5. Scan for new plugins if necessary
 
@@ -63,15 +63,18 @@ Get the latest version of JamWide for your platform.
 
 ### macOS
 - macOS 10.15 (Catalina) or later
-- Intel or Apple Silicon
-- 64-bit DAW with CLAP, VST3, or AU support
+- Intel or Apple Silicon (universal binary)
+- 64-bit DAW with VST3, AU, or CLAP support
 
 ### Windows
-- **Windows 10 or later (64-bit)** ⚠️
-- 64-bit DAW with CLAP or VST3 support
-- Direct3D 11 capable graphics
+- Windows 10 or later (64-bit)
+- 64-bit DAW with VST3 or CLAP support
 
-> **Note:** Windows 7 and Windows 8 are not supported. The plugin requires Windows 10 or later with Direct3D 11.
+### Linux
+- Ubuntu 22.04+ or equivalent
+- X11 display server
+- ALSA or JACK audio
+- 64-bit DAW with VST3 or CLAP support
 
 ---
 
@@ -84,17 +87,3 @@ Prefer to compile yourself? See the [documentation](/documentation#building-from
 ## Previous Releases
 
 All releases are available on the [GitHub Releases page](https://github.com/mkschulze/JamWide/releases).
-
----
-
-## Verification
-
-Each release includes SHA256 checksums. Verify your download:
-
-```bash
-# macOS/Linux
-shasum -a 256 JamWide-*.zip
-
-# Windows (PowerShell)
-Get-FileHash JamWide-*.zip -Algorithm SHA256
-```

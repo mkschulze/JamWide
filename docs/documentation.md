@@ -12,7 +12,7 @@ Everything you need to know about using and building JamWide.
 ## Quick Start
 
 1. **Install the plugin** — Download from the [releases page](/download) and copy to your plugin folder
-2. **Load in your DAW** — Add JamWide to a track
+2. **Load in your DAW** — Add JamWide to a track (or launch standalone)
 3. **Connect to a server** — Enter a server address or pick from the browser
 4. **Start jamming!** — Route audio to the plugin and play
 
@@ -23,27 +23,60 @@ Everything you need to know about using and building JamWide.
 ### Connecting to a Server
 
 1. Open the JamWide plugin GUI
-2. In the connection panel, enter:
+2. In the connection bar at the top, enter:
    - **Server**: Address and port (e.g., `ninbot.com:2049`)
    - **Username**: Your display name
    - **Password**: Leave empty for public servers
 3. Click **Connect**
 
-**Tip:** Use the built-in server browser to see active public servers with player counts.
+**Tip:** Click the server browser button to see active public servers with player counts. Double-click a server to connect immediately.
 
 ### Audio Routing
 
 JamWide receives audio from your DAW track and sends it to the NINJAM session:
 
 ```
-Your Input → DAW Track → JamWide Plugin → NINJAM Server
-                              ↓
-                        Plugin Output → Your Speakers
-                              ↑
-                     Other Players' Audio
+Your Input -> DAW Track -> JamWide Plugin -> NINJAM Server
+                               |
+                         Plugin Output -> Your Speakers
+                               ^
+                      Other Players' Audio
 ```
 
 **Best Practice:** Create a dedicated track for JamWide and route your instrument to it.
+
+### Multichannel Routing
+
+JamWide provides 17 stereo output buses for advanced DAW mixing:
+
+- **Bus 0 (Main Mix)**: All participants mixed together (always active)
+- **Bus 1-15 (Remote)**: Individual participant routing
+- **Bus 16 (Metronome)**: Dedicated metronome output
+
+Click the **Route** button to switch between modes:
+- **Manual** — All audio on main mix only
+- **Assign by User** — Each user automatically assigned to a separate bus
+- **Assign by Channel** — Each remote channel on a separate bus
+
+To use in your DAW: enable additional output buses in the plugin I/O settings, then create aux/return tracks receiving from each bus.
+
+### Codec Selection
+
+JamWide supports two audio codecs:
+- **FLAC** (default) — Lossless audio quality, higher bandwidth
+- **Vorbis** — Compressed audio, lower bandwidth
+
+Switch codecs using the selector in the connection bar. The switch applies cleanly at the next interval boundary. FLAC and Vorbis users can coexist in the same session.
+
+### DAW Transport Sync
+
+When Sync is enabled:
+1. Click the **Sync** button (turns amber — "Waiting")
+2. Press Play in your DAW (button turns green — "Active")
+3. JamWide only broadcasts while the DAW is playing
+4. Stop the transport to mute your send
+
+In **standalone mode**, audio broadcasts continuously — no sync button is shown.
 
 ### Understanding NINJAM Timing
 
@@ -55,23 +88,31 @@ NINJAM uses **intervals** instead of real-time audio:
 
 This means there's always a one-interval delay, but everyone is perfectly synchronized.
 
-**Example:** At 120 BPM with 16 BPI, each interval is 8 seconds. You hear what others played 8 seconds ago.
+**Example:** At 120 BPM with 16 BPI, each interval is 8 seconds.
+
+### BPM/BPI Voting
+
+Click the BPM or BPI value in the beat bar to propose a change. Type a new value and press Enter. This sends a `!vote bpm` or `!vote bpi` command. The server applies the change if enough users vote.
 
 ### Chat
 
 The built-in chat lets you communicate with other musicians:
 
-- Messages appear in the chat panel with timestamps
+- Messages appear with color-coded formatting (system, topic, user)
 - Type a message and press Enter to send
-- Chat history is preserved during your session
+- Chat history scrolls automatically with a jump-to-bottom button
+- Toggle the chat sidebar via the context menu or keyboard shortcut
 
-### Metronome
+### Mixer Controls
 
-Use the metronome to stay in time:
+Each channel strip provides:
+- **Volume fader** — Custom fader with power-curve mapping
+- **Pan slider** — Stereo position with center notch
+- **Mute/Solo buttons** — Per-channel isolation
+- **VU meter** — Real-time level display
+- **Routing selector** — Choose output bus (when multichannel routing is active)
 
-- Adjust volume with the Metronome Volume control
-- Pan left/right with Metronome Pan
-- The metronome follows the server's BPM
+Local channels can be expanded to show up to 4 input channels with individual controls.
 
 ---
 
@@ -79,11 +120,13 @@ Use the metronome to stay in time:
 
 | Parameter | Range | Default | Description |
 |-----------|-------|---------|-------------|
-| Master Volume | 0.0 – 1.0 | 0.8 | Overall output level |
-| Metronome Volume | 0.0 – 1.0 | 0.5 | Click track level |
-| Metronome Pan | -1.0 – 1.0 | 0.0 | Click track stereo position |
-| Monitor Input | On/Off | Off | Hear your own input |
-| Connected | On/Off | Off | Connection state |
+| Master Volume | 0.0 -- 1.0 | 0.8 | Overall output level |
+| Master Mute | On/Off | Off | Mute all output |
+| Metronome Volume | 0.0 -- 1.0 | 0.5 | Click track level |
+| Metronome Mute | On/Off | Off | Mute metronome |
+| Local Vol 0-3 | 0.0 -- 1.0 | 0.8 | Per-channel local volume |
+| Local Pan 0-3 | -1.0 -- 1.0 | 0.0 | Per-channel local pan |
+| Local Mute 0-3 | On/Off | Off | Per-channel local mute |
 
 ---
 
@@ -93,8 +136,9 @@ Use the metronome to stay in time:
 
 - CMake 3.20 or later
 - C++20 compatible compiler
-  - **macOS:** Xcode 14+ / Apple Clang 14+ (macOS 10.15+)
-  - **Windows:** Visual Studio 2022 / MSVC 19.30+ (Windows 10+)
+  - **macOS:** Xcode 14+ / Apple Clang 14+
+  - **Windows:** Visual Studio 2022 / MSVC 19.30+
+  - **Linux:** GCC 12+ or Clang 15+
 - Git (for submodule dependencies)
 
 ### Clone the Repository
@@ -107,71 +151,33 @@ cd JamWide
 ### Build (macOS)
 
 ```bash
-# Configure - Development build (verbose logging)
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DJAMWIDE_DEV_BUILD=ON
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+  -DJAMWIDE_BUILD_JUCE=ON
 
-# Or Production build (minimal logging)
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DJAMWIDE_DEV_BUILD=OFF
-
-# Build
 cmake --build build --config Release
 ```
 
 ### Build (Windows)
 
-**Requirements:**
-- Windows 10 or later (64-bit)
-- Visual Studio 2022 (or newer) with C++ Desktop Development workload
-- CMake 3.20+ (included with Visual Studio)
-- Git for Windows
-
 ```powershell
-# Configure with automatic dependency downloads
-cmake -B build -G "Visual Studio 17 2022" -A x64 -DCLAP_WRAPPER_DOWNLOAD_DEPENDENCIES=TRUE
-
-# Build with MSBuild (recommended)
-$MSBUILD = "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe"
-& $MSBUILD build\jamwide.sln /p:Configuration=Release /v:minimal
-
-# Or build with CMake (alternative)
+cmake -B build -G "Visual Studio 17 2022" -A x64 -DJAMWIDE_BUILD_JUCE=ON
 cmake --build build --config Release
 ```
 
-**Note:** The first configuration downloads VST3 SDK and other dependencies automatically. For Visual Studio 2026 or other versions, adjust the generator name (e.g., `"Visual Studio 18"`).
-
-### Quick Install
-
-#### macOS
+### Build (Linux)
 
 ```bash
-./install.sh
+# Install dependencies
+sudo apt-get install -y build-essential cmake pkg-config \
+  libasound2-dev libjack-jackd2-dev libfreetype-dev \
+  libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+  libxcomposite-dev libgl1-mesa-dev libcurl4-openssl-dev \
+  libwebkit2gtk-4.1-dev
+
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DJAMWIDE_BUILD_JUCE=ON
+cmake --build build --config Release
 ```
-
-Installs to:
-- `~/Library/Audio/Plug-Ins/CLAP/JamWide.clap`
-- `~/Library/Audio/Plug-Ins/VST3/JamWide.vst3`
-- `~/Library/Audio/Plug-Ins/Components/JamWide.component`
-
-#### Windows
-
-```powershell
-.\install-win.ps1
-```
-
-Installs to:
-- `%LOCALAPPDATA%\Programs\Common\CLAP\JamWide.clap`
-- `%LOCALAPPDATA%\Programs\Common\VST3\JamWide.vst3`
-
-### Build Output
-
-#### macOS
-- `build/JamWide.clap` — CLAP plugin
-- `build/JamWide.vst3` — VST3 plugin  
-- `build/JamWide.component` — Audio Unit v2
-
-#### Windows
-- `build/CLAP/Release/JamWide.clap` — CLAP plugin
-- `build/Release/JamWide.vst3` — VST3 plugin
 
 ---
 
@@ -179,30 +185,30 @@ Installs to:
 
 ```
 JamWide/
+├── juce/                # JUCE plugin and UI
+│   ├── JamWideJuceProcessor.h/cpp   # AudioProcessor, processBlock, state
+│   ├── JamWideJuceEditor.h/cpp      # Editor shell, event drain, layout
+│   ├── NinjamRunThread.h/cpp        # NJClient run loop, command dispatch
+│   └── ui/              # JUCE UI components
 ├── src/
-│   ├── core/           # NJClient port (networking, audio decode/encode)
-│   ├── plugin/         # CLAP entry point and wrapper
-│   ├── platform/       # OS-specific GUI (Metal/D3D11 + ImGui)
-│   ├── threading/      # Run thread, command queue, SPSC ring
-│   ├── net/            # Server list fetcher
-│   ├── ui/             # ImGui UI panels
-│   └── debug/          # Logging utilities
-├── wdl/                # WDL libraries (jnetlib, sha, etc.)
-├── libs/               # Third-party submodules
+│   ├── core/            # NJClient (networking, audio encode/decode)
+│   ├── threading/       # Command/event types, SPSC ring buffers
+│   ├── net/             # Server list fetcher
+│   └── ui/              # Shared state types
+├── wdl/                 # WDL libraries (jnetlib, sha, FLAC/Vorbis codecs)
+├── libs/                # Submodules (JUCE, libFLAC, libogg, libvorbis)
 └── CMakeLists.txt
 ```
 
 ### Threading Model
 
-JamWide uses a command queue architecture for thread safety:
+JamWide uses a lock-free architecture for thread safety:
 
-| Thread | Responsibility |
-|--------|---------------|
-| **UI Thread** | Renders ImGui, sends commands to run thread |
-| **Run Thread** | Processes NJClient, handles network I/O |
-| **Audio Thread** | Calls AudioProc() for sample processing |
-
-Communication between threads is lock-free via SPSC ring buffers.
+| Thread | Responsibility | Communication |
+|--------|---------------|---------------|
+| **Audio Thread** | processBlock, AudioProc, transport sync | Lock-free atomics |
+| **Run Thread** | NJClient::Run(), command dispatch, network I/O | SPSC cmd_queue (UI to Run), evt_queue (Run to UI) |
+| **UI Thread** | JUCE Components, 20 Hz timer, event drain | SPSC evt_queue + chat_queue |
 
 ---
 
@@ -211,9 +217,9 @@ Communication between threads is lock-free via SPSC ring buffers.
 ### Plugin doesn't appear in DAW
 
 1. Verify the plugin is in the correct folder
-2. Check that your DAW supports the format (CLAP/VST3/AU)
+2. Check that your DAW supports the format (VST3/AU/CLAP)
 3. Rescan plugins in your DAW
-4. On macOS, you may need to allow the plugin in System Preferences → Security
+4. On macOS, you may need to allow the plugin in System Preferences > Security
 
 ### Can't connect to server
 
@@ -222,12 +228,18 @@ Communication between threads is lock-free via SPSC ring buffers.
 3. Try a different server from the browser
 4. Check if a firewall is blocking the connection
 
+### No multichannel output in DAW
+
+1. Enable additional output buses in the plugin I/O configuration
+2. Create aux/return tracks receiving from the plugin's output buses
+3. Make sure routing mode is set to "Assign by User" or "Assign by Channel"
+
 ### Audio issues
 
 1. Ensure your DAW's sample rate matches a common rate (44.1k, 48k)
 2. Check that audio is routed to the JamWide track
-3. Verify Master Volume is not at zero
-4. Check Monitor Input setting
+3. Verify Master Volume is not muted
+4. Check the VU meters to confirm audio is flowing
 
 ---
 

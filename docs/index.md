@@ -6,7 +6,7 @@ title: Home
 <div class="hero">
   <img src="assets/images/favicon.svg" alt="JamWide Logo" class="logo">
   <h1>JamWide</h1>
-  <p class="tagline">Jam with musicians worldwide — right inside your DAW</p>
+  <p class="tagline">Jam with musicians worldwide — right inside your DAW or standalone</p>
   
   <p>
     <a href="/download" class="btn btn-primary">Download</a>
@@ -18,11 +18,9 @@ title: Home
 
 ## What is JamWide?
 
-JamWide brings [NINJAM](https://www.cockos.com/ninjam/) — the open-source internet jam session software — directly into your favorite DAW as a plugin.
+JamWide brings [NINJAM](https://www.cockos.com/ninjam/) — the open-source internet jam session software — directly into your favorite DAW as a plugin, or runs as a standalone app.
 
-No more switching between apps. Load JamWide, connect to a server, and start jamming with musicians around the globe.
-
-![JamWide Plugin Interface](assets/images/screenshot-main.png)
+Load JamWide, connect to a server, and start jamming with musicians around the globe. Built with [JUCE](https://juce.com/) for native performance on macOS, Windows, and Linux.
 
 ---
 
@@ -30,10 +28,11 @@ No more switching between apps. Load JamWide, connect to a server, and start jam
 
 | Traditional Setup | With JamWide |
 |-------------------|--------------|
-| Separate NINJAM app | Plugin in your DAW |
-| Complex audio routing | Direct track routing |
-| External recording | Record natively in DAW |
-| Limited processing | Full plugin chain access |
+| Separate NINJAM app | Plugin in your DAW or standalone app |
+| Stereo mix only | 17 stereo output buses — route each musician to a separate track |
+| Vorbis compression only | FLAC lossless audio alongside Vorbis |
+| Manual BPM management | DAW transport sync with live BPM/BPI changes |
+| Limited processing | Full plugin chain access on every participant |
 
 ---
 
@@ -41,12 +40,12 @@ No more switching between apps. Load JamWide, connect to a server, and start jam
 
 | | |
 |---|---|
-| **🎛️ DAW Integration** | Load as CLAP, VST3, or Audio Unit. Works in Ableton, Logic, REAPER, Bitwig, and more. |
-| **🌐 Real-Time Collaboration** | Connect to any NINJAM server. Play with musicians anywhere in the world. |
-| **🎚️ Flexible Routing** | Route any track to your jam session. Apply effects to incoming audio. |
-| **📼 Native Recording** | Capture everything in your DAW's timeline. No external recording needed. |
-| **💬 Built-in Chat** | Communicate with other musicians in the session without leaving your DAW. |
-| **🎯 Timing Guide** | Visual beat alignment feedback to help you stay in sync. |
+| **DAW Integration** | VST3, AU, CLAP, and Standalone. Works in Ableton, Logic, REAPER, Bitwig, Cubase, and more. |
+| **Multichannel Routing** | Route each remote musician to a separate stereo track in your DAW for independent mixing and processing. |
+| **FLAC Lossless Audio** | Send and receive uncompressed audio quality. Switch between FLAC and Vorbis per session. |
+| **DAW Transport Sync** | Plugin only broadcasts when the DAW is playing. Live BPM/BPI changes without reconnecting. |
+| **Full Mixer** | Per-channel volume, pan, mute, solo with real-time VU meters. State persists across DAW save/load. |
+| **Built-in Chat** | Communicate with other musicians in the session. Vote on BPM/BPI changes inline. |
 
 ---
 
@@ -54,9 +53,10 @@ No more switching between apps. Load JamWide, connect to a server, and start jam
 
 | Format | Platform | Hosts |
 |--------|----------|-------|
-| **CLAP** | macOS, Windows | Bitwig, FL Studio, REAPER, MultitrackStudio |
-| **VST3** | macOS, Windows | Ableton, Cubase, FL Studio, REAPER |
+| **VST3** | macOS, Windows, Linux | Ableton Live, Bitwig, Cubase, REAPER, Studio One |
 | **AU v2** | macOS | Logic Pro, GarageBand, MainStage |
+| **CLAP** | macOS, Windows, Linux | Bitwig Studio, REAPER |
+| **Standalone** | macOS, Windows, Linux | No DAW required |
 
 ---
 
@@ -76,7 +76,7 @@ This means you can jam with someone across the world with the same experience as
 
 <div class="cta-section">
   <a href="/download" class="btn btn-primary btn-large">Download JamWide</a>
-  <p>Available for macOS and Windows</p>
+  <p>Available for macOS, Windows, and Linux</p>
 </div>
 
 ---
@@ -90,9 +90,9 @@ JamWide is open source under the GPL-2.0 license. Contributions welcome!
     <img src="https://img.shields.io/github/stars/mkschulze/JamWide?style=social" alt="GitHub Stars" />
   </a>
   <img src="https://img.shields.io/badge/license-GPL--2.0-blue.svg" alt="License" />
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg" alt="Platform" />
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg" alt="Platform" />
 </p>
 
 ---
 
-*Made with ♪ for musicians who want to jam together, anywhere in the world.*
+*Made with music for musicians who want to jam together, anywhere in the world.*

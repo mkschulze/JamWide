@@ -54,9 +54,9 @@ Works with any DAW that supports CLAP, VST3, or Audio Unit plugins:
 
 | Format | Hosts |
 |--------|-------|
-| **CLAP** | Bitwig Studio, REAPER, MultitrackStudio |
-| **VST3** | Ableton Live, Cubase, FL Studio, REAPER, Studio One |
-| **AU v2** | Logic Pro, GarageBand, MainStage (macOS only) |
+| **CLAP** | Bitwig Studio, REAPER, 
+| **VST3** | Ableton Live, Bitwig, Cubase, REAPER, Studio One |
+| **AU v2** | GarageBand |
 
 ### System Requirements
 

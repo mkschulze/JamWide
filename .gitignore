@@ -40,6 +40,9 @@
 # debug information files
 *.dwo
 
+# Build revision counter (auto-incremented, local only)
+.build_revision
+
 # Build outputs
 build/
 build-release/

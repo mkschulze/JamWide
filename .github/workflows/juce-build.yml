@@ -1,8 +1,9 @@
-name: JUCE Build + Validate
+name: Build + Validate
 
 on:
   push:
     branches: ['**']
+    tags: ['v*']
   pull_request:
     branches: [main]
 
@@ -11,7 +12,7 @@ env:
 
 jobs:
   build-macos:
-    runs-on: macos-14  # Apple Silicon runner
+    runs-on: macos-14
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,27 +23,24 @@ jobs:
         uses: lukka/get-cmake@latest
 
       - name: Configure CMake
-        env:
-          JAMWIDE_BUILD_TYPE: Release
         run: |
           cmake -B build \
-            -DCMAKE_BUILD_TYPE="$JAMWIDE_BUILD_TYPE" \
+            -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
             -DJAMWIDE_BUILD_JUCE=ON \
             -DJAMWIDE_BUILD_CLAP=OFF \
             -DJAMWIDE_DEV_BUILD=OFF
 
       - name: Build
-        env:
-          JAMWIDE_BUILD_TYPE: Release
-        run: cmake --build build --config "$JAMWIDE_BUILD_TYPE" -j $(sysctl -n hw.ncpu)
+        run: cmake --build build --config Release -j $(sysctl -n hw.ncpu)
 
       - name: Verify artifacts
         run: |
-          echo "=== JUCE build artifacts ==="
-          ls -la "build/JamWideJuce_artefacts/Release/VST3/JamWide JUCE.vst3/" || echo "VST3 not found"
-          ls -la "build/JamWideJuce_artefacts/Release/AU/JamWide JUCE.component/" || echo "AU not found"
-          ls -la "build/JamWideJuce_artefacts/Release/Standalone/JamWide JUCE.app/" || echo "Standalone not found"
+          echo "=== Build artifacts ==="
+          ls -la "build/JamWide_artefacts/Release/VST3/JamWide.vst3/" || echo "VST3 not found"
+          ls -la "build/JamWide_artefacts/Release/AU/JamWide.component/" || echo "AU not found"
+          ls -la "build/JamWide_artefacts/Release/CLAP/JamWide.clap/" || echo "CLAP not found"
+          ls -la "build/JamWide_artefacts/Release/Standalone/JamWide.app/" || echo "Standalone not found"
 
       - name: Download pluginval
         run: |
@@ -58,7 +56,7 @@ jobs:
             --validate-in-process \
             --strictness-level 5 \
             --timeout-ms 120000 \
-            --validate "build/JamWideJuce_artefacts/Release/VST3/JamWide JUCE.vst3"
+            --validate "build/JamWide_artefacts/Release/VST3/JamWide.vst3"
 
       - name: Validate AU
         continue-on-error: true
@@ -67,7 +65,7 @@ jobs:
             --validate-in-process \
             --strictness-level 5 \
             --timeout-ms 120000 \
-            --validate "build/JamWideJuce_artefacts/Release/AU/JamWide JUCE.component"
+            --validate "build/JamWide_artefacts/Release/AU/JamWide.component"
 
       - name: Validate Standalone
         continue-on-error: true
@@ -76,7 +74,18 @@ jobs:
             --validate-in-process \
             --strictness-level 5 \
             --timeout-ms 120000 \
-            --validate "build/JamWideJuce_artefacts/Release/Standalone/JamWide JUCE.app"
+            --validate "build/JamWide_artefacts/Release/Standalone/JamWide.app"
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: JamWide-macOS
+          path: |
+            build/JamWide_artefacts/Release/VST3/
+            build/JamWide_artefacts/Release/AU/
+            build/JamWide_artefacts/Release/CLAP/
+            build/JamWide_artefacts/Release/Standalone/
+          retention-days: 30
 
   build-windows:
     runs-on: windows-latest
@@ -99,15 +108,13 @@ jobs:
             -DJAMWIDE_DEV_BUILD=OFF
 
       - name: Build
-        env:
-          JAMWIDE_BUILD_TYPE: Release
-        run: cmake --build build --config "$env:JAMWIDE_BUILD_TYPE"
+        run: cmake --build build --config Release
 
       - name: Verify artifacts
         shell: pwsh
         run: |
-          Write-Host "=== JUCE build artifacts ==="
-          Get-ChildItem -Path "build/JamWideJuce_artefacts" -Recurse -Include "*.vst3" -Directory | Select-Object FullName
+          Write-Host "=== Build artifacts ==="
+          Get-ChildItem -Path "build/JamWide_artefacts" -Recurse -Include "*.vst3","*.clap" -Directory | Select-Object FullName
 
       - name: Download pluginval
         shell: pwsh
@@ -117,4 +124,115 @@ jobs:
 
       - name: Validate VST3
         run: |
-          pluginval\pluginval.exe --validate-in-process --strictness-level 5 --timeout-ms 120000 --validate "build\JamWideJuce_artefacts\Release\VST3\JamWide JUCE.vst3"
+          pluginval\pluginval.exe --validate-in-process --strictness-level 5 --timeout-ms 120000 --validate "build\JamWide_artefacts\Release\VST3\JamWide.vst3"
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: JamWide-Windows
+          path: |
+            build/JamWide_artefacts/Release/VST3/
+            build/JamWide_artefacts/Release/CLAP/
+          retention-days: 30
+
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake pkg-config \
+            libasound2-dev \
+            libjack-jackd2-dev \
+            libfreetype-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxcomposite-dev \
+            libgl1-mesa-dev \
+            libcurl4-openssl-dev \
+            libwebkit2gtk-4.1-dev
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DJAMWIDE_BUILD_JUCE=ON \
+            -DJAMWIDE_BUILD_CLAP=OFF \
+            -DJAMWIDE_DEV_BUILD=OFF
+
+      - name: Build
+        run: cmake --build build --config Release -j $(nproc)
+
+      - name: Verify artifacts
+        run: |
+          echo "=== Build artifacts ==="
+          find build/JamWide_artefacts -name "*.vst3" -o -name "*.clap" -o -name "*.so" | head -20
+
+      - name: Download pluginval
+        run: |
+          curl -L https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Linux.zip -o pluginval.zip
+          unzip pluginval.zip
+          chmod +x pluginval
+
+      - name: Validate VST3
+        continue-on-error: true
+        run: |
+          ./pluginval \
+            --validate-in-process \
+            --strictness-level 5 \
+            --timeout-ms 120000 \
+            --validate "build/JamWide_artefacts/Release/VST3/JamWide.vst3"
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: JamWide-Linux
+          path: |
+            build/JamWide_artefacts/Release/VST3/
+            build/JamWide_artefacts/Release/CLAP/
+          retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package artifacts
+        run: |
+          cd artifacts
+          zip -r ../JamWide-macOS.zip JamWide-macOS/
+          zip -r ../JamWide-Windows.zip JamWide-Windows/
+          zip -r ../JamWide-Linux.zip JamWide-Linux/
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          PRERELEASE_FLAG=""
+          if echo "$TAG_NAME" | grep -qE "beta|alpha|rc"; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release create "$TAG_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG_NAME" \
+            --generate-notes \
+            $PRERELEASE_FLAG \
+            JamWide-macOS.zip \
+            JamWide-Windows.zip \
+            JamWide-Linux.zip

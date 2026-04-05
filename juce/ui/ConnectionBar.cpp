@@ -152,6 +152,18 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
             });
     };
     addAndMakeVisible(routeButton);
+
+    // Sync button (D-03: between Route and Fit, D-07: hidden in standalone)
+    syncButton.setButtonText("Sync");
+    syncButton.setTooltip("Sync NINJAM intervals to DAW transport");
+    syncButton.setColour(juce::TextButton::buttonColourId, juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
+    syncButton.setColour(juce::TextButton::textColourOffId, juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    syncButton.onClick = [this]() { handleSyncClick(); };
+    addAndMakeVisible(syncButton);
+
+    // Hide in standalone (D-07)
+    bool isStandalone = (processorRef.wrapperType == juce::AudioProcessor::wrapperType_Standalone);
+    syncButton.setVisible(!isStandalone);
 }
 
 void ConnectionBar::resized()
@@ -190,12 +202,17 @@ void ConnectionBar::resized()
     statusLabel.setBounds(x + 14, y, 100, h);
     x += 14 + 100 + gap;
 
-    // Right-aligned section
+    // Right-aligned section (right-to-left: Codec, Route, Sync, Fit, userCount)
     int rightX = area.getRight();
     codecSelector.setBounds(rightX - 80, y, 80, h);
     rightX -= 80 + gap;
     routeButton.setBounds(rightX - 52, y, 52, h);
     rightX -= 52 + gap;
+    if (syncButton.isVisible())
+    {
+        syncButton.setBounds(rightX - 44, y, 44, h);
+        rightX -= 44 + gap;
+    }
     fitButton.setBounds(rightX - 36, y, 36, h);
     rightX -= 36 + gap;
 
@@ -449,4 +466,60 @@ juce::String ConnectionBar::getUsername() const
 juce::String ConnectionBar::getPassword() const
 {
     return passwordField.getText();
+}
+
+void ConnectionBar::handleSyncClick()
+{
+    if (syncState_ == 0) // IDLE -> validate BPM, then WAITING
+    {
+        float hostBpm = processorRef.cachedHostBpm_.load(std::memory_order_relaxed);
+        float serverBpm = processorRef.uiSnapshot.bpm.load(std::memory_order_relaxed);
+
+        if (hostBpm <= 0.0f)
+        {
+            // Host provides no BPM data
+            syncMismatchBubble = std::make_unique<juce::BubbleMessageComponent>(3000);
+            addChildComponent(syncMismatchBubble.get());  // MUST come before showAt (review fix)
+            syncMismatchBubble->showAt(&syncButton,
+                juce::AttributedString("Host does not provide position data"),
+                3000, true, false);
+            return;
+        }
+
+        if (static_cast<int>(hostBpm) != static_cast<int>(serverBpm))
+        {
+            // BPM mismatch -- show bubble per UI-SPEC
+            juce::String msg = "Host tempo (" + juce::String(static_cast<int>(hostBpm))
+                + " BPM) does not match server ("
+                + juce::String(static_cast<int>(serverBpm)) + " BPM)";
+            syncMismatchBubble = std::make_unique<juce::BubbleMessageComponent>(3000);
+            addChildComponent(syncMismatchBubble.get());  // MUST come before showAt (review fix)
+            syncMismatchBubble->showAt(&syncButton,
+                juce::AttributedString(msg), 3000, true, false);
+            return;
+        }
+
+        processorRef.cmd_queue.try_push(jamwide::SyncCommand{});
+    }
+    else if (syncState_ == 1) // WAITING -> cancel
+    {
+        processorRef.cmd_queue.try_push(jamwide::SyncCancelCommand{});
+    }
+    else if (syncState_ == 2) // ACTIVE -> disable
+    {
+        processorRef.cmd_queue.try_push(jamwide::SyncDisableCommand{});
+    }
+}
+
+void ConnectionBar::updateSyncState(int state)
+{
+    syncState_ = state;
+    juce::Colour textCol;
+    if (state == 0)
+        textCol = juce::Colour(JamWideLookAndFeel::kTextSecondary);
+    else if (state == 1)
+        textCol = juce::Colour(JamWideLookAndFeel::kAccentWarning);
+    else
+        textCol = juce::Colour(JamWideLookAndFeel::kAccentConnect);
+    syncButton.setColour(juce::TextButton::textColourOffId, textCol);
 }

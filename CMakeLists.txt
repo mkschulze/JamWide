@@ -267,6 +267,7 @@ if(JAMWIDE_BUILD_JUCE)
         juce/ui/VuMeter.cpp
         juce/ui/ChannelStrip.cpp
         juce/ui/BeatBar.cpp
+        juce/ui/SessionInfoStrip.cpp
         juce/ui/ChannelStripArea.cpp
         juce/ui/ServerBrowserOverlay.cpp
         juce/ui/LicenseDialog.cpp

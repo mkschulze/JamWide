@@ -29,10 +29,12 @@ public:
     std::function<void(int)> onRouteModeChanged;  // 0=manual, 1=by-channel, 2=by-user
 
     void setRoutingModeHighlight(int mode);  // Updates Route button text color
+    void updateSyncState(int state);
 
 private:
     void handleConnectClick();
     void handleCodecChange();
+    void handleSyncClick();
     void updateConnectedState(bool connected, bool connecting);
 
     JamWideJuceProcessor& processorRef;
@@ -53,6 +55,9 @@ private:
     juce::ComboBox codecSelector;
     juce::TextButton fitButton;
     juce::TextButton routeButton;
+    juce::TextButton syncButton;
+    std::unique_ptr<juce::BubbleMessageComponent> syncMismatchBubble;
+    int syncState_ = 0;  // 0=IDLE, 1=WAITING, 2=ACTIVE (mirrors processor syncState_ atomic)
 
     int currentStatus = -1;
 

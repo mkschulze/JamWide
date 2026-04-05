@@ -1,350 +1,289 @@
-# Domain Pitfalls
+# Pitfalls Research
 
-**Domain:** NINJAM client JUCE migration (plugin + standalone, multichannel, FLAC, DAW sync)
-**Researched:** 2026-03-07
+**Domain:** OSC remote control + VDO.Ninja video companion for JUCE audio plugin (JamWide v1.1)
+**Researched:** 2026-04-05
+**Confidence:** HIGH (JUCE OSC, threading), MEDIUM (VDO.Ninja API lifecycle, WebSocket server in plugin), LOW (chunked mode sync accuracy, multi-popout browser stability)
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, data loss, or fundamental architecture rework.
+### Pitfall 1: OSC Receiver Callback Mutates Shared State Without Thread Safety
 
-### Pitfall 1: NJClient::Run() Blocking the JUCE Message Thread
+**What goes wrong:**
+JUCE's `OSCReceiver` delivers incoming messages on its internal network thread (when using `RealtimeCallback`) or the message thread (when using `MessageLoopCallback`). JamWide's existing architecture uses three threads: audio, UI (message thread / render), and run (NJClient). Adding the OSC receiver introduces a fourth thread. When an OSC message like `/JamWide/remote/3/volume 0.7` arrives, the handler must update the remote user's volume -- but this requires calling NJClient methods protected by `client_mutex`. If the handler acquires `client_mutex` on the OSC network thread, it contends with the run thread, which holds `client_mutex` during encoding and network I/O (potentially 10-50ms). The OSC thread blocks, incoming OSC messages queue up, and the bidirectional feedback loop to TouchOSC stalls.
 
-**What goes wrong:** The current architecture runs `NJClient::Run()` in a dedicated `std::thread` that polls every ~50ms. During JUCE migration, developers instinctively reach for `juce::Timer` (which fires on the message thread) or try to call NJClient methods from the message thread directly. NJClient::Run() performs blocking network I/O via JNetLib, DNS resolution, and Vorbis/FLAC encoding -- all of which can stall for 100ms+. Putting this on the message thread freezes the GUI.
+**Why it happens:**
+Developers treat OSC message handlers like UI event handlers -- "just set the value." But the NJClient API is mutex-protected, and the OSC network thread has no business waiting on network I/O locks. The IEM Plugin Suite avoids this because it maps OSC directly to JUCE AudioProcessorParameters (which are atomic/lock-free). JamWide does not use JUCE's parameter system for NJClient state -- it uses a command queue.
 
-**Why it happens:** JUCE's programming model pushes everything toward the message thread (Timer, AsyncUpdater, callAsync). NJClient was designed for a dedicated thread, not for message-thread polling.
+**How to avoid:**
+- Route all OSC-triggered state changes through the existing `cmd_queue` (SPSC ring buffer, UI to Run thread). The OSC handler pushes a command variant; the run thread processes it on its next cycle. This is the same pattern the UI already uses.
+- For parameters that need audio-thread-level latency (volume, pan, mute), write directly to `std::atomic` members that the audio thread already reads. Do not acquire any mutex from the OSC callback.
+- Use `RealtimeCallback` for parameter-setting messages (fast, no allocations) and `MessageLoopCallback` for configuration messages (port changes, connect/disconnect) that can safely allocate.
+- Never call NJClient methods directly from the OSC callback thread.
 
-**Consequences:** GUI freezes during connection, encoding spikes, or DNS lookups. On macOS, the system may show the spinning beachball. DAW hosts may report the plugin as unresponsive and kill it.
+**Warning signs:**
+OSC fader movements feel sluggish (>200ms round trip). TouchOSC faders snap back to old values before settling. Audio glitches correlate with rapid OSC fader automation.
 
-**Prevention:**
-- Keep a dedicated `juce::Thread` subclass for NJClient::Run() -- do not use `juce::Timer` for network polling
-- Use `juce::MessageManager::callAsync()` or `juce::AsyncUpdater` to push events from the run thread to the message thread for UI updates
-- Never acquire `MessageManagerLock` from the run thread while holding `client_mutex` (deadlock risk)
-- Use the existing SPSC ring buffer pattern (or `juce::AbstractFifo`) for lock-free audio-thread to run-thread communication
-
-**Detection:** GUI becomes unresponsive during connection or when remote users join/leave. Profile with Instruments (macOS) or ETW (Windows) showing message thread blocked on network I/O.
-
-**Phase relevance:** Phase 1 (Core JUCE scaffolding) -- get the threading architecture right before building anything on top.
-
----
-
-### Pitfall 2: Calling NJClient API from the Audio Thread
-
-**What goes wrong:** NJClient's `AudioProc()` is the only method safe to call from the audio thread. All other NJClient methods (Connect, Run, SetLocalChannelInfo, GetRemoteUser, etc.) require `client_mutex`. In the current codebase, the audio thread carefully avoids this mutex. During JUCE migration, it is tempting to call NJClient state-query methods from `processBlock()` to read remote user info, BPM, or connection status -- this introduces mutex contention on the real-time audio thread.
-
-**Why it happens:** JUCE's `processBlock()` is the natural place to "do everything audio-related," and developers may not realize which NJClient methods are mutex-protected versus which are safe (atomic/lock-free).
-
-**Consequences:** Audio dropouts, glitches, and priority inversion. The audio thread blocks waiting for `client_mutex` held by the run thread during encoding or network operations. Worst case: audio thread starves and DAW reports xruns.
-
-**Prevention:**
-- Document clearly which NJClient methods are audio-thread-safe (only `AudioProc`)
-- Continue the atomic snapshot pattern (`UiAtomicSnapshot`) for any data processBlock needs: BPM, BPI, beat position, connection status
-- Never acquire `client_mutex` in `processBlock()` -- not even "just for a quick read"
-- Use `std::atomic` or lock-free queues for all audio-thread communication
-- Enable ThreadSanitizer in CI to catch violations early
-
-**Detection:** Intermittent audio glitches under load, especially when many remote users are connected. ThreadSanitizer reports. Audio dropout counters in DAW increase.
-
-**Phase relevance:** Phase 1 (Core JUCE scaffolding) -- establish the boundary contract for thread safety before implementing features.
+**Phase to address:**
+Phase 1 (OSC Server Core) -- the threading contract must be established before any parameter mapping.
 
 ---
 
-### Pitfall 3: libFLAC Symbol Collision with JUCE's Bundled FLAC
+### Pitfall 2: OSCReceiver Port Binding Silently Succeeds on Windows When Port Is Taken
 
-**What goes wrong:** JUCE includes a complete copy of libFLAC source code in `juce_audio_formats/codecs/flac/`, compiled directly into `juce_FlacAudioFormat.cpp`. The current FLAC integration plan adds an external libFLAC git submodule at `libs/libflac/`. Linking both produces duplicate symbol errors for `FLAC__stream_encoder_init_stream`, `FLAC__stream_decoder_init_stream`, and dozens of other FLAC API functions.
+**What goes wrong:**
+JUCE's `OSCReceiver::connect(portNumber)` returns `true` on Windows even when another application (or another JamWide instance) already holds the port. This is because JUCE's underlying `DatagramSocket` calls `SO_REUSEADDR` unconditionally on Windows, which permits multiple binds to the same UDP port. The receiver appears connected but never receives any messages. On macOS, the behavior is correct -- `connect()` returns `false` when the port is taken.
 
-**Why it happens:** JUCE wraps its FLAC copy in `FlacNamespace` to isolate symbols, but the external libFLAC uses the global namespace. If `JUCE_USE_FLAC=1` (the default), both copies compile into the same binary. Even if JUCE's copy is namespaced, the external libFLAC's C symbols in the global namespace create linker ambiguity.
+**Why it happens:**
+JUCE's `DatagramSocket` constructor calls `SocketHelpers::makeReusable(handle)` on all platforms, but the Windows implementation of `SO_REUSEADDR` for UDP allows multiple processes to bind the same port (unlike macOS/Linux where `SO_REUSEPORT` is separate from `SO_REUSEADDR`). This is a known JUCE issue reported since 2018 and still present.
 
-**Consequences:** Build failure (duplicate symbols) or, worse, silent symbol resolution to the wrong copy causing crashes or codec corruption.
+**How to avoid:**
+- After calling `OSCReceiver::connect(port)`, send a test OSC message to localhost on that port and verify receipt within 100ms. If no message arrives, the port is occupied.
+- Implement a port-probing strategy for multi-instance: try the configured port, then increment and retry (up to N attempts). Display the actual bound port in the UI status bar.
+- On Windows specifically, manually test port availability by creating a `DatagramSocket` without `SO_REUSEADDR` before passing to `OSCReceiver`. If the raw bind fails, the port is taken.
+- Persist the allocated port per plugin instance in state save/restore so that reloading a DAW session does not cause port conflicts between instances.
 
-**Prevention:**
-Two viable approaches:
-1. **Use JUCE's bundled FLAC:** Set `JUCE_USE_FLAC=1`, use `juce::FlacNamespace::FLAC__*` APIs directly in `FlacEncoder`/`FlacDecoder` wrappers. No external submodule needed. Requires adapting the FLAC integration plan to use JUCE's namespaced API instead of raw libFLAC.
-2. **Use external libFLAC only:** Set `JUCE_USE_FLAC=0` to disable JUCE's bundled copy, link your own libFLAC submodule. Loses `juce::FlacAudioFormat` for file I/O (not needed for NINJAM streaming, but worth noting).
+**Warning signs:**
+OSC status shows "connected" but TouchOSC commands have no effect. Works in one DAW instance but not when a second instance is loaded. Works on macOS but fails on Windows.
 
-Recommendation: Option 1 -- use JUCE's bundled FLAC. It simplifies the build, avoids submodule management, and JUCE maintains the FLAC version.
-
-**Detection:** Linker errors mentioning duplicate FLAC symbols. If somehow it links, runtime crashes in FLAC encode/decode with corrupted function pointers.
-
-**Phase relevance:** FLAC phase -- must decide before implementing `FlacEncoder`/`FlacDecoder`. Affects the FLAC integration plan directly.
-
----
-
-### Pitfall 4: Editor Lifetime Assumptions Break Network State
-
-**What goes wrong:** In JUCE, the `AudioProcessorEditor` can be created and destroyed at any time by the host. Some DAWs destroy the editor when the plugin window is closed, then recreate it when reopened. If the editor holds references to NJClient state, chat history, remote user lists, or UI state, these get wiped on editor destruction. The NJClient connection continues running headless (processor stays alive), but the UI state is lost.
-
-**Why it happens:** The current Dear ImGui architecture has a persistent UI state object (`UiState`) that lives in `JamWidePlugin` -- it never gets destroyed while the plugin is alive. JUCE separates Processor (persistent) and Editor (transient). Developers naturally put state in the Editor because that is where it renders.
-
-**Consequences:** Chat history disappears when user closes/reopens plugin window. Connection settings reset. Remote user mixer positions lost. Server browser results gone.
-
-**Prevention:**
-- All persistent state (chat history, connection info, remote user mixer settings, server browser cache) must live in the `AudioProcessor` subclass, not the `Editor`
-- The Editor reads state from the Processor on construction and writes changes back via the command queue
-- Use `juce::ValueTree` for observable state that the Editor can listen to via `ValueTree::Listener`
-- Test by repeatedly opening/closing the plugin window while connected to a server
-
-**Detection:** Close and reopen the plugin window -- if chat history or mixer settings disappear, state is in the wrong place.
-
-**Phase relevance:** Phase 1 (Core JUCE scaffolding) -- get the Processor/Editor state boundary right from day one.
+**Phase to address:**
+Phase 1 (OSC Server Core) -- port binding validation is foundational; everything else depends on actually receiving messages.
 
 ---
 
-### Pitfall 5: Multichannel Bus Layout Rejected by DAW Hosts
+### Pitfall 3: OSC Feedback Loop Floods the Network When Bidirectional Sync Is Naive
 
-**What goes wrong:** JamWide needs per-user stereo output pairs (e.g., 8 users = 16 channels = 8 stereo buses). JUCE's bus system lets you declare multiple output buses, but DAWs are inconsistent about supporting them. Logic Pro caches bus configurations by AU subtype code and requires a version number change to recognize new configurations. Some DAWs only see the main stereo bus. VST3 hosts may ignore auxiliary buses entirely.
+**What goes wrong:**
+Bidirectional OSC means: (1) TouchOSC sends a fader value to the plugin, (2) the plugin updates the parameter, (3) the plugin sends the new value back to TouchOSC as feedback, (4) TouchOSC receives the feedback and sends the value again (because its fader "changed"). This creates an infinite feedback loop where a single fader touch generates hundreds of messages per second. For simple continuous faders this may appear to work (the value converges), but for toggle buttons, exclusive multi-toggles, or discrete parameters (codec select), the loop never converges and causes runaway oscillation.
 
-**Why it happens:** The plugin is passive -- it cannot force a bus layout. It can only accept or reject what the host proposes. Each DAW has its own multi-bus support quirks. Logic Pro's AudioComponentRegistrar caches AU configurations aggressively.
+**Why it happens:**
+OSC has no built-in echo suppression or source identification. The plugin cannot distinguish "this value came from TouchOSC" versus "this value came from the plugin's own outgoing feedback." The IEM Plugin Suite handles this by only sending feedback for values that actually changed -- but if floating-point rounding causes the echoed value to differ by epsilon, it triggers another round.
 
-**Consequences:** Plugin loads in stereo-only mode despite declaring 8 output buses. Users cannot route individual remote users to separate mixer channels. The core value proposition of per-user mixing in the DAW is lost.
+**How to avoid:**
+- Implement a "change source" flag per parameter: when a value arrives from OSC, mark it as "externally set" and suppress outgoing feedback for that parameter for a configurable debounce period (100-200ms, matching the configured send interval).
+- Only send outgoing OSC values that have actually changed since the last send cycle. Use exact value comparison for integers/booleans, and an epsilon threshold (1e-6) for floats.
+- Implement the IEM pattern: outgoing OSC is sent on a timer (default 100ms). The timer collects all changed parameters since the last tick and sends them in a single burst. A parameter changed by incoming OSC within the current timer period is excluded from the outgoing batch.
+- For multi-toggle and exclusive parameters, add a 200ms suppression window after receiving an OSC change before sending feedback.
 
-**Prevention:**
-- Declare all auxiliary buses as enabled stereo outputs in the constructor (not optional/disabled)
-- Do NOT override `canAddBus()` or `canRemoveBus()` -- this breaks Logic Pro
-- Implement `isBusesLayoutSupported()` to accept both stereo-only (fallback) and full multi-bus configurations
-- Allocate resources in `prepareToPlay()`, not in `isBusesLayoutSupported()` (called many times during scanning)
-- Change the AU version number any time the bus configuration changes -- Logic Pro requires this for re-scanning
-- Run `auval` on every build to catch AU validation failures before they reach users
-- Test in at least Logic Pro, REAPER, Ableton Live, and Bitwig
-- Run `killall -9 AudioComponentRegistrar` during development to clear stale AU caches
+**Warning signs:**
+Network traffic spikes when touching a single fader. CPU usage increases when TouchOSC is connected. Toggle buttons flicker rapidly between states. Parameter values oscillate visibly in the plugin UI.
 
-**Detection:** Plugin shows only stereo output in DAW mixer. `auval -a` reports validation failure. Logic Pro shows wrong channel count.
-
-**Phase relevance:** Multichannel phase -- but bus declarations must be designed in Phase 1 scaffolding even if routing is implemented later.
+**Phase to address:**
+Phase 1 (OSC Server Core) -- feedback loop prevention is part of the send/receive architecture, not a polish item.
 
 ---
 
-### Pitfall 6: processBlock Sample Rate Mismatch with NJClient
+### Pitfall 4: VDO.Ninja External API WebSocket Disconnects Every ~60 Seconds
 
-**What goes wrong:** NJClient encodes and decodes audio at a fixed sample rate set during `AudioProc` configuration. JUCE's `prepareToPlay()` can be called multiple times with different sample rates, and `prepareToPlay()` can be called again without `releaseResources()` in between. If NJClient's encoder is initialized at 48000 Hz but the DAW switches to 44100 Hz, the encoded audio plays at the wrong speed for all remote users, and decoded remote audio plays at the wrong pitch locally.
+**What goes wrong:**
+The VDO.Ninja external API WebSocket (`wss://api.vdo.ninja:443`) disconnects every ~60 seconds if there is no activity, and even with activity the connection can drop. The official documentation states: "it will timeout every minute or so by default otherwise." After disconnection, the plugin loses the ability to discover room participants, control streams, or receive join/leave events. Without robust reconnection logic, the plugin silently loses contact with VDO.Ninja and the video companion page becomes stale.
 
-**Why it happens:** The current plugin activates at a fixed sample rate and never changes. JUCE plugins must handle dynamic sample rate changes gracefully. Some standalone audio device changes also trigger `prepareToPlay()` with a new rate.
+**Why it happens:**
+WebSocket connections from native C++ code (not running in a browser) lack the browser's built-in reconnection heuristics. VDO.Ninja's signaling server is optimized for browser clients that maintain the connection through the JavaScript runtime. A native WebSocket client must implement its own keepalive and reconnection.
 
-**Consequences:** Remote users hear pitch-shifted audio. Metronome timing drifts. Interval boundaries misalign. Audio artifacts at rate-change boundaries.
+**How to avoid:**
+- Implement automatic reconnection with exponential backoff: 1s, 2s, 4s, 8s, cap at 30s. On successful reconnect, re-send the `{"join": APIKEY}` message and re-query room state with `getGuestList`.
+- Send periodic ping/keepalive frames (every 30s) to prevent idle timeout. Standard WebSocket ping frames suffice.
+- After reconnecting, reconcile room state: compare the fresh `getGuestList` result against the locally cached roster and emit appropriate join/leave events to the companion page and OSC clients.
+- Design the WebSocket client as a state machine: CONNECTING, CONNECTED, DISCONNECTING, RECONNECTING. All outbound commands queue until CONNECTED state is reached.
+- Log all disconnection events with timestamps for debugging. Track reconnection count and expose it in a debug/status view.
 
-**Prevention:**
-- In `prepareToPlay()`, always reinitialize NJClient's encoder/decoder configuration with the new sample rate
-- If connected to a server, trigger a codec reinit at the next interval boundary (not mid-interval)
-- Consider resampling if the DAW rate differs from the desired network rate (e.g., always transmit at 48000 Hz regardless of local rate)
-- Store the current sample rate atomically so the run thread knows when it has changed
-- Handle `prepareToPlay()` being called multiple times in succession without panicking
+**Warning signs:**
+Video companion page shows stale user list after ~1 minute. New users joining the NINJAM session do not appear in the video grid. Plugin logs show WebSocket close events without corresponding reconnection.
 
-**Detection:** Audio sounds pitch-shifted after changing sample rate in DAW preferences. Metronome clicks at wrong intervals.
-
-**Phase relevance:** Phase 1 (Core JUCE scaffolding) -- the `prepareToPlay()`/`releaseResources()` lifecycle must be correct before anything else works.
-
----
-
-## Moderate Pitfalls
-
-### Pitfall 7: Standalone Mode Has No AudioPlayHead
-
-**What goes wrong:** In standalone mode, `getPlayHead()` returns nullptr or a stub that provides no meaningful BPM, time signature, or transport state. JamWide's DAW sync feature (reading host tempo/transport to sync NINJAM intervals) silently fails in standalone. If the code assumes `getPlayHead()` always returns valid data, it crashes with a null dereference or uses uninitialized BPM values.
-
-**Prevention:**
-- Implement a "pseudo transport" class that provides a fallback internal clock when no host transport is available
-- In standalone, use the server-provided BPM/BPI as the authoritative tempo source (this is already the NINJAM model)
-- Guard every `getPlayHead()` call with null checks and `std::optional` handling for BPM values
-- Only call `getPlayHead()` from within `processBlock()` -- calling it elsewhere produces undefined behavior
-- Cache transport values in atomics per-buffer rather than calling `getPlayHead()` per-sample
-
-**Detection:** Standalone app crashes on launch or shows BPM as 0/NaN. DAW sync feature does nothing in standalone mode.
-
-**Phase relevance:** DAW sync phase and standalone phase -- but the null-safe pattern should be established in Phase 1.
+**Phase to address:**
+Phase 3 (Video Companion Server) -- but the WebSocket client library choice and reconnection architecture should be designed in Phase 1 planning.
 
 ---
 
-### Pitfall 8: JUCE State Save/Restore Drops Connection Context
+### Pitfall 5: Audio Thread Blocked by OSC Parameter Changes via Mutex
 
-**What goes wrong:** JUCE's `getStateInformation()`/`setStateInformation()` serializes plugin state for DAW session save/recall. If connection parameters (server address, username), codec selection, or mixer settings are not included in the state, reopening a DAW session loses all configuration. Conversely, if the state includes "connected" status, the plugin may try to auto-reconnect on session load, which may not be desired.
+**What goes wrong:**
+If OSC-driven parameter changes (volume, pan, mute) go through the `client_mutex` path (UI command queue -> run thread -> NJClient API under lock), and the audio thread uses `serialize_audio_proc` mode (which acquires `client_mutex` in `AudioProc`), then rapid OSC fader movements cause contention between the run thread processing OSC commands and the audio thread processing samples. Even without `serialize_audio_proc`, if the developer mistakenly routes OSC volume changes through a path that touches `client_mutex`, the audio thread can be indirectly starved.
 
-**Prevention:**
-- Save connection parameters, codec selection, per-user mixer settings, and UI preferences in `getStateInformation()` via `AudioProcessorValueTreeState` or custom XML
-- Do NOT save "currently connected" status -- reconnection should be explicit user action
-- Do NOT save passwords to the DAW session file (security risk -- session files are shared)
-- Handle `setStateInformation()` being called before `prepareToPlay()` -- buffer the state and apply it when the plugin activates
-- Test with DAW session save/load cycle: settings should persist, connection should not auto-start
+**Why it happens:**
+The existing JamWide architecture uses `std::atomic<float>` for master/metro volumes that the audio thread reads directly. But remote user volumes are stored in NJClient's internal structures, which require `client_mutex` to modify. OSC-driven remote user volume changes must go through the mutex-protected path -- there is no lock-free alternative for NJClient's per-user state.
 
-**Detection:** Open a saved DAW session -- server address, username, and mixer settings are blank. Or worse: plugin auto-connects to a server on session load without user consent.
+**How to avoid:**
+- For master volume, master mute, metro volume, metro mute: write directly to the existing `std::atomic` members from the OSC callback. These bypass `client_mutex` entirely and the audio thread reads them lock-free. This is the fast path.
+- For remote user volume/pan/mute: route through the `cmd_queue` command queue. The run thread applies these under `client_mutex` during its normal ~50ms polling cycle. This adds up to 50ms latency on remote user volume changes from OSC, which is acceptable for mixing.
+- Never attempt to modify NJClient per-user state from the OSC callback thread directly.
+- Ensure `serialize_audio_proc` is OFF in production builds (it is a diagnostic option). With it off, `AudioProc` never acquires `client_mutex` and is immune to OSC-induced contention.
+- Consider adding atomic shadow copies of remote user volumes that the audio thread reads, mirroring the pattern used for master volume. This would eliminate the latency for remote user OSC fader movements at the cost of maintaining a parallel atomic array.
 
-**Phase relevance:** Phase 1 (Core JUCE scaffolding) -- state serialization should be designed early to avoid retrofitting.
+**Warning signs:**
+Audio dropouts when rapidly moving remote user faders in TouchOSC. No dropouts when moving master fader (atomic path). xrun count increases during OSC automation.
 
----
-
-### Pitfall 9: Parameter Callbacks Fire on Unpredictable Threads
-
-**What goes wrong:** JUCE's `parameterChanged()` and `parameterValueChanged()` callbacks can be called from any thread -- the audio thread, the message thread, or an internal host thread. Developers treat these callbacks as "UI events" and call `repaint()`, acquire mutexes, or allocate memory, causing crashes or deadlocks.
-
-**Prevention:**
-- Treat parameter callbacks as if they are on the audio thread: no allocations, no locks, no UI calls
-- Use a `juce::Timer` or `juce::VBlankAttachment` with an `std::atomic<bool>` dirty flag to defer UI updates
-- For parameters that control NJClient state (volume, mute, pan), write to atomics in the callback, read from atomics in the run thread
-- Use `AudioProcessorValueTreeState` (APVTS) for thread-safe parameter management -- do not roll custom parameter systems
-
-**Detection:** Random crashes during automation playback. Deadlocks when adjusting parameters while the plugin is processing audio. ThreadSanitizer reports in CI.
-
-**Phase relevance:** Phase 1 (Core JUCE scaffolding) -- parameters must be set up correctly from the start.
+**Phase to address:**
+Phase 2 (OSC Remote User Mapping) -- the remote user parameter path must be designed with the audio thread in mind.
 
 ---
 
-### Pitfall 10: FLAC Encoder Finish Blocks at Interval Boundaries
+### Pitfall 6: Companion Page Served from Plugin Fails Due to Mixed Content / CORS
 
-**What goes wrong:** `FLAC__stream_encoder_finish()` flushes buffered audio and writes final metadata. This call can block for a significant duration (especially with larger block sizes or if multithreaded encoding is enabled). In NINJAM, each interval is a complete FLAC stream -- so `finish()` is called at every interval boundary. If this happens on the run thread while it holds `client_mutex`, the audio thread's `AudioProc()` may be blocked (depending on serialization settings).
+**What goes wrong:**
+The plugin serves a companion HTML page from a local HTTP server (e.g., `http://127.0.0.1:PORT/companion`). This page embeds VDO.Ninja iframes from `https://vdo.ninja/`. Browsers block mixed content: an HTTP page cannot embed HTTPS iframes, and `postMessage` between HTTP and HTTPS origins may be restricted depending on the browser's security policy. Additionally, VDO.Ninja requires SSL sitewide -- embedding it from an HTTP origin causes camera/microphone permission failures.
 
-**Why it happens:** NINJAM intervals create a new encoder per interval and finalize the previous one. FLAC's finalization writes the STREAMINFO metadata block (which requires the final frame count), flushing all remaining data.
+**Why it happens:**
+Running an HTTPS server from a plugin requires TLS certificates. Generating or bundling self-signed certificates is complex, and browsers will show security warnings. Developers initially prototype with HTTP because it is simpler, then discover the mixed-content wall when adding VDO.Ninja iframes.
 
-**Prevention:**
-- Use small FLAC block sizes (1024 samples = ~23ms at 44.1kHz) to minimize buffered data at finalization
-- Profile `FLAC__stream_encoder_finish()` latency -- if >5ms, consider double-buffering (finalize previous interval's encoder in a separate thread while the new interval's encoder is already running)
-- Do not enable libFLAC's multithreading option -- it makes `finish()` wait for worker threads
-- Keep `client_mutex` hold time minimal during interval transitions
-- Set FLAC compression level to 0-3 (fast) rather than 5-8 (slow) for real-time use
+**How to avoid:**
+- Do NOT embed VDO.Ninja iframes in a locally-served HTTP page. Instead, use a two-part architecture:
+  1. **Companion page**: A static HTML page hosted on a public HTTPS URL (e.g., a GitHub Pages site at `https://jamwide.github.io/companion/`) that embeds VDO.Ninja iframes. The plugin opens this URL in the system browser with query parameters encoding the room name, API key, and local WebSocket port.
+  2. **Local WebSocket**: The plugin runs a WebSocket server on `ws://127.0.0.1:PORT` that the companion page connects to for receiving interval timing and roster updates. Browsers allow `ws://` connections from `https://` pages to `127.0.0.1` (localhost exemption per W3C spec).
+- Alternatively, use the `file://` protocol by writing the companion HTML to a temp file and opening it. However, `file://` origins have even stricter iframe restrictions in modern browsers.
+- The cleanest approach: make the companion page a standalone static site. Embed all control logic in JavaScript. Plugin communicates exclusively via the local WebSocket. No HTTP server needed in the plugin at all.
 
-**Detection:** Audio glitches at interval boundaries when using FLAC. Profiler shows `FLAC__stream_encoder_finish()` taking >5ms.
+**Warning signs:**
+Companion page loads but VDO.Ninja iframe shows "blocked by content security policy" or "insecure content blocked." Camera permission dialog never appears. Browser console shows mixed-content errors.
 
-**Phase relevance:** FLAC phase -- must profile during implementation.
-
----
-
-### Pitfall 11: WDL JNetLib Conflicts with JUCE Networking
-
-**What goes wrong:** The current codebase uses WDL's JNetLib for all TCP networking (NINJAM protocol) and HTTP (server list fetching). JUCE provides its own networking classes (`juce::URL`, `juce::StreamingSocket`, `juce::WebInputStream`). Using both simultaneously can cause issues: conflicting socket initialization on Windows (`WSAStartup`/`WSACleanup` reference counting), conflicting DNS resolution, and confused error handling.
-
-**Prevention:**
-- Keep JNetLib for the NINJAM TCP protocol -- it is deeply integrated with NJClient and replacing it is high-risk with no benefit
-- Replace JNetLib's HTTP fetcher (server list) with JUCE's `juce::URL::createInputStream()` for async HTTP -- this is a clean boundary
-- On Windows, ensure `WSAStartup()` is called before any socket use and `WSACleanup()` only on final shutdown -- both JNetLib and JUCE may try to manage this
-- Do not mix JUCE and JNetLib sockets in the same thread without verifying initialization order
-
-**Detection:** Server list fetch fails silently. NINJAM connection drops randomly on Windows. `WSAGetLastError()` returns unexpected values.
-
-**Phase relevance:** Phase 1 (Core JUCE scaffolding) -- decide which networking stack handles what before implementation begins.
+**Phase to address:**
+Phase 3 (Video Companion Server) -- the serving architecture must be resolved before any HTML/JS work begins.
 
 ---
 
-### Pitfall 12: Static Singletons and Multiple Plugin Instances
+## Technical Debt Patterns
 
-**What goes wrong:** Some DAWs load multiple instances of the same plugin in one process. If JamWide uses static variables, singletons, or global state (e.g., a shared logger, a global server list cache, or static NJClient configuration), multiple instances will corrupt each other's state. The current codebase avoids this for NJClient (each plugin instance owns its own `NJClient`), but JUCE's `SharedResourcePointer` or static initializers could introduce new singletons during migration.
+Shortcuts that seem reasonable but create long-term problems.
 
-**Prevention:**
-- Audit all static/global state during migration -- each plugin instance must be fully independent
-- Do not use `juce::SharedResourcePointer` for per-instance state
-- Logger should use per-instance file names or a shared file with instance-id prefixes
-- Server list cache can be shared (read-only after fetch) but must use thread-safe access
-- Test with 2+ plugin instances in the same DAW session, connected to different servers
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Hardcoded OSC port (9000) without multi-instance handling | Simpler config, fewer UI fields | Second plugin instance silently fails to receive OSC on Windows | Never -- multi-instance is common in DAW workflows |
+| Polling VDO.Ninja API state instead of event-driven updates | Simpler implementation, no reconnection state machine | Unnecessary network traffic, stale data between polls, 60s timeout still requires reconnection | Early prototype only; replace with event-driven before release |
+| Single thread for OSC + WebSocket + HTTP serving | Fewer threads to manage | One slow WebSocket reconnection blocks OSC processing; one OSC flood blocks companion page updates | Never -- these are independent I/O streams with different latency requirements |
+| Sending all OSC parameters on every timer tick (no dirty tracking) | Simple implementation | Network flood with 50+ parameters * 10Hz = 500 messages/sec; TouchOSC becomes sluggish | Never -- dirty tracking is trivial and essential |
+| Embedding companion HTML as BinaryData and serving via HTTP | No external hosting dependency | Mixed content blocks HTTPS iframe embedding; must solve TLS or move to external hosting anyway | Acceptable if serving over `data:` URI or `file://`, but not HTTP |
 
-**Detection:** Two plugin instances interfere -- one connects and the other disconnects. Logs from different instances interleave without identification. Chat messages appear in the wrong instance.
+## Integration Gotchas
 
-**Phase relevance:** Phase 1 (Core JUCE scaffolding) -- verify instance isolation early.
+Common mistakes when connecting to external services.
 
----
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| JUCE `OSCReceiver` | Trusting `connect()` return value as proof of binding success | Verify with a loopback test message; implement port-probing for multi-instance |
+| JUCE `OSCSender` | Sending to `255.255.255.255` for discovery | Send to configured unicast IP only; broadcast causes firewall prompts and is unreliable across subnets |
+| VDO.Ninja External API | Assuming WebSocket stays connected indefinitely | Implement reconnection state machine with exponential backoff; re-query room state after reconnect |
+| VDO.Ninja iframe | Using `postMessage(data, "*")` without origin check | Always specify target origin in `postMessage`; always verify `event.origin` in the message handler |
+| VDO.Ninja `&push=` stream ID | Using display names with special characters or spaces | Sanitize NINJAM username to alphanumeric + hyphens for stream ID; display names can differ |
+| VDO.Ninja chunked mode | Assuming Firefox/Safari support | Chunked mode is Chromium-only (Chrome, Edge, Brave); detect browser and warn user or fall back to non-chunked |
+| VDO.Ninja room password | Passing `&password=` in URL query string | Use `&hash=` with credentials after `#` fragment to prevent server logging |
+| TouchOSC bidirectional | Sending feedback for values just received from TouchOSC | Implement debounce/suppression window; only send changed values on timer; exclude recently-received parameters |
+| Local WebSocket server | Binding to `0.0.0.0` for convenience | Bind to `127.0.0.1` only; add random auth token in URL to prevent other tabs/processes from connecting |
+| Plugin state save | Saving the OSC port but not the allocated port (after conflict resolution) | Save the actual bound port, not the requested port; on restore, re-probe if port is taken |
 
-## Minor Pitfalls
+## Performance Traps
 
-### Pitfall 13: pluginval Failures Block Release
+Patterns that work at small scale but fail as usage grows.
 
-**What goes wrong:** `pluginval` is the industry-standard validation tool for JUCE plugins. It tests edge cases like rapid open/close of editor, processBlock with zero samples, bus layout changes, state save/restore, and threading violations. Many developers discover 5+ unknown bugs when first running pluginval. Failing pluginval means the plugin will crash in real DAWs under normal conditions.
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| Sending OSC feedback for all remote users on every timer tick | Network saturated, TouchOSC lag | Dirty-flag per parameter; only send changed values | >4 remote users (4 users * 5 params * 10Hz = 200 msgs/sec) |
+| Creating a new WebSocket connection for each companion page command | Connection overhead, port exhaustion | Single persistent WebSocket with message framing | >1 command/sec (interval boundary updates) |
+| VDO.Ninja peer-to-peer video with many participants | Upload bandwidth exhaustion (each user sends to N-1 peers) | Warn users at 6+ participants; suggest SFU mode for 8+ | >5 participants on residential internet (5 upstream video feeds) |
+| Allocating std::string for OSC address patterns on every message | GC pressure, memory fragmentation in real-time context | Pre-allocate OSC address pattern strings at startup; use string_view or static patterns | >100 OSC messages/sec (rapid fader automation) |
+| Rebuilding the entire OSC namespace on every remote user roster change | CPU spike, outgoing OSC burst | Incremental updates: only send changed indices; batch roster broadcasts | >8 remote users joining/leaving frequently |
 
-**Prevention:**
-- Run pluginval in CI from the first buildable plugin binary
-- Start with strictness level 5, work up to level 10
-- Common failures: processBlock called with 0-sample buffer (must handle gracefully), getStateInformation with no prior setStateInformation, editor created before prepareToPlay
-- Fix pluginval failures before adding features -- they indicate fundamental lifecycle bugs
+## Security Mistakes
 
-**Detection:** CI pluginval step fails. Users report crashes on session load or when opening/closing plugin windows rapidly.
+Domain-specific security issues.
 
-**Phase relevance:** Phase 1 (Core JUCE scaffolding) -- integrate pluginval into CI immediately.
+| Mistake | Risk | Prevention |
+|---------|------|------------|
+| OSC server bound to `0.0.0.0` instead of `127.0.0.1` | Anyone on the LAN can control the plugin (mute users, disconnect, adjust volumes) | Bind to `127.0.0.1` by default; add explicit "LAN mode" toggle with warning if user enables network OSC |
+| WebSocket server without auth token | Any browser tab or local process can connect and inject commands | Generate a random token on each plugin start; include it in the companion page URL; reject connections without valid token |
+| VDO.Ninja room ID derived predictably from NINJAM server address | Outsiders can guess room IDs and join video sessions without being in the NINJAM session | Append a random suffix or use room password; derive `&hash=` from NINJAM server password if set |
+| Logging VDO.Ninja API key or room password to debug log | Credentials leak via log files shared for bug reports | Redact API keys and passwords in all log output; use placeholder `[REDACTED]` |
+| OSC port exposed to WAN via UPnP or port forwarding | Remote attackers can send arbitrary OSC commands to the plugin | Document that OSC is for local/LAN use only; do not implement UPnP; warn if configured send target is a non-private IP |
 
----
+## UX Pitfalls
 
-### Pitfall 14: Dear ImGui Rendering Assumptions Incompatible with JUCE Components
+Common user experience mistakes in this domain.
 
-**What goes wrong:** During an incremental migration, developers sometimes try to embed Dear ImGui inside a JUCE Component (rendering ImGui to a texture and displaying it in a JUCE component). This creates a Frankenstein UI where neither framework has full control: ImGui expects to own the input/rendering pipeline, JUCE expects its Component tree to handle painting. Mouse events, keyboard focus, and accessibility all break.
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| No visual indicator of OSC connection status | User cannot tell if TouchOSC is communicating | IEM-style footer status LED: green = receiving, yellow = sending only, red = port error, grey = disabled |
+| Companion page requires manual URL copy-paste | Friction prevents adoption; users skip video | One-click "Open Video" button that launches browser with pre-configured URL including all parameters |
+| Video companion shows Chromium requirement error after launch in Firefox | User wasted time opening the page, confused by technical error | Detect browser via User-Agent on companion page load; show a clear "Please open in Chrome/Edge" message with copy-link button |
+| OSC port conflict shown as cryptic error code | User does not understand "Failed to bind port 9000" | Show: "Port 9000 is in use by another application. JamWide will use port 9001 instead." with option to change |
+| Remote user indices shift when someone disconnects | TouchOSC faders suddenly control different users; user adjusts wrong person's volume | Broadcast updated name labels immediately on roster change; consider "stable index" approach where disconnected indices are reused by next joiner (already in the design spec) |
+| Video popout windows not associated with plugin | macOS Mission Control / Windows Task Manager shows orphan browser windows with no context | Set window title to "JamWide Video - [username]" so each popout is identifiable; provide "Close All Popouts" button |
+| No feedback when VDO.Ninja API is unreachable | User thinks video feature is broken | Show connection status in video section: "Connecting to VDO.Ninja...", "Connected (3 users)", "Reconnecting..." |
 
-**Prevention:**
-- Do a clean break -- rewrite the UI in JUCE Components from scratch, using the ImGui UI as a visual reference only
-- Do not attempt to embed ImGui inside JUCE or vice versa
-- Port UI panel-by-panel: connection panel first (most critical), then chat, then local/remote channels, then server browser
-- Use JUCE's `LookAndFeel` for consistent styling rather than trying to replicate ImGui's immediate-mode aesthetic
+## "Looks Done But Isn't" Checklist
 
-**Detection:** Focus issues -- clicking in the ImGui area does not release JUCE keyboard focus. Mouse coordinates are wrong. Accessibility features (screen readers) do not see ImGui elements.
+Things that appear complete but are missing critical pieces.
 
-**Phase relevance:** Phase 1 (UI rewrite) -- establish the UI framework decision cleanly at the start.
+- [ ] **OSC Server:** Port binding succeeds but verify actual receipt with loopback test -- silent failure on Windows is the default behavior
+- [ ] **OSC Bidirectional:** Fader moves work once but verify no feedback loop under sustained automation -- test with TouchOSC connected for 5+ minutes with continuous fader movement
+- [ ] **OSC Multi-Instance:** Works with one plugin instance but verify port allocation when 2+ instances are loaded in the same DAW session
+- [ ] **OSC State Restore:** Works on first load but verify that DAW session save/restore correctly restores OSC port, send target, and send interval without port conflicts
+- [ ] **Video Companion:** Page loads and shows VDO.Ninja but verify `postMessage` communication works -- iframe security policies silently block cross-origin messages
+- [ ] **Video Sync:** Buffer delay is set once but verify it is refreshed on BPM/BPI changes and interval boundary transitions -- stale delay causes drift
+- [ ] **Video Roster:** Users appear in grid but verify join/leave events propagate correctly -- test by having a user disconnect and reconnect rapidly
+- [ ] **WebSocket Reconnection:** Works on first connect but verify the reconnection state machine handles 10+ consecutive disconnects without resource leaks or state corruption
+- [ ] **Browser Detection:** Companion page warns about Chromium requirement but verify the warning actually appears on Firefox/Safari and provides actionable guidance
+- [ ] **Popout Windows:** Individual popout opens but verify multiple popouts can be opened simultaneously and that closing one does not affect others
+- [ ] **OSC Video Control:** `/JamWide/video/open` triggers browser launch but verify it works when the companion page is already open (should focus existing window, not open duplicate)
 
----
+## Recovery Strategies
 
-### Pitfall 15: Codec Switch Mid-Interval Corrupts Stream
+When pitfalls occur despite prevention, how to recover.
 
-**What goes wrong:** The FLAC integration plan correctly specifies codec switching at interval boundaries only. But during implementation, it is easy to accidentally switch the encoder mid-interval (e.g., user toggles FLAC in the UI and the atomic is read immediately by the encoder). A mid-interval switch produces a stream where the first half is Vorbis and the second half is FLAC -- no decoder can handle this.
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| OSC feedback loop flooding network | LOW | Add emergency rate limiter (cap at 50 msgs/sec per parameter); debounce window solves root cause |
+| Port binding failure (multi-instance) | LOW | Increment port number; update TouchOSC config; save new port to state |
+| VDO.Ninja WebSocket disconnect loop | LOW | Cap reconnection attempts; show "Video unavailable" status; allow manual reconnect button |
+| Mixed content blocking companion page | MEDIUM | Redesign serving architecture to use external HTTPS host + local WebSocket; requires companion page rewrite |
+| Audio thread contention from OSC | MEDIUM | Refactor OSC parameter path to use atomics instead of command queue; may require adding atomic shadow state for remote user volumes |
+| OSC namespace design wrong (e.g., wrong index scheme) | HIGH | Breaking change for all TouchOSC layouts; must communicate to users and provide migration path; version the namespace (`/JamWide/v1/...`) from the start to allow future changes |
+| Companion page iframe security breaks on browser update | MEDIUM | Move all VDO.Ninja communication to the external API WebSocket (plugin-side); companion page becomes a pure video viewer with no control logic |
 
-**Prevention:**
-- The `m_encoder_fmt_requested` atomic is written by the UI thread at any time
-- The `m_encoder_fmt_active` is only read at the start of a new interval and never changes mid-interval
-- Add an assertion in debug builds that `m_encoder_fmt_active` does not change between interval start and end
-- The FOURCC sent in `UPLOAD_INTERVAL_BEGIN` must match the encoder that produced the data
+## Pitfall-to-Phase Mapping
 
-**Detection:** Remote users hear silence or static from the switching user. Decoder errors in logs. FOURCC mismatch between header and data.
+How roadmap phases should address these pitfalls.
 
-**Phase relevance:** FLAC phase -- the interval boundary guard is the critical correctness invariant.
-
----
-
-### Pitfall 16: macOS AU Cache Staleness During Development
-
-**What goes wrong:** During active development, Logic Pro and other AU hosts cache the plugin's capabilities (bus layout, parameters, version). After changing bus configurations, adding parameters, or modifying the AU manifest, the host continues using the cached version. The developer thinks their code changes have no effect.
-
-**Prevention:**
-- After any change to bus layout, parameters, or plugin metadata, run: `killall -9 AudioComponentRegistrar`
-- Increment the AU version number when bus configurations change
-- Clear `~/Library/Caches/AudioUnitCache/` periodically
-- Use REAPER (which does not aggressively cache AU metadata) for rapid iteration; validate in Logic Pro less frequently
-- Add a build step that auto-increments a dev build number
-
-**Detection:** Changes to bus layout or parameters have no effect in Logic Pro. `auval` passes but Logic Pro shows old configuration.
-
-**Phase relevance:** All phases -- ongoing development workflow issue.
-
----
-
-## Phase-Specific Warnings
-
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Core JUCE scaffolding | Threading model wrong (Pitfalls 1, 2) | Keep dedicated run thread; establish audio/UI/network thread boundaries before features |
-| Core JUCE scaffolding | Editor/Processor state split wrong (Pitfall 4) | All persistent state in Processor; Editor is a transient view |
-| Core JUCE scaffolding | State save/restore incomplete (Pitfall 8) | Design state schema early; test DAW session save/load from day one |
-| Core JUCE scaffolding | pluginval failures (Pitfall 13) | Integrate pluginval into CI before adding features |
-| FLAC integration | libFLAC symbol collision (Pitfall 3) | Use JUCE's bundled FLAC or disable it; do not link both |
-| FLAC integration | Mid-interval codec switch (Pitfall 15) | Guard format switch at interval boundary only |
-| FLAC integration | Encoder finish latency (Pitfall 10) | Profile; use small block sizes and low compression levels |
-| Multichannel output | Bus layout rejected by hosts (Pitfall 5) | Fixed enabled buses; no canAddBus/canRemoveBus; test across DAWs |
-| DAW sync | No AudioPlayHead in standalone (Pitfall 7) | Pseudo transport with server BPM fallback |
-| DAW sync | Sample rate mismatch (Pitfall 6) | Reinit encoder on prepareToPlay; consider fixed-rate encoding with resampling |
-| UI rewrite | ImGui/JUCE hybrid (Pitfall 14) | Clean break -- do not embed ImGui in JUCE |
-| All development | AU cache staleness (Pitfall 16) | Kill AudioComponentRegistrar; increment version numbers |
-| All development | Multiple instances (Pitfall 12) | No singletons; test multi-instance scenarios |
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| OSC callback thread safety (Pitfall 1) | Phase 1: OSC Server Core | OSC fader automation while connected to NINJAM server with audio playing; no glitches or sluggishness |
+| Port binding silent failure (Pitfall 2) | Phase 1: OSC Server Core | Load 2 plugin instances on Windows; both show correct port status; second instance auto-increments port |
+| Feedback loop (Pitfall 3) | Phase 1: OSC Server Core | Connect TouchOSC; move fader rapidly for 30 seconds; network traffic stays under 200 msgs/sec; no oscillation on toggles |
+| VDO.Ninja API disconnects (Pitfall 4) | Phase 3: Video Companion Server | Leave plugin running for 10 minutes; API reconnects automatically; roster stays accurate; companion page reflects current state |
+| Audio thread contention (Pitfall 5) | Phase 2: OSC Remote User Mapping | Rapid OSC automation of all remote user faders simultaneously; zero xruns; audio thread profiler shows no mutex waits |
+| Mixed content / CORS (Pitfall 6) | Phase 3: Video Companion Server | Companion page opens in Chrome, Edge, and Brave; VDO.Ninja iframe loads; camera permission dialog appears; postMessage communication works |
+| OSC namespace design | Phase 1: OSC Server Core | Namespace documented; version prefix included; tested with TouchOSC template import |
+| WebSocket auth token | Phase 3: Video Companion Server | Open companion URL without token in a separate browser tab; connection rejected |
+| Multi-popout window management | Phase 5: Video Display Modes | Open 4 popout windows; move to different monitors; close plugin; all popout browser windows remain functional (or close gracefully) |
+| State save/restore with ports | Phase 1: OSC Server Core | Save DAW session with OSC configured; reload; OSC port binds correctly; TouchOSC reconnects without reconfiguration |
+| Chunked mode browser compatibility | Phase 3: Video Companion Server | Open companion page in Firefox; clear warning message displayed; copy-link button works; chunked mode active in Chrome |
 
 ## Sources
 
-- [JUCE AudioProcessor documentation](https://docs.juce.com/master/classAudioProcessor.html)
-- [JUCE bus layout tutorial](https://docs.juce.com/master/tutorial_audio_bus_layouts.html)
-- [JUCE MessageManager documentation](https://docs.juce.com/master/classMessageManager.html)
-- [JUCE Thread class documentation](https://docs.juce.com/master/classThread.html)
-- [JUCE Timer class documentation](https://docs.juce.com/master/classTimer.html)
-- [JUCE AudioPlayHead documentation](https://docs.juce.com/master/classAudioPlayHead.html)
-- [JUCE FlacAudioFormat documentation](https://docs.juce.com/master/classFlacAudioFormat.html)
-- [Multi-AU bus count issues (getdunne/multi-au)](https://github.com/getdunne/multi-au)
-- [JUCE forum: Getting multiple buses working for AU and VST3](https://forum.juce.com/t/getting-multiple-buses-working-for-au-and-vst3/60078)
-- [JUCE forum: AudioPlayHead best practices](https://forum.juce.com/t/best-practice-on-plugins-which-require-audioplayhead-information-and-transport-management/60489)
-- [JUCE forum: Real-time threading](https://forum.juce.com/t/real-time-thread-in-juce/43361)
-- [JUCE forum: MessageManager thread safety](https://forum.juce.com/t/updating-gui-from-other-threads/20906)
-- [JUCE forum: Multi-bus AU plugin](https://forum.juce.com/t/multi-bus-au-plugin/53546)
-- [Melatonin JUCE tips and tricks](https://melatonin.dev/blog/big-list-of-juce-tips-and-tricks/)
-- [JamTaba freezing during plugin loading (GitHub #241)](https://github.com/elieserdejesus/JamTaba/issues/241)
-- [JamTaba encoder compatibility issues (GitHub #1075)](https://github.com/elieserdejesus/JamTaba/issues/1075)
-- [FLAC stream encoder API documentation](https://xiph.org/flac/api/group__flac__stream__encoder.html)
-- [JUCE BREAKING_CHANGES.md](https://github.com/juce-framework/JUCE/blob/master/BREAKING_CHANGES.md)
-- [NINJAM protocol documentation (wahjam wiki)](https://github.com/wahjam/wahjam/wiki/Ninjam-Protocol)
+- [JUCE OSCReceiver::RealtimeCallback documentation](https://docs.juce.com/master/structOSCReceiver_1_1RealtimeCallback.html)
+- [JUCE OSCReceiver class reference](https://docs.juce.com/master/classOSCReceiver.html)
+- [JUCE OSCReceiver::Listener class reference](https://docs.juce.com/master/classjuce_1_1OSCReceiver_1_1Listener.html)
+- [JUCE forum: OSCReceiver binding always returns true even if port is taken](https://forum.juce.com/t/oscreceiver-binding-to-a-port-always-return-true-even-if-port-is-already-taken/25885)
+- [JUCE forum: OSC receiver different behaviour between VST3 and AU](https://forum.juce.com/t/osc-receiver-different-behaviour-between-vst3-and-au/32708)
+- [JUCE forum: Multiple OSCReceivers binding to a single DatagramSocket](https://forum.juce.com/t/multiple-oscreceivers-binding-to-a-single-datagramsocket-not-working-as-expected/38607)
+- [JUCE forum: OSCReceiver port reuse](https://forum.juce.com/t/oscreceiver-port-reuse/25430)
+- [JUCE forum: Parameter changes and thread safety](https://forum.juce.com/t/parameter-changes-thread-safety/50098)
+- [JUCE forum: Popup windows in plugins](https://forum.juce.com/t/popup-windows-in-plugins/17013)
+- [JUCE forum: Secondary window launched from plugin gets incorrect monitor scaling](https://forum.juce.com/t/secondary-window-launched-from-plugin-gets-incorrect-monitor-scaling/51319)
+- [JUCE forum: macOS plugins in sandboxed DAW](https://forum.juce.com/t/macos-plugins-in-sandboxed-daw/36999)
+- [JUCE forum: Building a simple HTTP server using JUCE sockets](https://forum.juce.com/t/building-a-simple-http-server-using-juce-sockets/20217)
+- [Cycling '74 forum: TouchOSC feedback loop](https://cycling74.com/forums/touchosc-feedback-loop)
+- [TouchOSC manual: OSC messages editor](https://hexler.net/touchosc/manual/editor-messages-osc)
+- [VDO.Ninja iframe API documentation](https://docs.vdo.ninja/guides/iframe-api-documentation)
+- [VDO.Ninja iframe API basics](https://docs.vdo.ninja/guides/iframe-api-documentation/iframe-api-basics)
+- [VDO.Ninja external API reference](https://docs.vdo.ninja/advanced-settings/api-and-midi-parameters/api/api-reference)
+- [VDO.Ninja detecting user joins/disconnects](https://docs.vdo.ninja/guides/iframe-api-documentation/detecting-user-joins-disconnects)
+- [VDO.Ninja known issues](https://docs.vdo.ninja/common-errors-and-known-issues/known-issues)
+- [VDO.Ninja chunked mode documentation](https://docs.vdo.ninja/advanced-settings/settings-parameters/and-chunked)
+- [VDO.Ninja Companion-Ninja sample app (GitHub)](https://github.com/steveseguin/Companion-Ninja)
+- [IEM Plugin Suite (GitLab)](https://git.iem.at/audioplugins/IEMPluginSuite)
+- [IEM Plugin Suite OSCParameterInterface.cpp](https://git.iem.at/audioplugins/IEMPluginSuite/-/blob/175-10th-ambisonic-order/resources/OSC/OSCParameterInterface.cpp)
+- [Surge Synthesizer OSC support discussion (GitHub #2355)](https://github.com/surge-synthesizer/surge/issues/2355)
+- [JUCE PR #543: Bidirectional OSC communication](https://github.com/juce-framework/JUCE/pull/543/files)
 
 ---
-
-*Pitfalls audit: 2026-03-07*
+*Pitfalls research for: JamWide v1.1 OSC + VDO.Ninja Video*
+*Researched: 2026-04-05*

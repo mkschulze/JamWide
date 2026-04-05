@@ -1,199 +1,218 @@
 # Project Research Summary
 
-**Project:** JamWide JUCE Migration
-**Domain:** Online music collaboration — NINJAM-protocol client (DAW plugin + standalone)
-**Researched:** 2026-03-07
-**Confidence:** MEDIUM-HIGH
+**Project:** JamWide v1.1 — OSC Remote Control + VDO.Ninja Video Companion
+**Domain:** JUCE audio plugin networking — OSC bidirectional control, browser-based video companion
+**Researched:** 2026-04-05
+**Confidence:** HIGH (OSC layer), MEDIUM (VDO.Ninja video companion)
 
 ## Executive Summary
 
-JamWide is a NINJAM-protocol audio collaboration client that ships as a DAW plugin (VST3/AU/CLAP) and standalone application. The research consensus is clear: migrate to JUCE 8 as the single unifying framework, replacing Dear ImGui (UI), clap-wrapper (plugin formats), and platform-specific code. JUCE's `AudioProcessor` model natively covers VST3, AU, and Standalone formats in one build, provides the `AudioPlayHead` API needed for DAW transport sync, and gives the multi-bus output layout required for per-user channel routing — JamWide's primary competitive differentiator over existing NINJAM clients.
+JamWide v1.1 adds two independent feature sets to the existing JUCE NINJAM plugin: OSC remote control via TouchOSC and a browser-based video companion via VDO.Ninja. The OSC layer is well-understood with a battle-tested reference implementation available on disk (IEM Plugin Suite). The entire OSC stack — `juce_osc` module, bidirectional UDP, parameter bridge, timer-based feedback — requires zero new external dependencies beyond adding one JUCE module to CMakeLists.txt. The pattern is adapt-from-reference, not invent.
 
-The recommended approach is a phased migration that does not break the existing NJClient core. NJClient's `AudioProc()` interface takes a raw `float**` buffer, which maps directly onto JUCE's `AudioBuffer<float>` via pointer extraction — this bridge is the migration's central seam. The existing three-thread model (audio, run, UI) maps cleanly onto JUCE idioms: `processBlock()` for audio, `juce::Thread` subclass for the NJClient run loop, and JUCE's message thread for UI via retained-mode `Component` panels. The FLAC lossless codec — JamWide's flagship feature — is independent of the JUCE migration and should ship first, before any UI or plugin-format work begins.
+The video layer is more novel and carries meaningful risk. The core insight driving the architecture is that VDO.Ninja iframes cannot be embedded in a locally-served HTTP page without mixed-content failures. The recommended solution — confirmed by pitfalls research — is to serve the companion page from a publicly-hosted HTTPS URL (e.g., GitHub Pages) and have the plugin communicate via a local WebSocket server only. This avoids TLS certificate complexity in the plugin while satisfying browser security requirements. The `cpp-httplib` library handles the local WebSocket server; the VDO.Ninja external API (`wss://api.vdo.ninja:443`) provides roster discovery and stream control. Both require OpenSSL linkage, which is the main build-system risk (especially on Windows).
 
-The top risks are threading violations (putting NJClient::Run() on the message thread freezes the GUI and can cause DAW kill), multichannel bus layout incompatibilities across DAW hosts (Logic Pro in particular caches AU configurations aggressively), and a FLAC symbol collision between JUCE's bundled libFLAC copy and any external libFLAC submodule. All three risks have known mitigations documented in PITFALLS.md and are avoidable with correct design decisions made at project start.
+The two feature sets are architecturally independent — either can ship without the other. The recommended build order treats them as sequential: OSC first (proven patterns, no new deps, immediate user value), then video companion in two stages (local server foundation, then advanced roster sync and per-user popouts). Three critical constraints must be respected throughout: the SPSC `cmd_queue` has a single-producer invariant that OSC callbacks must not violate, the audio thread must never touch OSC or WebSocket paths, and the VDO.Ninja external API WebSocket disconnects every ~60 seconds and requires a reconnection state machine from day one.
 
 ## Key Findings
 
 ### Recommended Stack
 
-JUCE 8.0.12 (December 2025) is the recommended core framework, replacing Dear ImGui, clap-wrapper, and all platform-specific GUI code. It is the industry standard for cross-platform audio plugins and the only framework that natively covers VST3, AU, Standalone, and (in JUCE 9) CLAP from a single `AudioProcessor` subclass. C++20 and CMake 3.22+ are already in use and are compatible. For the NINJAM codec, standalone libFLAC 1.5.0 should be used with JUCE's bundled FLAC disabled (`JUCE_USE_FLAC=0`) to avoid linker symbol conflicts — or JUCE's bundled copy used exclusively via its `FlacNamespace::` prefix. OGG/Vorbis (libogg + libvorbis submodules) is retained for backward compatibility with all existing NINJAM clients and servers.
+The OSC stack requires only one addition to the existing build: `juce::juce_osc` added to `target_link_libraries`. Everything else — `OSCReceiver`, `OSCSender`, pattern matching, typed message args — is already bundled with JUCE 8.0.12. The IEM Plugin Suite on disk provides the exact implementation patterns to follow including `OSCParameterInterface`, `OSCReceiverPlus`, and `OSCStatus` components.
+
+The video stack requires `cpp-httplib` (single-file header, MIT, v0.41.0) vendored into `src/third_party/` matching the existing `picojson.h` pattern, plus OpenSSL linkage for WSS to `api.vdo.ninja`. Companion HTML/JS/CSS is embedded via `juce_add_binary_data()` — a core JUCE feature requiring no new dependencies. The companion page itself is served externally (GitHub Pages) to avoid mixed-content issues; the plugin only runs a local WebSocket server.
 
 **Core technologies:**
-- **JUCE 8.0.12**: Plugin framework, UI, audio, standalone mode — industry standard, replaces three separate systems
-- **libFLAC 1.5.0 (standalone)**: Real-time stream encoding/decoding for NINJAM intervals — JUCE's file-oriented `FlacAudioFormat` is the wrong abstraction for streaming
-- **libogg + libvorbis**: Retained OGG Vorbis codec — mandatory for interop with all existing NINJAM servers
-- **WDL jnetlib**: Retained for NINJAM TCP protocol — too deeply integrated to replace in this milestone; migrate to `juce::StreamingSocket` in a later phase
-- **Catch2 3.7.x + pluginval**: Testing — Catch2 for unit tests, pluginval for plugin format compliance in CI
+- `juce_osc` (JUCE 8.0.12): bidirectional UDP OSC — already bundled, zero external deps
+- `cpp-httplib` v0.41.0: local WebSocket server for plugin-to-browser sync — header-only, MIT, handles HTTP+WS+WSS in one file
+- OpenSSL 3.x: TLS for WSS to `api.vdo.ninja` — system install on macOS/Linux, vcpkg on Windows
+- `juce_add_binary_data`: embed companion CSS/JS as C++ resources — core JUCE CMake feature
+- VDO.Ninja external API (`wss://api.vdo.ninja:443`): roster discovery and stream control — JSON over WSS
+
+**What to avoid:**
+- Boost.Beast, IXWebSocket, WebSocketPP — unnecessary complexity or missing capabilities vs. cpp-httplib
+- JUCE WebBrowserComponent — CMakeLists.txt already sets `JUCE_WEB_BROWSER=0`; adds 50-100MB and DAW sandboxing issues
+- Serving companion page from local HTTP and embedding VDO.Ninja iframes — mixed-content block
 
 ### Expected Features
 
-All table-stakes features (NINJAM connectivity, Vorbis codec, server browser, chat, per-user mixer, VU meters, metronome) are already implemented. Two table-stakes items are currently missing or broken and must be fixed: live BPM/BPI changes without reconnect (currently a regression vs. ReaNINJAM) and session recording UI (NJClient supports it, but there is no UI to expose it).
+**Must have (table stakes for v1.1 launch):**
+- Bidirectional OSC — receivers expect fader feedback; one-way OSC feels broken to anyone using TouchOSC
+- Volume, pan, mute, solo for all channels — the entire point of remote control
+- Configurable send/receive ports with persistence — port collisions are common; re-entering every session is unacceptable
+- OSC status indicator in plugin UI — visual confirmation OSC is working
+- Session state broadcast (BPM, BPI, beat, user count, connection status) — enables TouchOSC dashboards
+- One-click VDO.Ninja video launch with auto room ID derived from NINJAM server — zero-config video
+- Audio suppression (`&noaudio`) in all generated VDO.Ninja URLs — prevents double audio from WebRTC + NINJAM
+- Privacy notice on first video use — WebRTC exposes IP addresses via STUN; every professional tool discloses this
+- Chromium browser detection and warning — chunked mode (required for music sync) is Chromium-only
 
-**Must have (table stakes — missing or broken):**
-- **Live BPM/BPI changes without reconnect** — current JamWide requires reconnect; this is a deal-breaking regression vs. ReaNINJAM
-- **Session recording UI** — NJClient already supports `config_savelocalaudio`; needs UI exposure and FLAC format support
-- **Standalone application mode** — natural JUCE byproduct; opens JamWide to non-DAW users
-- **JUCE migration itself** — foundation for all differentiators; unlocks standalone, multichannel, transport sync
+**Should have (differentiators that set JamWide apart):**
+- Index-based remote user OSC addressing with stable indices — no other NINJAM client exposes remote users via OSC
+- Shipped TouchOSC template (`.tosc` file) — Gig Performer's most-praised OSC feature; dramatically lowers adoption barrier
+- Companion HTML page with CSS grid layout — better than raw VDO.Ninja room view
+- VDO.Ninja external API roster discovery — enables per-user popout windows and username-to-stream mapping
+- NINJAM-interval-synced video buffering via `setBufferDelay` — no other tool combines NINJAM awareness with VDO.Ninja video
+- Per-user popout windows — multi-monitor support for individual bandmates
+- OSC-controllable video commands (`/JamWide/video/*`) — unified control surface for audio + video
+- Connect/disconnect via OSC — full remote operation without touching the laptop
 
-**Should have (primary differentiators — nothing like these exists in generic NINJAM clients):**
-- **FLAC lossless audio codec** — no NINJAM client offers lossless; JamWide's flagship differentiator; ships before JUCE migration
-- **Multichannel output routing (per-user stereo pairs)** — only ReaNINJAM has this, but it is REAPER-only; the killer feature for DAW users
-- **DAW transport sync** — reads host transport via JUCE `AudioPlayHead`; makes the plugin feel native in any DAW
-- **Session position tracking** — already in NJClient API; small effort, big polish
-
-**Defer (v2+):**
-- OSC cross-DAW sync — exploratory; useful for power users but not critical path
-- MCP bridge — too nascent; DAW MCP servers barely exist outside REAPER prototypes
-- Video support — massive scope; research-only this milestone
-- NINJAM looper, voice chat, input effects, mixer presets
+**Defer to v2+:**
+- Embedded video via JUCE WebBrowserComponent
+- Username-based OSC addressing (index-based is superior for TouchOSC layout stability)
+- MIDI remote control (OSC is strictly superior; TouchOSC bridges MIDI natively)
+- OSC over TCP
+- Self-hosted VDO.Ninja signaling server
 
 ### Architecture Approach
 
-The JUCE rewrite preserves the battle-tested NJClient core and maps the existing three-thread model onto JUCE idioms without restructuring the concurrency design. `JamWideProcessor` (AudioProcessor subclass) owns NJClient, the run thread, and all shared state permanently — the editor is a transient view that is created and destroyed by the DAW host without disrupting audio or network. The audio-to-UI communication path uses atomics (for VU, BPM, beat phase) and SPSC ring buffers (for structured events) — the existing `SpscRing<T,N>` templates carry over unchanged.
+The architecture adds two independent layers to the existing three-thread model (audio thread, message thread, NinjamRunThread). The OSC layer lives entirely on the message thread: an `OscServer` owns `OSCReceiver` and `OSCSender`, a `OscParameterBridge` maps addresses to APVTS params and `cmd_queue` commands (using `callAsync()` to preserve the single-producer invariant), and an `OscRemoteUserMapper` maintains stable 1-based user indices. The video layer runs on two dedicated background threads — one for the `CompanionServer` (cpp-httplib local WebSocket) and one for `VDONinjaAPIClient` (WSS to external API) — coordinated by a `VideoManager` on the message thread. The critical constraint is that OSC callbacks must never push directly to `cmd_queue` from juce_osc's internal network thread; they must dispatch to the message thread via `callAsync()` first.
 
-**Major components:**
-1. **JamWideProcessor** — AudioProcessor subclass; owns NJClient, NinjamRunThread, SPSC queues, atomic snapshot; bridges `processBlock()` to `NJClient::AudioProc()`; declares multi-bus output layout
-2. **JamWideEditor** — AudioProcessorEditor subclass; Timer-based polling of event queue and atomic snapshot at 30 Hz; all UI Components as children; transient (can be destroyed and recreated without losing state)
-3. **NinjamRunThread** — `juce::Thread` subclass; runs `NJClient::Run()` at ~50ms intervals; drains command queue; pushes events to UI queue
-4. **NJClient (unchanged)** — Cockos core logic; NINJAM protocol, audio encode/decode, interval management; only `AudioProc()` is safe to call from the audio thread
-5. **Codec Layer** — `I_NJEncoder`/`I_NJDecoder` implementations for Vorbis and FLAC; pluggable via FOURCC dispatch; codec switches only at interval boundaries
-6. **UI Components** — ConnectionPanel, ChatPanel, MixerPanel, LocalChannelPanel, MasterPanel, ServerBrowser, TimingGuide, StatusBar; each a `juce::Component`
+**Major components (new):**
+1. `OscServer` — owns `OSCReceiver`/`OSCSender`, manages port lifecycle, runs timer-based dirty-tracking send loop (~300 LOC)
+2. `OscParameterBridge` — maps OSC addresses to APVTS params and `cmd_queue` commands, dispatches via `callAsync()` (~500 LOC)
+3. `OscRemoteUserMapper` — stable 1-based index assignment for remote users, broadcasts roster changes (~200 LOC)
+4. `OscConfigPanel` — port/IP config dialog + footer status indicator (~200 LOC)
+5. `CompanionServer` — local WebSocket server via cpp-httplib, relays sync JSON to browser (~400 LOC)
+6. `VDONinjaAPIClient` — WSS client to `api.vdo.ninja`, roster discovery, auto-reconnect with exponential backoff (~350 LOC)
+7. `VideoManager` — coordinates CompanionServer + VDONinjaAPIClient, manages room state, calculates sync delay, triggers browser launch (~300 LOC)
+8. `VideoConfigPanel` — UI for video room name, display mode, status (~150 LOC)
+
+**Modified components:** `JamWideJuceProcessor` (state version 1→2), `JamWideJuceEditor` (adds config panels), `ConnectionBar` (video toggle + OSC status dot), `CMakeLists.txt` (juce_osc, cpp-httplib, BinaryData, OpenSSL).
+
+**Unchanged:** `NinjamRunThread`, `NJClient`/core layer, `ChannelStripArea`/`ChannelStrip`, `processBlock()`.
 
 ### Critical Pitfalls
 
-1. **NJClient::Run() on the message thread** — Use a dedicated `juce::Thread` subclass; never use `juce::Timer` for network polling. JNetLib performs blocking I/O; putting it on the message thread freezes the GUI and can trigger DAW plugin kill.
+1. **OSC callback thread safety** — juce_osc's `RealtimeCallback` fires on its own internal network thread, not the message thread. Pushing directly to `cmd_queue` from this thread violates the SPSC single-producer invariant and can corrupt the queue head pointer. Always dispatch to the message thread via `juce::MessageManager::callAsync()` before touching `cmd_queue` or APVTS. This must be established in Phase 1 before any parameter mapping is built on top.
 
-2. **Locking in processBlock()** — Only `NJClient::AudioProc()` is audio-thread-safe. All other NJClient methods require `client_mutex`. Use the atomic snapshot pattern for anything `processBlock()` needs to read (BPM, VU, status). Enable ThreadSanitizer in CI.
+2. **OSCReceiver port binding silently succeeds on Windows** — JUCE's `DatagramSocket` calls `SO_REUSEADDR` unconditionally; on Windows this allows multiple binds to the same UDP port, returning `true` from `connect()` even when another instance holds the port. The receiver appears connected but receives nothing. Verify actual receipt with a loopback test message; implement port-probing with auto-increment for multi-instance DAW sessions.
 
-3. **libFLAC symbol collision with JUCE's bundled FLAC** — JUCE bundles libFLAC source compiled into `juce_FlacAudioFormat.cpp`. Linking an external libFLAC submodule simultaneously produces duplicate symbols. Resolution: either disable JUCE's bundled copy (`JUCE_USE_FLAC=0`) or use only JUCE's namespaced copy exclusively via `FlacNamespace::`. Do not link both.
+3. **OSC bidirectional feedback loop** — naive bidirectional OSC where the plugin echoes received values back to TouchOSC causes runaway oscillation, especially on toggle buttons and discrete parameters. The IEM pattern prevents this: outgoing OSC fires on a timer (100ms default), only sends values changed since the last tick, and suppresses feedback for parameters just received (200ms debounce window). This is a Phase 1 architecture decision, not a polish item.
 
-4. **Editor lifetime breaks network state** — The DAW destroys the editor on window close. All persistent state (chat history, connection info, mixer settings) must live in `JamWideProcessor`, not `JamWideEditor`. The editor reads state from the processor on construction.
+4. **VDO.Ninja external API disconnects every ~60 seconds** — the API WebSocket has no browser-side keepalive when driven from native C++. Without a reconnection state machine (exponential backoff: 1s, 2s, 4s, 8s, cap 30s) plus periodic ping frames, the plugin silently loses roster data after one minute. The reconnection state machine must be designed from day one in Phase 4.
 
-5. **Multichannel bus layout rejected by DAW hosts** — Logic Pro caches AU bus configurations aggressively. Declare auxiliary buses as enabled (not optional/disabled) at construction. Do not override `canAddBus()`/`canRemoveBus()`. Increment AU version number on any bus layout change. Run `auval` and test in Logic Pro, REAPER, Ableton, and Bitwig.
+5. **Mixed content blocks VDO.Ninja iframes in locally-served HTTP pages** — the plugin cannot serve a `http://127.0.0.1` page that embeds `https://vdo.ninja` iframes; browsers block mixed content and camera/mic permissions fail. The solution is to host the companion page on a public HTTPS URL (GitHub Pages) and have the plugin open that URL with parameters. The plugin communicates exclusively via a local `ws://127.0.0.1` WebSocket (localhost is exempted from mixed-content rules per W3C spec). This architectural decision must be resolved before Phase 3 HTML work begins.
 
 ## Implications for Roadmap
 
-Based on research, the dependency chain drives phase order: FLAC is independent and ships first; JUCE migration is the foundation for everything else; multichannel and DAW sync require JUCE to be complete.
+Based on research, the natural phase structure follows architectural dependencies. OSC and video are independent and OSC has no external deps, so it goes first. Video builds in two stages: local server infrastructure before advanced roster sync, because roster sync depends on the companion page being available as a relay.
 
-### Phase 1: FLAC Lossless Codec
-**Rationale:** Independent of JUCE migration; detailed plan already exists (`FLAC_INTEGRATION_PLAN.md`); ships the flagship differentiator with minimal risk before the large migration begins. Low-risk, high-value, does not disrupt existing codebase.
-**Delivers:** FLAC encoder/decoder for NINJAM intervals; `I_NJEncoder`/`I_NJDecoder` FLAC implementations; manual codec selection UI; session recording with FLAC format.
-**Addresses:** FLAC differentiator, session recording UI (table stakes gap).
-**Avoids:** libFLAC symbol collision (Pitfall 3); mid-interval codec switch corruption (Pitfall 15); FLAC encoder finish latency (Pitfall 10).
+### Phase 1: OSC Server Core
 
-### Phase 2: JUCE Scaffolding + Plugin Skeleton
-**Rationale:** The foundation phase; all subsequent phases depend on correct JUCE architecture. Must establish thread boundaries, Processor/Editor state split, bus declaration, and plugin lifecycle before any features are built on top. Critical: get the architecture right first, even if it does nothing useful yet.
-**Delivers:** CMakeLists with `juce_add_plugin(VST3 AU Standalone)`; empty `JamWideProcessor`/`JamWideEditor`; `NinjamRunThread` skeleton; pluginval in CI; multi-bus output declaration (even if routing is not wired yet); `getStateInformation()`/`setStateInformation()` schema.
-**Uses:** JUCE 8.0.12, CMake 3.22+, Catch2, pluginval.
-**Avoids:** Pitfalls 1, 2, 4, 6, 8, 9, 12, 13 — all of which require correct decisions at project start.
+**Rationale:** Self-contained, zero new external dependencies (juce_osc already bundled in JUCE 8.0.12), proven IEM reference implementation on disk. Delivers immediate user value — TouchOSC control of master, metro, and local channel volumes — without touching the video stack. All three foundational OSC pitfalls (thread safety, port binding, feedback loop) must be addressed here before any parameter mapping is layered on top.
 
-### Phase 3: NJClient Integration + Audio Bridge
-**Rationale:** Wire the existing NJClient core into the JUCE AudioProcessor. This is the highest-risk implementation step (bridging two threading models and two buffer formats) but has a clear pattern from the architecture research.
-**Delivers:** `processBlock()` → `NJClient::AudioProc()` bridge; stereo-only output (bus 0 only); `NinjamRunThread` running `NJClient::Run()`; SPSC queues ported; Vorbis+FLAC codecs linked; connectable to NINJAM servers from standalone app; audio flowing end-to-end.
-**Uses:** JUCE AudioBuffer bridging pattern, `juce::Thread`, existing `SpscRing<T,N>` templates.
-**Implements:** JamWideProcessor, NinjamRunThread, Codec Layer.
+**Delivers:** Bidirectional UDP OSC, APVTS parameter mapping (master/metro/local channels), configurable ports with persistence, status indicator in plugin footer, session telemetry broadcast (BPM, BPI, beat, connection status).
 
-### Phase 4: Core UI Panels (JUCE Components)
-**Rationale:** Clean break from Dear ImGui. Rewrite UI panel-by-panel in JUCE Components, using the existing ImGui UI as visual reference only. Do not attempt hybrid ImGui/JUCE approach.
-**Delivers:** ConnectionPanel, StatusBar, ChatPanel, Timer-based editor polling, `LookAndFeel_V4` subclass with dark theme.
-**Addresses:** Full UI rewrite; enables connection and basic session participation.
-**Avoids:** ImGui/JUCE hybrid anti-pattern (Pitfall 14).
+**Addresses features:** bidirectional OSC, volume/pan/mute control, configurable ports, config persistence, status indicator, session state broadcast.
 
-### Phase 5: Mixer + Local Channels + Parameter Automation
-**Rationale:** Complete the per-user mixing UI and expose DAW-automatable parameters (master volume, metro volume, mutes) via `AudioProcessorValueTreeState`.
-**Delivers:** MixerPanel with ChannelStrip components, VU meters, LocalChannelPanel, MasterPanel, APVTS integration, DAW automation support.
-**Addresses:** Per-user volume/pan/mute/solo (table stakes), VU meters, metronome controls.
-**Avoids:** Parameter callback threading issues (Pitfall 9).
+**Avoids:** OSC callback thread safety violation (callAsync dispatch pattern established), port binding silent failure on Windows (loopback verification + port probing), feedback loop (timer-based dirty tracking with 200ms debounce).
 
-### Phase 6: Multichannel Output Routing
-**Rationale:** JamWide's primary differentiator for DAW users. Requires JUCE migration (Phase 2-3) and mixer UI (Phase 5) to be complete for meaningful testing. Bus declarations must be designed in Phase 2 even though routing is wired here.
-**Delivers:** Multi-bus `processBlock()` buffer bridging for N output buses; `config_remote_autochan` routing modes (mix-only, per-user, per-channel); routing mode UI; full DAW multi-track per-user routing.
-**Addresses:** Multichannel output routing differentiator.
-**Avoids:** Dynamic bus count changes (Architecture anti-pattern 2); bus layout rejection by DAWs (Pitfall 5); requires auval + multi-DAW testing.
+### Phase 2: OSC Remote User Mapping
 
-### Phase 7: Server Browser + State Persistence
-**Rationale:** Complete the connection UX with server discovery, and make all settings persist across DAW sessions. Server browser fetcher can migrate from WDL jnetlib HTTP to `juce::URL::createInputStream()` here as a clean incremental networking migration.
-**Delivers:** `ServerBrowser` (juce::TableListBox), async server list fetching via JUCE URL, full `getStateInformation()`/`setStateInformation()` covering all user settings (connection, routing, codec, mixer).
-**Avoids:** State save/restore dropping connection context (Pitfall 8); JNetLib/JUCE networking conflict for HTTP (Pitfall 11).
+**Rationale:** Builds on Phase 1 OSC infrastructure. Requires solving the index stability problem across roster changes — a design decision that affects the TouchOSC template (Phase 5) and OSC video control (Phase 5). Must be complete before remote user commands are possible via OSC.
 
-### Phase 8: DAW Sync + Live BPM/BPI + Timing Guide
-**Rationale:** Polish phase that completes the DAW integration story. Live BPM/BPI is a table-stakes fix (regression vs. ReaNINJAM). DAW transport sync and session position tracking are the remaining differentiators. Full DAW integration testing requires multichannel routing (Phase 6) to be working.
-**Delivers:** Live BPM/BPI changes without reconnect; `AudioPlayHead` transport sync; session position tracking; TimingGuide Component (beat grid visualization); standalone pseudo-transport fallback.
-**Addresses:** Live BPM/BPI table-stakes fix; DAW transport sync and session position tracking differentiators.
-**Avoids:** No AudioPlayHead in standalone (Pitfall 7); sample rate mismatch (Pitfall 6).
+**Delivers:** Stable 1-based index addressing for remote users (`/JamWide/remote/{idx}/volume` etc.), roster change broadcasts with name label updates, remote user volume/pan/mute/solo control via OSC.
+
+**Addresses features:** index-based remote user addressing, roster change broadcast, remote user OSC control.
+
+**Avoids:** Audio thread contention (remote user state routes through `cmd_queue` not direct mutex access; adds up to 50ms latency which is acceptable for mixing), index instability (stable join-order indices with name label broadcast on change).
+
+### Phase 3: Video Companion Foundation
+
+**Rationale:** Independent of OSC phases; can be developed in parallel after Phase 1. The serving architecture decision (GitHub Pages + local WebSocket only, not local HTTP serving companion HTML) must be made and implemented here before any companion JS work. cpp-httplib is added to the project in this phase; OpenSSL linkage must be validated on all CI platforms early.
+
+**Delivers:** One-click VDO.Ninja browser launch with auto room ID derived from NINJAM server address, audio suppression (`&noaudio`), companion page hosted on GitHub Pages, local WebSocket server for plugin-browser sync (cpp-httplib), privacy notice on first use, Chromium browser detection with actionable warning.
+
+**Addresses features:** one-click video launch, auto room ID, audio suppression, privacy notice, browser requirement warning, basic video UI panel.
+
+**Avoids:** Mixed-content CORS failure (companion page on HTTPS GitHub Pages, plugin only runs local WebSocket), WebSocket server without auth token (random token per session, reject connections without it), localhost binding on `0.0.0.0` (bind `127.0.0.1` only).
+
+### Phase 4: Video Sync and Roster Discovery
+
+**Rationale:** Requires Phase 3 CompanionServer operational to relay sync data to the browser. Highest uncertainty phase — VDO.Ninja external API is documented as DRAFT, the ~60-second WebSocket timeout requires a robust reconnection state machine, and chunked buffer accuracy under real NINJAM session conditions is untested. Design the state machine carefully; do not defer reconnection logic as a "polish item."
+
+**Delivers:** VDO.Ninja external API connection (`wss://api.vdo.ninja:443`), guest roster discovery, NINJAM username to stream ID mapping, NINJAM-interval-synced video buffering via `setBufferDelay`, room password security via `&hash=` fragment.
+
+**Addresses features:** roster discovery, interval-synced video buffering, room password security.
+
+**Avoids:** Silent API disconnect (exponential backoff reconnection state machine: 1s/2s/4s/8s/30s max + 30s keepalive pings), stale roster after reconnect (reconcile fresh `getGuestList` result against cached state), stream ID corruption (sanitize NINJAM usernames to alphanumeric + hyphens).
+
+### Phase 5: Display Modes, Popout Windows, and OSC Video Control
+
+**Rationale:** Polish and UX. Requires Phase 2 (OscRemoteUserMapper for index correlation with per-user popouts) and Phase 4 (VideoManager with stream mapping for popout window URLs). Companion JS complexity peaks here with `window.open()` per-user popout management. The TouchOSC template cannot be finalized until the OSC namespace is stable (locked in Phase 2).
+
+**Delivers:** Per-user popout windows (separate browser windows per stream ID), grid/popout mode switching in companion JS, OSC `/JamWide/video/*` commands, connect/disconnect via OSC (`/JamWide/connect`), shipped TouchOSC template (`.tosc` file), bandwidth-aware video profiles (`&chunkprofile=`).
+
+**Addresses features:** per-user popout, video control via OSC, connect/disconnect via OSC, TouchOSC template, bandwidth video profiles.
+
+**Avoids:** Orphan browser windows without context (window titles set to "JamWide Video — username"), multiple popouts interfering with each other (plugin provides "Close All Popouts" button), OSC video open triggering duplicates (check if companion page already open before launching).
 
 ### Phase Ordering Rationale
 
-- **FLAC first (Phase 1)** because it is independent, has a detailed plan, and ships the flagship differentiator without touching the migration risk.
-- **Scaffolding before NJClient (Phase 2 before Phase 3)** because architectural mistakes made in Phase 2 (thread model, state split, bus declarations) propagate into everything built afterward and are expensive to fix late.
-- **UI after audio bridge (Phase 4 after Phase 3)** because JUCE Components require a working JUCE project and the NJClient connection is needed to validate that UI events (connect, chat, status) flow correctly.
-- **Multichannel after mixer (Phase 6 after Phase 5)** because per-user routing is meaningless without per-user mixer strips, and the mixer UI is needed to verify that audio routes to the correct output bus.
-- **DAW sync last (Phase 8)** because it requires full DAW integration testing that is only possible when multichannel routing is working.
+- OSC before video because OSC has zero new external dependencies, established patterns in the IEM reference, and delivers user value independently.
+- OSC Core (Phase 1) before Remote Users (Phase 2) because the threading contract and feedback-loop prevention architecture must exist before dynamic user addressing is layered on top.
+- Video Foundation (Phase 3) before Video Sync (Phase 4) because `CompanionServer` is the relay path that `VDONinjaAPIClient` depends on to push sync data to the browser.
+- Display Modes (Phase 5) last because it depends on both OSC index mapping (Phase 2) and roster discovery (Phase 4), and represents polish that does not block core functionality.
+- Phases 3-5 (video) have no code dependency on Phase 2 (OSC remote users) and can proceed in parallel after Phase 1 if development bandwidth allows.
 
 ### Research Flags
 
-Phases likely needing `/gsd:research-phase` during planning:
-- **Phase 6 (Multichannel Output):** DAW-specific AU multi-bus behavior is inconsistent and poorly documented. Logic Pro caching, VST3 auxiliary bus support, and Ableton behavior all need direct empirical testing. Research host-specific workarounds before implementation.
-- **Phase 8 (DAW Sync):** OSC integration and cross-DAW transport sync behavior varies significantly by host. REAPER has first-class OSC; Ableton and Logic have limited support. Needs targeted research into which sync features are feasible per-DAW.
+Phases needing deeper research during planning:
+- **Phase 3 (Video Foundation):** OpenSSL linkage on Windows CI is the primary build risk — the project currently has no OpenSSL dependency. Validate `find_package(OpenSSL REQUIRED)` with vcpkg before writing companion server code. Also validate cpp-httplib WebSocket stability in a JUCE plugin context (WebSocket feature appeared in v0.38.0; not tested in a real DAW host).
+- **Phase 4 (Video Sync):** VDO.Ninja external API is self-labeled DRAFT. Behavior of `getGuestList`, `guest-connected`/`push-connection` events, and `setBufferDelay` accuracy under real NINJAM session conditions all need early prototyping before full implementation. Build a standalone test client first.
 
-Phases with well-documented patterns (skip research-phase):
-- **Phase 1 (FLAC):** Detailed plan in `FLAC_INTEGRATION_PLAN.md`. libFLAC C API is well-documented.
-- **Phase 2 (JUCE Scaffolding):** JUCE CMake API and plugin lifecycle are thoroughly documented. Pamplejuce template provides a reference.
-- **Phase 3 (NJClient Integration):** The `float**` to `AudioBuffer<float>` bridge pattern is clearly defined in ARCHITECTURE.md.
-- **Phase 4-5 (UI + Mixer):** Standard JUCE Component patterns; well-documented.
+Phases with standard patterns (skip research-phase):
+- **Phase 1 (OSC Core):** IEM Plugin Suite on disk is the reference. Pattern is adapt-from-reference. juce_osc is thoroughly documented.
+- **Phase 2 (OSC Remote Users):** Extends Phase 1 with index mapping logic. No new external APIs or libraries. Standard JUCE threading patterns.
+- **Phase 5 (Display Modes + Template):** Browser JS popout management is standard `window.open()`. TouchOSC `.tosc` format is documented. No new unknowns beyond Phase 4 stream IDs being available.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All core technology choices verified against official JUCE docs, CMake API, libFLAC release notes. No speculative dependencies. |
-| Features | HIGH | Competitors researched directly (JamTaba GitHub, Jamulus, SonoBus, FarPlay). NJClient API verified against source. FLAC plan already exists. |
-| Architecture | HIGH | JUCE AudioProcessor patterns are well-documented. Threading model validated against JUCE forum and official docs. Buffer bridging pattern is deterministic. |
-| Pitfalls | MEDIUM-HIGH | Critical pitfalls verified with JUCE documentation and community sources. DAW-specific multi-bus behavior (Logic Pro, Ableton) is empirically inconsistent — treat as MEDIUM. |
+| Stack (OSC) | HIGH | juce_osc verified from local source headers; IEM reference implementation verified on disk; JUCE OSC tutorial and TouchOSC manual verified |
+| Stack (Video) | MEDIUM | cpp-httplib WebSocket feature is relatively new (v0.38.0+); not tested in JUCE plugin context; OpenSSL on Windows CI unverified |
+| Features | MEDIUM-HIGH | OSC features HIGH (IEM/JUCE docs + TouchOSC manual + competitor analysis); VDO.Ninja features MEDIUM (API docs self-labeled DRAFT) |
+| Architecture | HIGH (OSC) / MEDIUM (Video) | OSC threading model verified against existing JamWide architecture; SPSC single-producer constraint confirmed from codebase; VDO.Ninja iframe security behavior needs early validation |
+| Pitfalls | HIGH | JUCE OSC threading issues verified from JUCE forum threads (2018-present); port binding Windows behavior is a documented known issue; VDO.Ninja ~60s timeout documented in official API docs |
 
 **Overall confidence:** MEDIUM-HIGH
 
 ### Gaps to Address
 
-- **libFLAC integration approach:** The PITFALLS research recommends using JUCE's bundled FLAC (via `FlacNamespace::`) to avoid symbol conflicts, but the existing `FLAC_INTEGRATION_PLAN.md` specifies an external submodule. These must be reconciled before Phase 1 implementation begins. Decision: pick one approach and commit to it. Lean toward JUCE's bundled copy for simplicity unless the `FlacNamespace::` API has missing functions required for streaming.
-- **CLAP support path:** JUCE 8 requires `clap-juce-extensions` for CLAP output. JUCE 9 adds native CLAP but has no release date. Decision needed on whether to ship CLAP via extensions in Phase 2 or defer until JUCE 9. Not blocking but should be decided before Phase 2.
-- **JUCE license:** `JUCE_DISPLAY_SPLASH_SCREEN=0` requires a commercial license. If JamWide is open-source AGPLv3, the splash screen must either remain or the license must be purchased. Validate the open/closed source decision before shipping.
-- **Maximum user bus count:** Research suggests 8 user stereo pairs (16 channels + 2 mix = 18 total) as a reasonable default, but the optimal number needs validation against typical NINJAM session sizes and DAW channel limits. Some DAWs cap at 32 total output channels.
+- **cpp-httplib WebSocket in JUCE plugin context:** Thread-per-connection model assumed safe for 3-5 connections but not validated in a real DAW host. Prototype early in Phase 3 and test that `svr.listen()` on a background thread does not conflict with DAW sandbox restrictions on macOS (Logic Pro, GarageBand) and Windows (Ableton).
+- **VDO.Ninja chunked buffer sync accuracy:** `setBufferDelay` is accepted by the iframe API, but actual buffer accuracy under real NINJAM timing (variable BPM, BPI changes mid-session) is unknown. Accept that initial implementation may require tuning based on user feedback; do not promise frame-accurate sync.
+- **OpenSSL linkage on Windows CI:** The project currently has no OpenSSL dependency. Windows vcpkg integration needs to be validated in CI before Phase 3 begins. Fallback option: `CPPHTTPLIB_MBEDTLS_SUPPORT` (Apache-2.0, smaller binary).
+- **VDO.Ninja external API stability:** API marked DRAFT. Events and command format confirmed via Companion-Ninja sample app but subject to change. Design `VDONinjaAPIClient` with a clear JSON parsing layer that is easy to update if the API evolves.
+- **Chromium browser detection cross-platform:** Detecting the system default browser is platform-specific (registry on Windows, Launch Services on macOS, `xdg-settings` on Linux). Companion page JS User-Agent detection is simpler and more reliable; implement detection client-side after the page loads rather than in native C++.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [JUCE GitHub Releases](https://github.com/juce-framework/JUCE/releases) — JUCE 8.0.12 latest (Dec 2025)
-- [JUCE CMake API](https://github.com/juce-framework/JUCE/blob/master/docs/CMake%20API.md) — `juce_add_plugin` reference
-- [JUCE AudioProcessor docs](https://docs.juce.com/master/classAudioProcessor.html) — processBlock, getBusBuffer, BusesProperties
-- [JUCE AudioPlayHead docs](https://docs.juce.com/master/classAudioPlayHead.html) — transport sync API
-- [JUCE Bus Layout Tutorial](https://juce.com/tutorials/tutorial_audio_bus_layouts/) — multi-bus configuration
-- [JUCE Thread docs](https://docs.juce.com/master/classThread.html) — run(), threadShouldExit()
-- [JUCE AudioProcessorValueTreeState](https://docs.juce.com/master/classAudioProcessorValueTreeState.html) — parameter management
-- [JUCE FlacAudioFormat docs](https://docs.juce.com/master/classFlacAudioFormat.html) — file-oriented FLAC (not for streaming)
-- [FLAC 1.5.0 Release](https://github.com/xiph/flac/releases/tag/1.5.0) — libFLAC latest (Feb 2025)
-- [Xiph FLAC Stream Encoder API](https://xiph.org/flac/api/group__flac__stream__encoder.html) — raw stream API for NINJAM codec
-- [JamTaba GitHub](https://github.com/elieserdejesus/JamTaba) — competitor feature reference
-- [Cockos NINJAM source (local)](file:///Users/cell/dev/ninjam/ninjam/njclient.h) — NJClient AudioProc API, multichannel routing internals
-- [JUCE Roadmap Q3 2025](https://juce.com/blog/juce-roadmap-update-q3-2025/) — JUCE 9 CLAP support planned
-- [JUCE Get JUCE (Pricing)](https://juce.com/get-juce/) — license tiers
+- `libs/juce/modules/juce_osc/` (local, v8.0.12) — OSCReceiver, OSCSender, OSCAddress class API
+- `/Users/cell/dev/IEMPluginSuite/resources/OSC/` (local) — OSCParameterInterface, OSCReceiverPlus, OSCStatus reference implementation across 20+ shipping plugins
+- `docs/superpowers/specs/2026-04-05-v1.1-osc-video-design.md` (local) — authoritative design decisions for v1.1
+- [JUCE OSC tutorial](https://juce.com/tutorials/tutorial_osc_sender_receiver/) — sender/receiver patterns
+- [TouchOSC OSC Connections Manual](https://hexler.net/touchosc/manual/connections-osc) — port config, bidirectional behavior expectations
+- [TouchOSC OSC Messages Manual](https://hexler.net/touchosc/manual/editor-messages-osc) — layout design patterns, label binding
+- [cpp-httplib GitHub](https://github.com/yhirose/cpp-httplib) — HTTP + WebSocket server + WSS client API (v0.41.0, 2025-04-04)
+- [JUCE forum: OSCReceiver port binding always returns true](https://forum.juce.com/t/oscreceiver-binding-to-a-port-always-return-true-even-if-port-is-already-taken/25885) — Windows SO_REUSEADDR behavior (known issue since 2018)
+- [IEM Plugin Suite OSCParameterInterface.cpp](https://git.iem.at/audioplugins/IEMPluginSuite/-/blob/175-10th-ambisonic-order/resources/OSC/OSCParameterInterface.cpp) — feedback loop prevention pattern
 
 ### Secondary (MEDIUM confidence)
-- [Pamplejuce template](https://github.com/sudara/pamplejuce) — JUCE 8 + Catch2 + CI reference patterns
-- [JUCE Forum: Multi-bus AU plugin](https://forum.juce.com/t/multi-bus-au-plugin/53546) — AU multi-bus caveats
-- [JUCE Forum: Lock-free processBlock](https://forum.juce.com/t/reading-writing-values-lock-free-to-from-processblock/50947) — atomic pattern recommendations
-- [timur.audio: Locks in real-time audio](https://timur.audio/using-locks-in-real-time-audio-processing-safely) — priority inversion analysis
-- [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) — CLAP format pre-JUCE 9
-- [Wahjam NINJAM Protocol wiki](https://github.com/wahjam/wahjam/wiki/Ninjam-Protocol) — FOURCC codec identification
-- [REAPER OSC documentation](https://www.reaper.fm/sdk/osc/osc.php) — OSC transport control patterns
-- [Melatonin Inspector](https://github.com/sudara/melatonin_inspector) — JUCE UI debugging tool
+- [VDO.Ninja API reference](https://docs.vdo.ninja/advanced-settings/api-and-midi-parameters/api/api-reference) — external API commands (self-labeled DRAFT)
+- [VDO.Ninja &api parameter](https://docs.vdo.ninja/advanced-settings/api-and-midi-parameters/api) — WebSocket connection details, reconnection behavior
+- [VDO.Ninja iframe API basics](https://docs.vdo.ninja/guides/iframe-api-documentation/iframe-api-basics) — postMessage API for setBufferDelay
+- [VDO.Ninja chunked mode](https://docs.vdo.ninja/advanced-settings/settings-parameters/and-chunked) — buffer parameters, Chromium-only requirement
+- [Companion-Ninja GitHub](https://github.com/steveseguin/Companion-Ninja) — HTTP/WebSocket API patterns, guest-connected/push-connection events confirmed
+- [cpp-httplib WebSocket README](https://github.com/yhirose/cpp-httplib/blob/master/README-websocket.md) — thread-per-connection WebSocket API
+- [JamTaba GitHub](https://github.com/elieserdejesus/JamTaba) — H.264 video frame rate benchmarks (0.03-0.13 FPS at NINJAM BPI settings)
+- [Gig Performer TouchOSC guide](https://gigperformer.com/using-touch-osc-app-as-a-remote-display-and-a-touch-control-surface-with-gig-performer) — template shipping as highest-value OSC adoption feature
 
 ### Tertiary (LOW confidence)
-- [foleys_video_engine](https://github.com/ffAudio/foleys_video_engine) — JUCE + FFmpeg for video (research only, not in scope)
-- [Scythe MCP REAPER](https://glama.ai/mcp/servers/@yura9011/scythe_mcp_reaper) — MCP DAW control prototype (nascent)
-- [DrivenByMoss Bitwig extensions](https://github.com/git-moss/DrivenByMoss) — OSC for Bitwig (community, not official)
+- [Cockos NINJAM + video forum thread](https://forum.cockos.com/showthread.php?t=213553) — community pain points around video sync (anecdotal)
+- VDO.Ninja chunked buffer sync accuracy under real-world NINJAM sessions — not yet validated; inferred from API documentation only
 
 ---
-*Research completed: 2026-03-07*
+*Research completed: 2026-04-05*
 *Ready for roadmap: yes*

@@ -1,152 +1,291 @@
-# Feature Landscape
+# Feature Research: v1.1 OSC Remote Control + VDO.Ninja Video
 
-**Domain:** Online music collaboration (NINJAM-protocol client with DAW plugin + standalone modes)
-**Researched:** 2026-03-07
-**Reference competitors:** ReaNINJAM, JamTaba, Jamulus, SonoBus, FarPlay, JackTrip
+**Domain:** OSC remote control and browser-based video companion for a NINJAM audio plugin
+**Researched:** 2026-04-05
+**Confidence:** MEDIUM-HIGH (OSC: HIGH based on IEM reference + JUCE docs; Video: MEDIUM based on VDO.Ninja API docs which are self-described as DRAFT)
 
-## Table Stakes
+## Feature Landscape
 
-Features users expect from a modern NINJAM client. Missing any of these means users stay with ReaNINJAM or JamTaba.
+### Table Stakes (Users Expect These)
+
+Features that users of OSC-controllable audio plugins and VDO.Ninja video integrations assume exist. Missing these makes the feature feel broken or incomplete.
+
+#### OSC Remote Control
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| NINJAM protocol connectivity | Core function -- without this it is not a NINJAM client | N/A (exists) | TCP auth, chat, interval exchange. Already implemented. |
-| OGG Vorbis encoding/decoding | Mandatory for interop with all existing NINJAM servers and clients | N/A (exists) | Default codec. Must remain even after FLAC is added. |
-| Server browser with public list | All clients (ReaNINJAM, JamTaba, standalone NINJAM) have this | N/A (exists) | Already implemented. |
-| Text chat | Every NINJAM client and every competitor (Jamulus, SonoBus) includes chat | N/A (exists) | Already implemented. |
-| Per-user volume/pan/mute/solo | ReaNINJAM, JamTaba, Jamulus, and SonoBus all offer per-user mixer controls | N/A (exists) | Already implemented (remote channel mixing). |
-| VU meters (local + remote) | Visual feedback is universal across all competitors | N/A (exists) | Already implemented. |
-| Metronome with controls | Interval-based jamming is metronomic by definition; all NINJAM clients include this | N/A (exists) | Volume, pan, mute. Already implemented. |
-| BPM/BPI display | Fundamental to interval-based collaboration -- all NINJAM clients show this | N/A (exists) | Already implemented. |
-| Plugin format support (VST3/AU/CLAP) | JamTaba ships VST/AU. ReaNINJAM is REAPER-only. Being a generic plugin is JamWide's core value proposition. | Med | JUCE provides VST3/AU natively. CLAP via juce_clap_extensions or wrapper. Current CLAP support exists via clap-wrapper. |
-| Standalone application mode | JamTaba, Jamulus, SonoBus, FarPlay all have standalone. Users without a DAW need this. | Low | JUCE's AudioAppComponent makes standalone trivial -- it is a natural byproduct of the JUCE migration. |
-| Cross-platform (macOS + Windows) | All major competitors run on both. Linux is nice-to-have. | Low | JUCE handles this natively. Already cross-platform today. |
-| Local channel monitoring | Musicians must hear themselves. Every competitor offers this. | N/A (exists) | Already implemented. |
-| Session recording / save to disk | ReaNINJAM saves multitrack OGG/WAV per user. JamTaba saves sessions. SonoBus records multitrack. This is expected. | Med | NJClient already supports `config_savelocalaudio` (compressed OGG files + optional WAV). Needs UI exposure and FLAC format support for saved files. |
-| Live BPM/BPI changes without reconnect | ReaNINJAM handles `CONFIG_CHANGE_NOTIFY` seamlessly. Current JamWide requires reconnect -- this is a deal-breaking regression vs ReaNINJAM. | Med | Must handle at interval boundaries. Already identified as active requirement. |
+| Bidirectional OSC (send + receive) | Every OSC-capable audio tool (IEM Suite, Gig Performer, RME TotalMix FX, X32/M32 mixers) sends parameter feedback. One-way OSC feels broken -- faders on TouchOSC must snap to current positions. | MEDIUM | IEM pattern: timer-based sender (100ms default), realtime receiver callback. JUCE `juce_osc` provides both `OSCSender` and `OSCReceiver`. |
+| Volume/pan/mute control for all channels | Users expect to control the same parameters via OSC that they see in the plugin UI. This is the entire point of remote control. | MEDIUM | Map to existing UiCommand variants: `SetLocalChannelInfoCommand`, `SetUserChannelStateCommand`. Requires adapter from OSC float values to internal representations. |
+| Configurable ports (send + receive) | Every OSC implementation requires user-configurable UDP ports. Default port collisions are extremely common (many apps default to 8000 or 9000). | LOW | Receiver port + sender target IP/port. IEM uses a dialog with text fields. Persist in plugin state. |
+| Feedback on state changes (not just parameter echo) | Connection status, user roster changes, beat position -- users expect to see session state on their control surface, not just mirror fader positions. | MEDIUM | Timer-based sender broadcasts changed values. Must include read-only session state (BPM, BPI, beat, user count, connection status). |
+| Config persistence across sessions | OSC settings (ports, target IP, interval) must survive DAW save/load. Re-entering ports every session is unacceptable. | LOW | Save/restore via plugin state serialization. IEM stores as `ValueTree` config. JamWide uses `UiState` snapshot -- add OSC fields. |
+| Status indicator in UI | IEM Suite, Gig Performer, and RME TotalMix all show OSC connection status. Users need visual confirmation that OSC is active. | LOW | IEM pattern: colored dot in footer (green=connected, red=error, grey=off). Click opens config dialog. Direct port of `OSCStatus` component. |
+| Solo control for remote users | Solo is a standard mixer feature. If volume/pan/mute are controllable, solo must be too. Omitting it creates confusion. | LOW | Already exists in UI. Add OSC address mapping. |
 
-## Differentiators
+#### VDO.Ninja Video Companion
 
-Features that set JamWide apart from existing NINJAM clients. Not expected by default, but create competitive advantage.
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| One-click video launch | Users expect "click button, video appears." Any multi-step setup (copy URL, open browser, paste) creates friction that kills adoption. | MEDIUM | Plugin generates full VDO.Ninja URL with room ID, username, and all parameters. Opens in system default browser via `juce::URL::launchInDefaultBrowser()`. |
+| Automatic room management | Users should not need to manually coordinate VDO.Ninja room IDs. The plugin knows which NINJAM server everyone is on -- use it. | LOW | Auto-generate room ID from NINJAM server address (e.g., `jamwide-ninbot-com-2049`). Override field for custom rooms. |
+| Audio suppression in video | VDO.Ninja plays audio by default. Hearing double audio (NINJAM + WebRTC) is immediately confusing and unpleasant. | LOW | Append `&noaudio` to all generated VDO.Ninja URLs. Non-negotiable. |
+| Video grid showing all participants | OBS + VDO.Ninja users, Zoom users, Google Meet users -- everyone expects a grid layout as the default video view. | MEDIUM | Companion HTML page with CSS grid layout. VDO.Ninja provides `&view=` parameter to see all room participants. |
+| Privacy notice / opt-in | WebRTC exposes IP addresses to peers via STUN. Musicians not expecting this will feel violated. Every professional video tool (Zoom, Meet) explains camera/mic permissions. | LOW | Show a one-time notice explaining IP exposure when video is first enabled. Offer `&relay` mode for privacy-sensitive users (forces TURN, hides IPs). |
+| Browser requirement warning | Chunked mode (needed for music sync) requires Chromium-based browsers. Firefox/Safari users will get a broken experience with no explanation. | LOW | Detect default browser on launch. Warn if not Chromium-based. Include fallback URL without `&chunked` for non-Chromium browsers (standard WebRTC, no sync). |
+
+### Differentiators (Competitive Advantage)
+
+Features that set JamWide apart. No existing NINJAM client offers these.
+
+#### OSC Remote Control
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| FLAC lossless audio codec | No NINJAM client currently offers lossless audio. SonoBus and FarPlay offer uncompressed/lossless but they are not NINJAM-compatible. This is JamWide's flagship differentiator. | Med | Detailed plan exists (`FLAC_INTEGRATION_PLAN.md`). Client-only change; server relays opaque bytes with FOURCC tag. Manual codec selection in v1 (no auto-negotiation). ~5-8x bandwidth vs Vorbis 64kbps. |
-| Multichannel output routing (per-user stereo pairs) | ReaNINJAM has this but it is REAPER-only. No generic VST/AU NINJAM plugin offers per-user output routing. Lets DAW users mix each remote musician on separate tracks with their own effects chains. | High | Two modes from ReaNINJAM: auto-assign by user, auto-assign by channel. NJClient already has `config_remote_autochan`, `out_chan_index`, `find_unused_output_channel_pair()`. JUCE AudioProcessor supports declaring multiple output buses. |
-| DAW transport sync | ReaNINJAM syncs to REAPER transport (isPlaying/isSeek/cursessionpos). No generic plugin does this. Enables interval-aligned playback and session position tracking in any DAW. | Med | NJClient::AudioProc already accepts isPlaying, isSeek, cursessionpos. JUCE AudioPlayHead provides transport state from any host. Wire them together. |
-| Session position tracking | ReaNINJAM tracks session position (`GetSessionPosition()`, `GetUserSessionPos()`). Enables timeline-aware playback and recording aligned to intervals. | Low | Already in NJClient API. Needs UI display and integration with DAW transport. |
-| Cross-DAW sync via OSC | Many DAWs support OSC (REAPER has first-class OSC with configurable patterns, Bitwig has community extensions). Could send tempo/transport/loop commands to the host DAW, enabling sync behaviors that plugin APIs alone cannot provide. | High | Exploratory. REAPER's OSC surface is well-documented. Bitwig has DrivenByMoss OSC. Ableton and Logic have limited OSC. Not universal but covers power users. |
-| Cross-DAW sync via MCP | MCP (Model Context Protocol) servers are emerging for DAW control (e.g., Scythe MCP for REAPER). Could enable AI-assisted session management and cross-DAW communication. | High | Highly experimental. MCP is production-ready as a protocol (2025 spec) but DAW MCP servers are nascent. REAPER has early implementations. Other DAWs do not yet. Research-only for this milestone. |
-| NINJAM looper (interval-synced) | JamTaba's built-in looper (1-8 layers, 3 modes: sequence/all-layers/selected) is synced to NINJAM intervals. Valuable for solo practice over backing tracks and layered performances. | Med | JamTaba proves this is popular. Could be a future milestone feature. Not in current scope. |
-| Video support (H.264 over NINJAM intervals) | JamTaba has video (320x240 10fps, server-relayed via NINJAM intervals with audio/video boolean flag, FFmpeg encode/decode). Seeing fellow musicians improves the jam experience. FarPlay has built-in low-latency video. | Very High | Research-only this milestone per PROJECT.md. JamTaba's approach is proven but scope is massive (camera capture, FFmpeg dependency, UI layout for video tiles). Video sync is imperfect in JamTaba. |
-| Voice chat (non-musical communication) | JamTaba v2.1.11 added voice chat. Useful for quick communication without typing. Jamulus users often run a muted Zoom call alongside for voice/video. | Med | Lower priority than core audio features. Could use a separate low-bitrate Opus stream outside NINJAM intervals, or build on existing chat infrastructure. |
-| Input effects processing | SonoBus offers input compression, noise gate, and EQ. Jamulus has reverb. Helps musicians with minimal setups sound better. | Med | JUCE has built-in DSP (IIR filters, compressor). Could add optional input chain. Lower priority -- DAW users already have plugin chains. Mainly benefits standalone mode. |
-| Mixer presets (save/load) | Jamulus supports saving/loading mixer configurations. Useful for users who jam with the same people regularly. | Low | Save per-user volume/pan/mute/solo state to JSON/XML. Low implementation effort, high convenience. |
+| Index-based remote user addressing | TouchOSC layouts can use fixed fader positions (1-8) that map to NINJAM users. Name labels update on roster change. No other NINJAM client exposes remote users via OSC. | MEDIUM | Assign stable 1-based indices in join order. Broadcast `/remote/{idx}/name` on roster change. TouchOSC reads labels, faders stay bound to indices. |
+| Shipped TouchOSC template | Most OSC plugins leave template creation to users. Shipping a ready-made `.tosc` file dramatically lowers adoption barrier. Gig Performer ships templates and it is their most-praised OSC feature. | MEDIUM | Design a 2-page layout: Page 1 = mixer (8 remote user faders + local + metro), Page 2 = session info + video controls. Distribute alongside plugin. |
+| OSC-controllable video features | No competing product lets you control video companion from a control surface. Opening video, switching grid/popout, triggering per-user popout -- all from an iPad. | LOW | Add `/JamWide/video/*` namespace. Straightforward since video commands are simple triggers/strings. |
+| Metronome remote control | Controlling click volume from an iPad while playing is genuinely useful for musicians. Most OSC mixer implementations forget the metronome. | LOW | `/JamWide/metro/volume`, `/metro/pan`, `/metro/mute`. Maps directly to existing atomic parameters. |
+| Read-only session telemetry | Beat position, BPM, BPI, user count broadcast via OSC. Enables building custom TouchOSC dashboards showing jam session state. | LOW | Timer-based broadcast of session state atomics. Already accessible in the audio thread via lock-free reads. |
+| Connect/disconnect trigger | Ability to connect to or disconnect from a NINJAM server entirely from the control surface. Useful for musicians who keep their laptop out of reach during performance. | LOW | `/JamWide/connect` with 0/1 toggle. Maps to existing `ConnectCommand` / `DisconnectCommand`. |
 
-## Anti-Features
+#### VDO.Ninja Video Companion
 
-Features to explicitly NOT build. These seem useful but would hurt the product.
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Per-user popout windows | Each remote musician's video can be dragged to a separate monitor. Unique to JamWide -- no other NINJAM client offers this. Lets musicians see specific bandmates on dedicated screens. | HIGH | Each popout is a separate browser window with `&view=streamID`. Requires stream ID discovery via VDO.Ninja external API. Window management is browser-side (plugin just opens URLs). |
+| NINJAM-synced video buffering | Video delay matched to NINJAM interval timing via VDO.Ninja's chunked mode `setBufferDelay`. Participants see each other "in time" with the interval audio. No other tool does this. | HIGH | Requires: chunked mode, companion page WebSocket, interval boundary tracking, `postMessage` to VDO.Ninja iframe. Complex chain but each link is documented. |
+| Plugin-controlled room security | Room password derived from NINJAM server password. Uses `&hash=` with `#` fragment to prevent plaintext credential exposure. Zero-config security. | MEDIUM | Hash derivation needs a deterministic algorithm shared between all JamWide instances. SHA-256 of NINJAM password + room name as salt. |
+| External API roster discovery | Plugin connects to `wss://api.vdo.ninja` for real-time guest list. Maps VDO.Ninja stream IDs to NINJAM usernames for 1:1 video-to-audio correlation. | HIGH | WebSocket client with JSON messaging, reconnection logic (timeout every ~60s), event handling for `guest-connected`/`push-connection`. New dependency: WebSocket client library or JUCE networking. |
+| Video control via OSC | Open/close video, switch modes, trigger popouts -- all from TouchOSC. Single control surface for audio + video. | LOW | Thin layer mapping OSC messages to video control commands. |
+| Bandwidth-aware video profiles | VDO.Ninja supports `&chunkprofile=mobile|balanced|desktop`. Plugin can auto-select based on detected bandwidth or let users choose. | LOW | Append profile parameter to generated URLs. UI dropdown or auto-detect. |
 
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| Peer-to-peer audio | NINJAM is server-relayed by design. P2P changes the protocol entirely, creates NAT traversal problems, and fractures the ecosystem. SonoBus and FarPlay already own this space. | Stay server-relayed. Interop with existing NINJAM servers is the priority. |
-| Low-latency real-time sync (sub-50ms) | NINJAM's interval system is the opposite of real-time -- it embraces latency as a musical concept. Trying to minimize latency would undermine the core interaction model. Jamulus, FarPlay, and JackTrip own this space. | Lean into the interval model. Make it clear in UX. Optimize for musical quality within intervals, not latency reduction. |
-| Mobile support | Desktop-first. Mobile audio I/O is unreliable, plugin ecosystems are immature, and screen real estate is insufficient for multichannel mixing UI. SonoBus has iOS but it is a simpler interface. | Focus on macOS and Windows. Linux as nice-to-have. Mobile is a future product, not a feature. |
-| Built-in VST/AU hosting (standalone) | JamTaba standalone hosts plugins. This creates massive complexity (plugin scanning, compatibility, UI hosting, crash isolation). A NINJAM client is not a DAW. | In standalone mode, users bring their own audio routing (e.g., Loopback, VoiceMeeter). In plugin mode, the DAW hosts everything. |
-| REAPER-specific extension APIs | ReaNINJAM uses REAPER extension APIs for Set Tempo, Set Loop, Start Playback. These are not portable. Building REAPER-specific features fragments the codebase. | Use OSC for DAW-specific control where possible. Standard plugin APIs (AudioPlayHead) for transport reading. |
-| Capability negotiation for FLAC (v1) | Auto-detecting whether peers support FLAC adds protocol complexity and server-side changes. Premature optimization before FLAC proves its value. | Manual codec selection. Default Vorbis. User opts into FLAC knowing some peers may not decode it. Revisit negotiation in v2. |
-| Video implementation (this milestone) | JamTaba's video is proven but the scope is enormous (camera capture, codec, layout, sync). Building it before core audio features are solid dilutes focus. | Research only this milestone. Document JamTaba's approach. Evaluate feasibility for a future milestone. |
-| AAX plugin format | Pro Tools market share in music production is declining. AAX adds Avid's SDK requirements and signing process. JUCE supports it but the overhead is not justified for the target audience. | Ship VST3, AU, and CLAP. If demand emerges, AAX can be added later since JUCE supports it. |
-| Livestreaming / broadcasting | JamKazam streams to YouTube/Twitch. FarPlay has broadcast output. This is a different product category (performance vs jam session). | Focus on session recording for post-production. Users who want to stream can use OBS to capture audio output. |
+### Anti-Features (Commonly Requested, Often Problematic)
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Embedded video in plugin window | "I want video without opening a browser" | JUCE WebBrowserComponent or CEF adds 50-100MB to plugin size, introduces Chromium dependency, platform-specific WebRTC issues, massive build complexity. Browser does this better and for free. | Browser companion page. Plugin opens a URL. Browser handles all video rendering, WebRTC, and codec work. |
+| Username-based OSC addressing (`/remote/Dave/volume`) | "I want to address users by name" | Names can contain spaces, special characters, unicode. Names change mid-session. TouchOSC layouts break when names change. OSC address parsing becomes complex. | Index-based addressing with name broadcast. `/remote/1/volume` is stable. `/remote/1/name` broadcasts "Dave" for label display. |
+| Auto-discovery of OSC clients | "Plugin should find my iPad automatically" | OSC has no standard discovery protocol. mDNS/Bonjour is platform-specific and unreliable on many networks. Adds complexity for a one-time setup. | Manual IP/port configuration with sensible defaults. One-time setup per device. |
+| Video recording from within plugin | "Record the jam video too" | VDO.Ninja video is rendered in the browser, not the plugin. Recording browser content from a plugin is not feasible. OBS already does this well. | Document how to use OBS to capture VDO.Ninja alongside JamWide audio. Provide OBS integration guide. |
+| MIDI-based remote control (instead of or alongside OSC) | "My controller sends MIDI, not OSC" | MIDI has 7-bit resolution (128 steps), limited addressing, no bidirectional feedback standard. OSC is strictly superior for this use case. Adding MIDI remote adds a second control protocol with less capability. | OSC only. TouchOSC handles MIDI-to-OSC bridging natively. Users with hardware MIDI controllers can use TouchOSC Bridge or similar. |
+| Embedded TURN server | "I don't want to depend on external TURN servers" | Running a TURN server requires a public IP, bandwidth, and ongoing maintenance. Only ~10% of users need TURN at all. | Use VDO.Ninja's free TURN servers (CA, DE, US, FR/UK). Document self-hosted TURN option for enterprise/privacy setups via `&turn=` parameter. |
+| Real-time video sync (sub-second) with interval audio | "Video should be perfectly in sync with audio" | NINJAM audio has 8-32 second interval latency by design. Delaying video 8-32 seconds makes it a slideshow of the past. Fundamentally incompatible time domains. | Accept that video is near-real-time (100-300ms) and audio is interval-delayed. Musicians already understand this -- they see reactions in real-time and hear music on a delay. This is actually useful: visual cues happen before the audio arrives. |
+| H.264-over-NINJAM video (JamTaba approach) | "Keep everything in one protocol" | 0.03-0.13 FPS at typical BPI settings. Literally a slideshow. Adds bandwidth pressure to the NINJAM server. JamTaba users universally report sync problems and poor quality. | VDO.Ninja WebRTC: 30fps, 100-300ms latency, peer-to-peer (no server load), hardware-accelerated. Strictly superior in every dimension. |
 
 ## Feature Dependencies
 
 ```
-JUCE Migration ──────────────────┬──> Standalone Mode (byproduct)
-                                 ├──> VST3/AU Format (JUCE native)
-                                 ├──> Multichannel Output (JUCE AudioProcessor buses)
-                                 ├──> DAW Transport Sync (JUCE AudioPlayHead)
-                                 └──> Input Effects Processing (JUCE DSP)
+[OSC Receiver (UDP listen)]
+    |
+    +--enables--> [OSC Parameter Mapping]
+    |                 |
+    |                 +--enables--> [Remote User Index Addressing]
+    |                                   |
+    |                                   +--enables--> [TouchOSC Template]
+    |
+    +--enables--> [OSC Sender (UDP feedback)]
+                      |
+                      +--enables--> [Session Telemetry Broadcast]
+                      +--enables--> [Roster Change Broadcast]
 
-FLAC Codec ──────────────────────┬──> FLAC Session Recording
-                                 └──> (Independent of JUCE -- can ship before migration)
+[VDO.Ninja URL Generation]
+    |
+    +--enables--> [One-Click Video Launch]
+    |                 |
+    |                 +--enables--> [Video Grid Mode]
+    |
+    +--requires--> [Auto Room ID from NINJAM Server]
 
-Multichannel Output ─────────────┬──> Per-User DAW Mixing
-                                 └──> Metronome Channel Routing (separate output)
+[VDO.Ninja External API (WebSocket)]
+    |
+    +--enables--> [Roster Discovery (stream ID mapping)]
+    |                 |
+    |                 +--enables--> [Per-User Popout Windows]
+    |                 +--enables--> [Video Control via OSC]
+    |
+    +--requires--> [WebSocket Client Library]
+    +--requires--> [Reconnection Logic]
 
-DAW Transport Sync ──────────────┬──> Session Position Tracking
-                                 └──> Interval-Aligned Playback
+[Companion HTML Page (local server)]
+    |
+    +--enables--> [Video Grid Layout]
+    +--enables--> [Interval-Synced Buffering (setBufferDelay)]
+    |                 |
+    |                 +--requires--> [Chunked Mode (&chunked)]
+    |                 +--requires--> [Interval Boundary Tracking (existing)]
+    |
+    +--requires--> [Local HTTP Server]
+    +--requires--> [Local WebSocket Server (plugin <-> page)]
 
-Live BPM/BPI Changes ────────────┬──> (Independent -- protocol message handling)
-                                 └──> Looper Sync (if looper is built)
-
-OSC Support ─────────────────────┬──> Cross-DAW Tempo Sync
-                                 └──> Cross-DAW Transport Control
-
-Video Research ──────────────────┬──> (No code dependencies -- research artifact only)
+[OSC Video Namespace] --requires--> [Video Control Commands]
+                      --requires--> [OSC Server Core]
 ```
 
-Key dependency insight: FLAC is independent of JUCE and should ship first (as PROJECT.md already identifies). Multichannel output and DAW transport sync both require JUCE migration to be complete, since they depend on JUCE's AudioProcessor bus model and AudioPlayHead respectively.
+### Dependency Notes
 
-## MVP Recommendation
+- **OSC Receiver requires nothing new**: JUCE `juce_osc` module is the only dependency. Add to CMake and it works.
+- **OSC Sender requires Receiver**: Bidirectional is the IEM pattern -- sender and receiver share the `OSCParameterInterface` lifecycle.
+- **TouchOSC Template requires Index Addressing**: Template must be designed after the OSC namespace is finalized. Cannot ship template until namespace is stable.
+- **Video Popout requires External API**: Must discover stream IDs to generate per-user `&view=streamID` URLs. Without API, only grid mode works.
+- **Interval Sync requires Companion Page + Chunked Mode**: The `setBufferDelay` command must flow through a local WebSocket to the companion page, which forwards via `postMessage` to the VDO.Ninja iframe. Each link in this chain is a dependency.
+- **Local HTTP/WebSocket Server is the video foundation**: Without it, the companion page cannot receive commands from the plugin. This is the critical infrastructure piece for all video features beyond basic URL launch.
+- **OSC and Video are architecturally independent**: Either feature can ship without the other. No code dependencies between them. Only the OSC video namespace ties them together at the control layer.
 
-### Must ship (table stakes that are missing or broken):
+## MVP Definition
 
-1. **FLAC lossless codec** -- Flagship differentiator. Ships before JUCE migration. Low risk, high value, detailed plan exists.
-2. **JUCE migration** -- Foundation for all other differentiators. Unlocks standalone, multichannel, transport sync.
-3. **Standalone mode** -- Natural JUCE byproduct. Opens JamWide to non-DAW users.
-4. **Live BPM/BPI changes** -- Without this, JamWide is strictly worse than ReaNINJAM.
-5. **Session recording UI** -- NJClient supports it; just needs UI exposure.
+### Phase 1: OSC Server Core (Launch First)
 
-### Should ship (primary differentiators):
+Minimum viable OSC remote control -- enough to be genuinely useful with TouchOSC.
 
-6. **Multichannel output routing** -- The killer feature for DAW users. No generic NINJAM plugin has this.
-7. **DAW transport sync** -- Reads host transport via JUCE AudioPlayHead. Makes the plugin feel native.
-8. **Session position tracking** -- Already in NJClient API. Small effort, big polish.
+- [x] Bidirectional UDP OSC (receiver + sender) via `juce_osc` -- core infrastructure
+- [x] Parameter mapping for local channel (volume, pan, mute, transmit) -- immediate value
+- [x] Parameter mapping for metronome (volume, pan, mute) -- musicians need click control
+- [x] Remote user control with index-based addressing (volume, pan, mute, solo) -- main use case
+- [x] Roster change broadcast (count + names) -- TouchOSC labels update automatically
+- [x] Session state broadcast (BPM, BPI, beat, status, user count) -- dashboard capability
+- [x] Configurable ports with UI dialog -- required for any multi-app setup
+- [x] Status indicator in plugin footer -- visual confirmation OSC is working
+- [x] Config persistence in plugin state -- survives DAW save/load
 
-### Defer:
+### Phase 2: Video Companion Foundation (Launch Second)
 
-- **OSC support** -- Exploratory. Useful for power users but not critical path. Research this milestone, implement in a future one.
-- **MCP bridge** -- Too nascent. DAW MCP servers barely exist outside REAPER prototypes. Research only.
-- **Video** -- Research only. Massive scope. Document JamTaba's approach for future reference.
-- **Looper** -- Nice-to-have. JamTaba has it. Could be a future milestone after core features stabilize.
-- **Voice chat** -- Lower priority. Text chat exists. Voice adds codec and UI complexity.
-- **Input effects** -- Mainly benefits standalone users. DAW users have their own effects. Future milestone.
-- **Mixer presets** -- Low effort but low priority. Add when core features are stable.
+Minimum viable video -- enough to see bandmates during a jam.
 
-## Competitive Feature Matrix
+- [x] VDO.Ninja URL generation with auto room ID -- zero-config video
+- [x] One-click browser launch with `&noaudio` + `&cleanoutput` -- clean video-only experience
+- [x] Audio suppression (`&noaudio`) -- prevents double audio
+- [x] Privacy notice on first use -- responsible IP exposure handling
+- [x] Browser detection + Chromium warning -- prevents broken experience
+- [x] Basic video UI panel in plugin (room ID display, open/close button, status) -- control center
 
-| Feature | ReaNINJAM | JamTaba | Jamulus | SonoBus | FarPlay | JamWide (target) |
-|---------|-----------|---------|--------|---------|---------|-------------------|
-| NINJAM protocol | Yes | Yes | No (own protocol) | No (own protocol) | No (own protocol) | Yes |
-| Plugin format | REAPER-only | VST/AU | Standalone only | VST/AU/AAX/VST3 | Standalone only | VST3/AU/CLAP |
-| Standalone | No | Yes | Yes | Yes | Yes | Yes (via JUCE) |
-| Lossless audio | No | No | No | Yes (PCM 16/24/32) | Yes (uncompressed PCM) | Yes (FLAC) |
-| Multichannel out | Yes (REAPER-only) | No | No | Yes (multi-bus) | No | Yes (generic plugin) |
-| DAW transport sync | Yes (REAPER-only) | Partial | N/A | N/A | N/A | Yes (any DAW) |
-| Video | No | Yes (320x240) | No | No | Yes (built-in) | Research only |
-| Looper | No | Yes (interval-synced) | No | No | No | Deferred |
-| Voice chat | No | Yes | No | No | No | Deferred |
-| Session recording | Yes (multitrack) | Yes (multitrack) | Server-side | Yes (multitrack) | Yes (per-user) | Yes (needs UI) |
-| Per-user mixing | Yes | Yes | Yes | Yes | Limited | Yes |
-| Input effects | No | Via hosted plugins | Reverb only | Compressor/Gate/EQ | No | Deferred |
-| OSC control | Via REAPER | No | No | No | No | Research phase |
-| Cross-platform | Win/Mac/Linux | Win/Mac/Linux | Win/Mac/Linux | Win/Mac/Linux/iOS/Android | Win/Mac/Linux | Win/Mac |
-| Open source | Yes (GPL) | Yes (GPL) | Yes (GPL) | Yes (GPL) | No | N/A |
+### Phase 3: Video Advanced Features (Add After Validation)
+
+- [ ] Local HTTP + WebSocket server for companion page hosting -- enables layout control
+- [ ] Companion HTML page with CSS grid layout -- better than raw VDO.Ninja room view
+- [ ] VDO.Ninja external API connection (WebSocket client) -- roster discovery
+- [ ] Stream ID ↔ NINJAM username mapping -- video-audio user correlation
+- [ ] Per-user popout windows -- multi-monitor support
+- [ ] Interval-synced video buffering via `setBufferDelay` -- unique differentiator
+- [ ] Room password security (`&hash=` with `#` fragment) -- zero-config security
+
+### Phase 4: Polish and Templates (Add After Core Stable)
+
+- [ ] TouchOSC template (`.tosc` file) -- dramatically lowers adoption barrier
+- [ ] Video control via OSC namespace -- unified control surface
+- [ ] Connect/disconnect via OSC -- full remote operation
+- [ ] Bandwidth-aware video profiles (`&chunkprofile=`) -- adaptive quality
+
+### Future Consideration (v2+)
+
+- [ ] Embedded video via JUCE WebBrowserComponent -- only if browser companion proves inadequate
+- [ ] Username-based OSC addressing -- only if users demand it despite index approach
+- [ ] OSC over TCP (for firewalled environments) -- niche use case
+- [ ] MIDI remote control -- only if significant demand despite OSC superiority
+- [ ] Self-hosted VDO.Ninja signaling server -- enterprise/privacy feature
+- [ ] OBS integration guide / scene collection -- community content
+
+## Feature Prioritization Matrix
+
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| Bidirectional OSC core | HIGH | MEDIUM | P1 |
+| Remote user index addressing | HIGH | MEDIUM | P1 |
+| OSC config UI + persistence | HIGH | LOW | P1 |
+| Status indicator | MEDIUM | LOW | P1 |
+| One-click video launch | HIGH | LOW | P1 |
+| Auto room ID | HIGH | LOW | P1 |
+| Audio suppression | HIGH | LOW | P1 |
+| Session telemetry broadcast | MEDIUM | LOW | P1 |
+| Roster change broadcast | HIGH | LOW | P1 |
+| Privacy notice | MEDIUM | LOW | P1 |
+| Chromium browser warning | MEDIUM | LOW | P1 |
+| Local HTTP/WS server | HIGH | HIGH | P2 |
+| Companion HTML page grid | HIGH | MEDIUM | P2 |
+| External API WebSocket client | HIGH | HIGH | P2 |
+| Stream ID mapping | MEDIUM | MEDIUM | P2 |
+| Per-user popout windows | MEDIUM | MEDIUM | P2 |
+| Interval-synced buffering | MEDIUM | HIGH | P2 |
+| Room password security | MEDIUM | MEDIUM | P2 |
+| TouchOSC template | HIGH | MEDIUM | P2 |
+| Video control via OSC | MEDIUM | LOW | P2 |
+| Connect/disconnect via OSC | MEDIUM | LOW | P2 |
+| Bandwidth video profiles | LOW | LOW | P3 |
+| Embedded video (WebView) | LOW | HIGH | P3 (defer) |
+| Username-based OSC | LOW | MEDIUM | P3 (defer) |
+
+**Priority key:**
+- P1: Must have for v1.1 launch
+- P2: Should have, add in later v1.1 phases
+- P3: Nice to have, defer to v1.2+
+
+## Competitor Feature Analysis
+
+### OSC Remote Control
+
+| Feature | IEM Plugin Suite | Gig Performer | RME TotalMix FX | JamWide v1.1 Plan |
+|---------|-----------------|---------------|-----------------|-------------------|
+| Bidirectional OSC | Yes (timer-based sender) | Yes (widget-based) | Partial (fader output limited) | Yes (IEM pattern) |
+| Configurable ports | Yes (dialog) | Yes (preferences) | Yes (settings) | Yes (dialog) |
+| Status indicator | Yes (footer dot + dialog) | No (settings only) | Yes (LED indicator) | Yes (footer dot) |
+| Parameter feedback interval | Configurable (default 100ms) | Fixed | Fixed | Configurable (1-1000ms, default 100ms) |
+| Namespace | `/PluginName/paramID` | Widget OSC names (flat) | `/1/volume1` etc (fixed) | Hierarchical `/JamWide/...` |
+| Dynamic user addressing | N/A (fixed parameters) | N/A (fixed widgets) | N/A (fixed channels) | Yes (index-based `/remote/{idx}/`) |
+| TouchOSC template shipped | No | Yes (praised feature) | Community templates | Yes (planned) |
+| Session telemetry | No | No | No | Yes (BPM, BPI, beat, status) |
+| Read-only state broadcast | No | No | Limited | Yes (codec, names, connection) |
+
+**JamWide advantage:** Dynamic user addressing and session telemetry are unique. No audio plugin does this because no audio plugin manages a roster of remote musicians.
+
+### VDO.Ninja Video
+
+| Feature | JamTaba H.264 | VDO.Ninja (standalone) | OBS + VDO.Ninja | JamWide v1.1 Plan |
+|---------|--------------|----------------------|-----------------|-------------------|
+| Frame rate | 0.03-0.13 FPS | 30 FPS | 30 FPS | 30 FPS (WebRTC) |
+| Latency | 8-32 sec (interval) | 100-300ms | 100-300ms | 100-300ms (real-time) |
+| Audio-video sync | Synced (but unusable FPS) | Real-time only | Real-time only | Configurable: real-time or interval-matched |
+| Setup effort | Built-in (auto) | Manual (URL sharing) | Manual (OBS config) | One-click (auto room ID) |
+| Grid view | No | Yes (room view) | Yes (scene layout) | Yes (companion page) |
+| Per-user popout | No | PiP (limited) | Yes (separate sources) | Yes (dedicated windows) |
+| Plugin integration | Native | None | None | Native (OSC + URL generation) |
+| Music sync buffer | No | Available (chunked demo) | No | Yes (setBufferDelay via API) |
+| Bandwidth control | N/A (tiny data) | Manual parameters | Manual | Auto profiles + manual |
+| Privacy controls | N/A (server-relayed) | Manual (&relay) | Manual | Guided (notice + relay option) |
+
+**JamWide advantage:** Zero-setup (auto room ID), plugin-integrated controls, and interval-synced buffering. No other tool combines NINJAM awareness with VDO.Ninja video.
+
+### Online Jam Video Solutions
+
+| Feature | Zoom/Meet | SonoBus (no video) | Jamulus (no video) | FarPlay | JamWide v1.1 Plan |
+|---------|-----------|-------------------|-------------------|---------|-------------------|
+| Video | Built-in | None | None | Built-in | Browser companion |
+| Audio optimization | Poor (voice-optimized) | Excellent | Excellent | Excellent | Excellent (NINJAM) |
+| Multi-monitor | Limited | N/A | N/A | No | Yes (popout windows) |
+| Interval-based audio | No | No | No | No | Yes (NINJAM core) |
+| Remote control | No | No | No | No | Yes (OSC) |
+| OSC integration | No | No | No | No | Yes (full bidirectional) |
 
 ## Sources
 
-- [Cockos NINJAM official site](https://www.cockos.com/ninjam/) -- NINJAM features, interval model, recording capabilities
-- [JamTaba GitHub](https://github.com/elieserdejesus/JamTaba) -- Plugin formats, platform support, video, standalone hosting
-- [JamTaba Ninjam Looper wiki](https://github.com/elieserdejesus/JamTaba/wiki/Ninjam-Looper) -- Looper modes, layer management, sync behavior
-- [JamTaba releases](https://github.com/elieserdejesus/JamTaba/releases) -- Voice chat feature (v2.1.11)
-- [Jamulus official site](https://jamulus.io/) -- Low-latency architecture, server features
-- [Jamulus software manual](https://jamulus.io/wiki/Software-Manual) -- Audio settings, channel config, mixer features, JSON-RPC API
-- [SonoBus official site](https://www.sonobus.net/) -- P2P audio, codec options, effects, platform support
-- [FarPlay official site](https://farplay.io/) -- Uncompressed PCM, video, low-latency approach, multitrack recording
-- [REAPER OSC documentation](https://www.reaper.fm/sdk/osc/osc.php) -- OSC surface configuration, transport control patterns
-- [Wahjam NINJAM Protocol wiki](https://github.com/wahjam/wahjam/wiki/Ninjam-Protocol) -- FOURCC codec identification, message structure
-- [Scythe MCP REAPER](https://glama.ai/mcp/servers/@yura9011/scythe_mcp_reaper) -- MCP-based DAW control prototype
-- [DrivenByMoss Bitwig extensions](https://github.com/git-moss/DrivenByMoss) -- OSC control for Bitwig
-- [ReaNINJAM multichannel forum discussion](https://forum.cockos.com/showthread.php?t=233601) -- Per-user output routing in REAPER context
-- [Cockos NINJAM source (local reference)](file:///Users/cell/dev/ninjam/ninjam/njclient.h) -- AudioProc API with isPlaying/isSeek/cursessionpos, config_remote_autochan, multichannel routing internals
+### OSC Implementation
+- [IEM Plugin Suite OSCParameterInterface](https://git.iem.at/audioplugins/IEMPluginSuite/-/blob/175-10th-ambisonic-order/resources/OSC/OSCParameterInterface.cpp) - Reference implementation (HIGH confidence)
+- [JUCE OSCReceiver documentation](https://docs.juce.com/master/classOSCReceiver.html) - Thread safety patterns (HIGH confidence)
+- [JUCE OSC tutorial](https://docs.juce.com/master/tutorial_osc_sender_receiver.html) - Sender/receiver patterns (HIGH confidence)
+- [Gig Performer TouchOSC guide](https://gigperformer.com/using-touch-osc-app-as-a-remote-display-and-a-touch-control-surface-with-gig-performer) - Bidirectional feedback expectations (MEDIUM confidence)
+- [TouchOSC manual](https://hexler.net/touchosc/manual/complete) - Layout design patterns (HIGH confidence)
+- [RME TotalMix OSC forum](https://forum.rme-audio.de/viewtopic.php?pid=238855) - Fader feedback limitations (MEDIUM confidence)
+
+### VDO.Ninja Video
+- [VDO.Ninja API reference](https://docs.vdo.ninja/advanced-settings/api-and-midi-parameters/api/api-reference) - External API commands (MEDIUM confidence -- docs self-labeled "DRAFT")
+- [VDO.Ninja chunked mode docs](https://docs.vdo.ninja/advanced-settings/settings-parameters/and-chunked) - Buffer parameters and requirements (MEDIUM confidence)
+- [Companion-Ninja repo](https://github.com/steveseguin/Companion-Ninja) - HTTP/WebSocket API patterns (MEDIUM confidence)
+- [VDO.Ninja GitHub releases](https://github.com/steveseguin/vdo.ninja/releases) - chunkprofile presets (MEDIUM confidence)
+- [VDO.Ninja buffer docs](https://docs.vdo.ninja/advanced-settings/video-parameters/buffer) - Chunked buffering behavior (MEDIUM confidence)
+
+### Competitive Analysis
+- [JamTaba GitHub](https://github.com/elieserdejesus/JamTaba) - H.264 video limitations (HIGH confidence)
+- [Cockos NINJAM + video forum thread](https://forum.cockos.com/showthread.php?t=213553) - Community video sync pain points (MEDIUM confidence)
+- [JamTaba wiki](https://github.com/elieserdejesus/JamTaba/wiki/Inside-a-Ninjam-Server-(Overview)) - NINJAM server architecture (HIGH confidence)
+
+---
+*Feature research for: JamWide v1.1 OSC Remote Control + VDO.Ninja Video Companion*
+*Researched: 2026-04-05*

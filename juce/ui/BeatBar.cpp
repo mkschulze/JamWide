@@ -182,8 +182,8 @@ void BeatBar::createVoteEditor(bool forBpm)
 
         if (valid && processorRef_)
         {
-            int currentVal = editingBpm_ ? static_cast<int>(currentBpm_) : bpi_;
-            if (newVal != currentVal)
+            int existingVal = editingBpm_ ? static_cast<int>(currentBpm_) : bpi_;
+            if (newVal != existingVal)
             {
                 jamwide::SendChatCommand cmd;
                 cmd.type = "MSG";

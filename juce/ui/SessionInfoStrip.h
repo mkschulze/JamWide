@@ -6,7 +6,8 @@ class SessionInfoStrip : public juce::Component
 public:
     SessionInfoStrip();
     void update(int intervalCount, unsigned int elapsedMs, int currentBeat,
-                int totalBeats, int syncState, bool isStandalone);
+                int totalBeats, int syncState, bool isStandalone,
+                int userCount);
     void paint(juce::Graphics& g) override;
 
 private:
@@ -16,6 +17,7 @@ private:
     int totalBeats_ = 0;
     int syncState_ = 0;
     bool isStandalone_ = false;
+    int userCount_ = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SessionInfoStrip)
 };

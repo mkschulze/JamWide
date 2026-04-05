@@ -215,7 +215,8 @@ void JamWideJuceEditor::timerCallback()
         // Read sync state from single atomic int (not two booleans -- review fix)
         int syncState = processorRef.syncState_.load(std::memory_order_relaxed);
 
-        sessionInfoStrip.update(intervalCount, elapsedMs, beat, bpi, syncState, isStandalone);
+        int userCount = processorRef.userCount.load(std::memory_order_relaxed);
+        sessionInfoStrip.update(intervalCount, elapsedMs, beat, bpi, syncState, isStandalone, userCount);
     }
 
     // Note: VU updates are driven by ChannelStripArea's own 30Hz timer (REVIEW FIX #7)

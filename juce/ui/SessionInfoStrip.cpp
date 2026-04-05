@@ -8,7 +8,8 @@ SessionInfoStrip::SessionInfoStrip()
 
 void SessionInfoStrip::update(int intervalCount, unsigned int elapsedMs,
                                int currentBeat, int totalBeats,
-                               int syncState, bool isStandalone)
+                               int syncState, bool isStandalone,
+                               int userCount)
 {
     intervalCount_ = intervalCount;
     elapsedMs_ = elapsedMs;
@@ -16,6 +17,7 @@ void SessionInfoStrip::update(int intervalCount, unsigned int elapsedMs,
     totalBeats_ = totalBeats;
     syncState_ = syncState;
     isStandalone_ = isStandalone;
+    userCount_ = userCount;
     repaint();
 }
 
@@ -74,6 +76,16 @@ void SessionInfoStrip::paint(juce::Graphics& g)
                    area.removeFromLeft(40), juce::Justification::centredLeft, false);
     else
         g.drawText("--/--", area.removeFromLeft(40), juce::Justification::centredLeft, false);
+
+    // Users section
+    area.removeFromLeft(16);  // gap
+    g.setFont(labelFont);
+    g.setColour(labelCol);
+    g.drawText("Users: ", area.removeFromLeft(35), juce::Justification::centredRight, false);
+    g.setFont(valueFont);
+    g.setColour(valueCol);
+    g.drawText(connected ? juce::String(userCount_) : "--",
+               area.removeFromLeft(25), juce::Justification::centredLeft, false);
 
     // Sync section (hidden in standalone per D-07)
     if (!isStandalone_)

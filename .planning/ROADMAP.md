@@ -134,9 +134,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 07-01-PLAN.md -- Transport sync core: AudioPlayHead integration, sync state machine, NJClient API, BPM change detection
-- [ ] 07-02-PLAN.md -- Sync UI: Sync button, BPM/BPI vote in BeatBar, flash animation, SessionInfoStrip, state persistence
-- [ ] 07-03-PLAN.md -- Research deliverables: Video feasibility, OSC evaluation, MCP assessment
+- [x] 07-01-PLAN.md -- Transport sync core: AudioPlayHead integration, sync state machine, NJClient API, BPM change detection
+- [x] 07-02-PLAN.md -- Sync UI: Sync button, BPM/BPI vote in BeatBar, flash animation, SessionInfoStrip, state persistence
+- [x] 07-03-PLAN.md -- Research deliverables: Video feasibility, OSC evaluation, MCP assessment
 
 ## Future Milestones
 

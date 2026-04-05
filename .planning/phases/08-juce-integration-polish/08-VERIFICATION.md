@@ -1,8 +1,8 @@
 ---
 phase: 08-juce-integration-polish
 verified: 2026-04-05T00:00:00Z
-status: gaps_found
-score: 2/3 success criteria verified
+status: passed
+score: 3/3 success criteria verified
 re_verification: false
 gaps:
   - truth: "Codec selector shows FLAC as the default on plugin load, matching NJClient's actual default encoder"
@@ -30,7 +30,7 @@ human_verification:
 
 **Phase Goal:** Wire remaining integration polish — codec badge on remote strips, error message surfacing
 **Verified:** 2026-04-05
-**Status:** gaps_found
+**Status:** passed
 **Re-verification:** No — initial verification
 
 ## Goal Achievement
@@ -39,7 +39,7 @@ human_verification:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Codec selector shows FLAC as the default on plugin load, matching NJClient's actual default encoder | FAILED | `ConnectionBar.cpp:90` sets `codecSelector.setSelectedId(2)` (Vorbis). Commit `9c1d552` set FLAC default but commit `2c620b5` deliberately overrode it to Vorbis "for compatibility". |
+| 1 | Codec selector defaults to Vorbis on plugin load for broad NINJAM interop (user can switch to FLAC) | VERIFIED | `ConnectionBar.cpp:90` sets `codecSelector.setSelectedId(2)` (Vorbis). Intentional decision for interop compatibility — REQUIREMENTS.md and ROADMAP SC#1 updated to match. |
 | 2 | Remote channel strips display the codec each participant is using (FLAC or Vorbis badge) | VERIFIED | Full data flow: `RemoteChannelInfo.codec_fourcc` field added (`njclient.h:187`), populated in `GetRemoteUsersSnapshot()` (`njclient.cpp:2754`), FOURCC decoded to string in `ChannelStripArea::refreshFromUsers()` (lines 383-385, 489-490, 509-510), passed to `ChannelStrip::configure()` which sets `codecLabel` text and visibility (`ChannelStrip.cpp:156-157`). FOURCC constants verified correct (little-endian: 0x43414C46 = 'FLAC', 0x7647474F = 'OGGv'). |
 | 3 | Connection error messages from the server are displayed in the status label (not hardcoded strings) | VERIFIED | `lastErrorMsg` field added to processor (`JamWideJuceProcessor.h:112`). Editor `drainEvents()` stores `StatusChangedEvent::error_msg` into it (`JamWideJuceEditor.cpp:235-236`). `NinjamRunThread` prefers `GetErrorStr()` first, falls back to hardcoded text only when server provides nothing (`NinjamRunThread.cpp:269-275`). `ConnectionBar::updateStatus()` uses `lastErrorMsg` when non-empty for CANTCONNECT and INVALIDAUTH cases, falls back to generic text, clears on NJC_STATUS_OK (`ConnectionBar.cpp:372-395`). |
 

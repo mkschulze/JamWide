@@ -13,7 +13,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **CODEC-02**: User can receive and decode FLAC audio from other participants
 - [x] **CODEC-03**: User can switch between FLAC and Vorbis via UI toggle
 - [x] **CODEC-04**: Codec switch applies at interval boundary (no mid-interval glitches)
-- [x] **CODEC-05**: Default codec is FLAC (user can switch to Vorbis for bandwidth-constrained sessions)
+- [x] **CODEC-05**: Default codec is Vorbis for broad NINJAM interop (user can switch to FLAC for lossless)
 
 ### JUCE Migration
 

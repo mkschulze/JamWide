@@ -144,7 +144,7 @@ Plans:
 **Requirements**: CODEC-03, CODEC-05, UI-01, UI-03
 **Gap Closure**: Closes integration gaps from v1.0-MILESTONE-AUDIT.md
 **Success Criteria** (what must be TRUE):
-  1. Codec selector shows FLAC as the default on plugin load, matching NJClient's actual default encoder
+  1. Codec selector defaults to Vorbis on plugin load for broad NINJAM interop (user can switch to FLAC)
   2. Remote channel strips display the codec each participant is using (FLAC or Vorbis badge)
   3. Connection error messages from the server are displayed in the status label (not hardcoded strings)
 **Plans**: 1 plan

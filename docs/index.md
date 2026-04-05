@@ -22,6 +22,8 @@ JamWide brings [NINJAM](https://www.cockos.com/ninjam/) — the open-source inte
 
 Load JamWide, connect to a server, and start jamming with musicians around the globe. Built with [JUCE](https://juce.com/) for native performance on macOS, Windows, and Linux.
 
+![JamWide Plugin Interface](assets/screenshot/screenshot-main.png)
+
 ---
 
 ## Why Use JamWide?

@@ -68,8 +68,7 @@ JamWide packs the full NINJAM experience into a plugin you can use in any DAW, o
 ## User Interface
 
 ### Custom Dark Theme
-- Inspired by VB-Audio Voicemeeter Banana
-- Custom JUCE LookAndFeel with consistent styling
+- Custom JUCE LookAndFeel with consistent pro-audio styling
 - Scalable UI (1x, 1.5x, 2x) via right-click context menu
 
 ### Connection Bar

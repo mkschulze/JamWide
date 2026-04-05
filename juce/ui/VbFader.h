@@ -3,7 +3,7 @@
 #include <functional>
 
 /**
- * VbFader — Voicemeeter Banana style vertical fader component.
+ * VbFader — Custom vertical fader component.
  *
  * Fully custom painted juce::Component (NOT a juce::Slider subclass).
  * Supports both APVTS-attached mode (local channels) and plain callback

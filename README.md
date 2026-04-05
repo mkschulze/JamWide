@@ -45,7 +45,7 @@ JamWide brings the full NINJAM experience into your DAW as a plugin, or runs as 
 - Full state persistence across DAW save/load cycles
 
 ### User Interface
-- Custom JUCE LookAndFeel (dark theme inspired by VB-Audio Voicemeeter)
+- Custom JUCE LookAndFeel (dark pro-audio theme)
 - Connection bar with server address, codec selector, routing mode, and sync controls
 - Chat panel with color-coded messages, auto-scroll, and jump-to-bottom
 - Server browser with public server list and double-click connect

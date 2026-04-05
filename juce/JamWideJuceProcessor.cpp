@@ -272,7 +272,10 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                 int currentSync = syncState_.load(std::memory_order_acquire);
                 if (currentSync == kSyncWaiting)
                 {
-                    if (transportJustStarted)
+                    // Trigger sync on transport start OR if transport was already
+                    // playing when Sync was clicked (first WAITING processBlock)
+                    bool justEnteredWaiting = (prevSyncState_ != kSyncWaiting);
+                    if (transportJustStarted || (justEnteredWaiting && rawPlaying))
                     {
                         // Calculate PPQ sync offset (JamTaba algorithm adapted for JUCE)
                         double hostBpm = cachedHostBpm_.load(std::memory_order_relaxed);
@@ -330,6 +333,7 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                     // While WAITING, send silence (D-04)
                     hostPlaying = false;
                 }
+                prevSyncState_ = currentSync;
             }
         }
 
@@ -512,14 +516,8 @@ void JamWideJuceProcessor::setStateInformation(const void* data, int sizeInBytes
     lastServerAddress = tree.getProperty("lastServer", "ninbot.com").toString();
     lastUsername = tree.getProperty("lastUsername", "anonymous").toString();
 
-    // Validate scaleFactor to one of the allowed values (1.0, 1.5, 2.0)
-    double rawScale = tree.getProperty("scaleFactor", 1.0);
-    if (rawScale >= 1.9)
-        scaleFactor = 2.0f;
-    else if (rawScale >= 1.4)
-        scaleFactor = 1.5f;
-    else
-        scaleFactor = 1.0f;
+    // Always default to 1.0x on plugin load — persisted scale caused UI/label mismatch
+    scaleFactor = 1.0f;
 
     chatSidebarVisible = tree.getProperty("chatSidebarVisible", true);
 

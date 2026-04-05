@@ -45,6 +45,10 @@ struct SetLocalChannelMonitoringCommand {
 
 struct SetUserStateCommand {
     int user_index = 0;
+    bool set_vol = false;
+    float volume = 1.0f;
+    bool set_pan = false;
+    float pan = 0.0f;
     bool set_mute = false;
     bool mute = false;
 };

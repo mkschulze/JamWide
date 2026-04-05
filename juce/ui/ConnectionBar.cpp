@@ -12,9 +12,28 @@
      (static_cast<unsigned int>(c) << 16) | (static_cast<unsigned int>(d) << 24))
 #endif
 
+static const char* kLogoSvg = R"SVG(
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb"/>
+      <stop offset="100%" style="stop-color:#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" rx="20" fill="url(#bg)"/>
+  <text x="50" y="68" font-size="55" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-weight="bold">J</text>
+  <circle cx="72" cy="28" r="8" fill="#22c55e"/>
+  <circle cx="72" cy="28" r="4" fill="#16a34a"/>
+</svg>
+)SVG";
+
 ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
     : processorRef(processor)
 {
+    // Logo icon (left of server field) — drawn in paint(), not as child
+    if (auto xml = juce::XmlDocument::parse(kLogoSvg))
+        logoDrawable = juce::Drawable::createFromSVG(*xml);
+
     // Server field
     serverField.setText(processorRef.lastServerAddress);
     serverField.setTextToShowWhenEmpty("server:port", juce::Colour(JamWideLookAndFeel::kTextSecondary));
@@ -78,11 +97,7 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
     statusLabel.setColour(juce::Label::textColourId, juce::Colour(JamWideLookAndFeel::kTextSecondary));
     addAndMakeVisible(statusLabel);
 
-    // User count label
-    userCountLabel.setFont(juce::FontOptions(11.0f));
-    userCountLabel.setText("", juce::dontSendNotification);
-    userCountLabel.setColour(juce::Label::textColourId, juce::Colour(JamWideLookAndFeel::kTextSecondary));
-    addAndMakeVisible(userCountLabel);
+    // User count now shown in SessionInfoStrip — no longer needed here
 
     // Codec selector -- Vorbis default for compatibility (most NINJAM clients use Vorbis)
     codecSelector.addItem("FLAC", 1);
@@ -167,8 +182,11 @@ void ConnectionBar::resized()
     const int y = (getHeight() - h) / 2;
     const int gap = 6;
 
-    // Left section: input fields and buttons
+    // Left section: logo + input fields and buttons
     int x = area.getX();
+
+    // Reserve space for logo (drawn in paint)
+    x += h + gap;
 
     serverField.setBounds(x, y, 180, h);
     x += 180 + gap;
@@ -208,9 +226,6 @@ void ConnectionBar::resized()
         rightX -= 44 + gap;
     }
     fitButton.setBounds(rightX - 36, y, 36, h);
-    rightX -= 36 + gap;
-
-    userCountLabel.setBounds(rightX - 70, y, 70, h);
 }
 
 void ConnectionBar::paint(juce::Graphics& g)
@@ -218,6 +233,18 @@ void ConnectionBar::paint(juce::Graphics& g)
     // Background
     g.setColour(juce::Colour(JamWideLookAndFeel::kBgElevated));
     g.fillRect(getLocalBounds());
+
+    // Logo icon (top-left, 24x24 centered in bar height)
+    if (logoDrawable)
+    {
+        const int logoSize = 24;
+        const int logoX = 8;
+        const int logoY = (getHeight() - logoSize) / 2;
+        logoDrawable->drawWithin(g,
+            juce::Rectangle<float>(static_cast<float>(logoX), static_cast<float>(logoY),
+                                   static_cast<float>(logoSize), static_cast<float>(logoSize)),
+            juce::RectanglePlacement::centred, 1.0f);
+    }
 
     // 1px bottom border
     g.setColour(juce::Colour(JamWideLookAndFeel::kBorderSubtle));
@@ -362,7 +389,7 @@ void ConnectionBar::handleCodecChange()
     }
 }
 
-void ConnectionBar::updateStatus(int njcStatus, int numUsers)
+void ConnectionBar::updateStatus(int njcStatus, int /*numUsers*/)
 {
     currentStatus = njcStatus;
 
@@ -404,16 +431,6 @@ void ConnectionBar::updateStatus(int njcStatus, int numUsers)
     bool connected = (njcStatus == NJClient::NJC_STATUS_OK
                    || njcStatus == NJClient::NJC_STATUS_PRECONNECT);
     updateConnectedState(connected, njcStatus == NJClient::NJC_STATUS_PRECONNECT);
-
-    // Update BPM/BPI/beat and user count
-    if (njcStatus == NJClient::NJC_STATUS_OK)
-    {
-        userCountLabel.setText(juce::String(numUsers) + " users", juce::dontSendNotification);
-    }
-    else
-    {
-        userCountLabel.setText("", juce::dontSendNotification);
-    }
 
     repaint();
 }

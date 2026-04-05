@@ -49,7 +49,8 @@ private:
     juce::TextButton browseButton;
 
     juce::Label statusLabel;
-    juce::Label userCountLabel;
+
+    std::unique_ptr<juce::Drawable> logoDrawable;
 
     juce::ComboBox codecSelector;
     juce::TextButton fitButton;

@@ -34,6 +34,7 @@ private:
     JamWideJuceProcessor& processor;
     jamwide::ServerListFetcher serverListFetcher;
     int lastStatus_ = -1;  // NJClient::NJC_STATUS_DISCONNECTED
+    int connectGrace_ = 0;  // Skip BPM/BPI change messages for N iterations after connect
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NinjamRunThread)
 };

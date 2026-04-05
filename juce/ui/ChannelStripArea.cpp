@@ -59,7 +59,7 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
     localStrip.getInputBusSelector().setVisible(true);
     localStrip.setInputBus(processorRef.localInputSelector[0]);
     localStrip.onInputBusChanged = [this](int srcch) {
-        processorRef.localInputSelector[0] = srcch & 0x3FF;
+        processorRef.localInputSelector[0] = (srcch & 0x3FF) / 2;  // mono start ch → pair index
         jamwide::SetLocalChannelInfoCommand cmd;
         cmd.channel = 0;
         cmd.set_srcch = true;
@@ -83,7 +83,7 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
 
         // Wire input bus selector to command queue (per D-14)
         child->onInputBusChanged = [this, ch](int srcch) {
-            processorRef.localInputSelector[ch] = srcch & 0x3FF;
+            processorRef.localInputSelector[ch] = (srcch & 0x3FF) / 2;  // mono start ch → pair index
             jamwide::SetLocalChannelInfoCommand cmd;
             cmd.channel = ch;
             cmd.set_srcch = true;
@@ -338,13 +338,29 @@ void ChannelStripArea::updateVuLevels()
         processorRef.uiSnapshot.master_vu_left.load(std::memory_order_relaxed),
         processorRef.uiSnapshot.master_vu_right.load(std::memory_order_relaxed));
 
-    // REVIEW FIX #6: Remote VU from cachedUsers -- NOT hardcoded zero.
-    // cachedUsers is populated by run thread via GetRemoteUsersSnapshot()
-    // which includes vu_left/vu_right per channel.
+    // Remote VU from cachedUsers, accounting for parent strips in multi-channel users.
+    // remoteStrips layout: [parent?, child0, child1, ...] per user.
+    // Single-channel user: one Remote strip. Multi-channel: one Remote parent + N RemoteChild strips.
     const auto& users = processorRef.cachedUsers;
     int stripIdx = 0;
     for (const auto& user : users)
     {
+        bool isMultiChannel = user.channels.size() > 1;
+
+        if (isMultiChannel && stripIdx < static_cast<int>(remoteStrips.size()))
+        {
+            // Parent strip: show max VU across all child channels (group bus behavior)
+            float maxL = 0.0f, maxR = 0.0f;
+            for (const auto& ch : user.channels)
+            {
+                if (ch.vu_left > maxL) maxL = ch.vu_left;
+                if (ch.vu_right > maxR) maxR = ch.vu_right;
+            }
+            remoteStrips[stripIdx]->setVuLevels(maxL, maxR);
+            ++stripIdx;  // advance past parent strip
+        }
+
+        // Child strips (or single strip for single-channel users)
         for (const auto& ch : user.channels)
         {
             if (stripIdx < static_cast<int>(remoteStrips.size()))
@@ -496,6 +512,51 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
             parentStrip->onExpandToggled = [this]()
             {
                 rebuildStrips();
+            };
+
+            // Wire parent strip as group bus — controls user-level volume/pan/mute.
+            // Uses direct user search (not findRemoteIndex) to avoid ambiguity
+            // with channels that have empty names.
+            juce::String parentUserName(user.name);
+
+            parentStrip->onVolumeChanged = [this, parentUserName](float vol) {
+                const auto& users = processorRef.cachedUsers;
+                for (int u = 0; u < static_cast<int>(users.size()); ++u) {
+                    if (juce::String(users[u].name) == parentUserName) {
+                        jamwide::SetUserStateCommand cmd;
+                        cmd.user_index = u;
+                        cmd.set_vol = true;
+                        cmd.volume = vol;
+                        processorRef.cmd_queue.try_push(std::move(cmd));
+                        return;
+                    }
+                }
+            };
+            parentStrip->onPanChanged = [this, parentUserName](float pan) {
+                const auto& users = processorRef.cachedUsers;
+                for (int u = 0; u < static_cast<int>(users.size()); ++u) {
+                    if (juce::String(users[u].name) == parentUserName) {
+                        jamwide::SetUserStateCommand cmd;
+                        cmd.user_index = u;
+                        cmd.set_pan = true;
+                        cmd.pan = pan;
+                        processorRef.cmd_queue.try_push(std::move(cmd));
+                        return;
+                    }
+                }
+            };
+            parentStrip->onMuteToggled = [this, parentUserName](bool mute) {
+                const auto& users = processorRef.cachedUsers;
+                for (int u = 0; u < static_cast<int>(users.size()); ++u) {
+                    if (juce::String(users[u].name) == parentUserName) {
+                        jamwide::SetUserStateCommand cmd;
+                        cmd.user_index = u;
+                        cmd.set_mute = true;
+                        cmd.mute = mute;
+                        processorRef.cmd_queue.try_push(std::move(cmd));
+                        return;
+                    }
+                }
             };
 
             remoteStrips.push_back(std::move(parentStrip));

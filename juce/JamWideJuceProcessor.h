@@ -174,6 +174,9 @@ private:
     // Previous PPQ position for seek/loop detection
     double prevPpqPos_{0.0};
 
+    // Previous sync state for detecting IDLE->WAITING transition in audio thread
+    int prevSyncState_{0};  // kSyncIdle
+
     std::unique_ptr<NinjamRunThread> runThread;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(JamWideJuceProcessor)

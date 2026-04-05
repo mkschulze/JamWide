@@ -54,6 +54,14 @@ public:
     {
         if (m_err || !m_encoder) return;
 
+        if (inlen == 0) {
+            // End-of-stream: flush remaining buffered samples via write_cb
+            FLAC__stream_encoder_finish(m_encoder);
+            FLAC__stream_encoder_delete(m_encoder);
+            m_encoder = nullptr;
+            return;
+        }
+
         // Convert float -> FLAC__int32 interleaved.
         // advance = stride between successive samples in the input buffer
         // spacing = stride between channels for the same sample

@@ -277,12 +277,18 @@ void NinjamRunThread::run()
 
                 lastStatus_ = currentStatus;
 
+                // On connect: grace period to suppress false BPM/BPI "changed" messages.
+                // Server sends actual config AFTER status becomes OK, so the first
+                // few iterations see default→real transitions that aren't real changes.
+                if (currentStatus == NJClient::NJC_STATUS_OK)
+                    connectGrace_ = 5;
+
                 // On connect: set up all 4 local channels per D-12
                 if (currentStatus == NJClient::NJC_STATUS_OK)
                 {
                     // Channel 0: stereo input, transmit=true (default)
                     client->SetLocalChannelInfo(0, "Ch1",
-                        true, processor.localInputSelector[0] | (1 << 10),  // stereo pair
+                        true, processor.localInputSelector[0] * 2 | (1 << 10),  // stereo pair: pair index → mono start ch
                         true, 256,               // 256 kbps
                         true, processor.localTransmit[0]);
 
@@ -291,7 +297,7 @@ void NinjamRunThread::run()
                     for (int ch = 1; ch < 4; ++ch)
                     {
                         juce::String name = "Ch" + juce::String(ch + 1);
-                        int srcch = processor.localInputSelector[ch] | (1 << 10);  // stereo pair
+                        int srcch = processor.localInputSelector[ch] * 2 | (1 << 10);  // stereo pair: pair index → mono start ch
                         client->SetLocalChannelInfo(ch, name.toRawUTF8(),
                             true, srcch,
                             true, 256,
@@ -336,10 +342,11 @@ void NinjamRunThread::run()
                     for (size_t ci = 0; ci < users[ui].channels.size(); ++ci)
                     {
                         auto& ch = users[ui].channels[ci];
+                        // Use ch.channel_index (NINJAM bit index), not ci (vector index)
                         ch.vu_left = client->GetUserChannelPeak(
-                            static_cast<int>(ui), static_cast<int>(ci), 0);
+                            static_cast<int>(ui), ch.channel_index, 0);
                         ch.vu_right = client->GetUserChannelPeak(
-                            static_cast<int>(ui), static_cast<int>(ci), 1);
+                            static_cast<int>(ui), ch.channel_index, 1);
                     }
                 }
             }
@@ -354,50 +361,57 @@ void NinjamRunThread::run()
             int bpi = client->GetBPI();
             processor.uiSnapshot.bpi.store(bpi, std::memory_order_relaxed);
 
-            // Detect BPM change and push events
-            if (prevBpm > 0.0f && static_cast<int>(prevBpm) != static_cast<int>(newBpm))
+            // Detect BPM/BPI changes (skip during connect grace period —
+            // server sends actual config AFTER status becomes OK)
+            if (connectGrace_ > 0)
             {
-                processor.evt_queue.try_push(jamwide::BpmChangedEvent{prevBpm, newBpm});
-
-                // System chat message per D-11
-                ChatMessage msg;
-                msg.type = ChatMessageType::System;
-                msg.content = "[Server] BPM changed from "
-                              + std::to_string(static_cast<int>(prevBpm))
-                              + " to " + std::to_string(static_cast<int>(newBpm));
-                msg.timestamp = currentTimeString();
-                processor.chat_queue.try_push(std::move(msg));
-
-                // Auto-disable sync if active (D-05) -- uses compare_exchange_strong
-                // to prevent race with audio thread WAITING->ACTIVE transition
-                int expected = JamWideJuceProcessor::kSyncActive;
-                if (processor.syncState_.compare_exchange_strong(expected,
-                        JamWideJuceProcessor::kSyncIdle, std::memory_order_acq_rel))
-                {
-                    processor.evt_queue.try_push(jamwide::SyncStateChangedEvent{
-                        JamWideJuceProcessor::kSyncIdle,
-                        jamwide::SyncReason::ServerBpmChanged});
-
-                    ChatMessage syncMsg;
-                    syncMsg.type = ChatMessageType::System;
-                    syncMsg.content = "[Server] Sync disabled -- BPM changed";
-                    syncMsg.timestamp = currentTimeString();
-                    processor.chat_queue.try_push(std::move(syncMsg));
-                }
+                --connectGrace_;
             }
-
-            // Detect BPI change
-            if (prevBpi > 0 && prevBpi != bpi)
+            else
             {
-                processor.evt_queue.try_push(jamwide::BpiChangedEvent{prevBpi, bpi});
+                // Detect BPM change
+                if (prevBpm > 0.0f && static_cast<int>(prevBpm) != static_cast<int>(newBpm))
+                {
+                    processor.evt_queue.try_push(jamwide::BpmChangedEvent{prevBpm, newBpm});
 
-                ChatMessage msg;
-                msg.type = ChatMessageType::System;
-                msg.content = "[Server] BPI changed from "
-                              + std::to_string(prevBpi)
-                              + " to " + std::to_string(bpi);
-                msg.timestamp = currentTimeString();
-                processor.chat_queue.try_push(std::move(msg));
+                    ChatMessage msg;
+                    msg.type = ChatMessageType::System;
+                    msg.content = "[Server] BPM changed from "
+                                  + std::to_string(static_cast<int>(prevBpm))
+                                  + " to " + std::to_string(static_cast<int>(newBpm));
+                    msg.timestamp = currentTimeString();
+                    processor.chat_queue.try_push(std::move(msg));
+
+                    // Auto-disable sync if active (D-05)
+                    int expected = JamWideJuceProcessor::kSyncActive;
+                    if (processor.syncState_.compare_exchange_strong(expected,
+                            JamWideJuceProcessor::kSyncIdle, std::memory_order_acq_rel))
+                    {
+                        processor.evt_queue.try_push(jamwide::SyncStateChangedEvent{
+                            JamWideJuceProcessor::kSyncIdle,
+                            jamwide::SyncReason::ServerBpmChanged});
+
+                        ChatMessage syncMsg;
+                        syncMsg.type = ChatMessageType::System;
+                        syncMsg.content = "[Server] Sync disabled -- BPM changed";
+                        syncMsg.timestamp = currentTimeString();
+                        processor.chat_queue.try_push(std::move(syncMsg));
+                    }
+                }
+
+                // Detect BPI change
+                if (prevBpi > 0 && prevBpi != bpi)
+                {
+                    processor.evt_queue.try_push(jamwide::BpiChangedEvent{prevBpi, bpi});
+
+                    ChatMessage msg;
+                    msg.type = ChatMessageType::System;
+                    msg.content = "[Server] BPI changed from "
+                                  + std::to_string(prevBpi)
+                                  + " to " + std::to_string(bpi);
+                    msg.timestamp = currentTimeString();
+                    processor.chat_queue.try_push(std::move(msg));
+                }
             }
 
             // Session tracking (SYNC-03) -- expose interval count and elapsed time
@@ -511,8 +525,8 @@ void NinjamRunThread::processCommands(NJClient* client)
             else if constexpr (std::is_same_v<T, jamwide::SetUserStateCommand>)
             {
                 client->SetUserState(c.user_index,
-                                     false, 0.0f,   // no volume change
-                                     false, 0.0f,   // no pan change
+                                     c.set_vol, c.volume,
+                                     c.set_pan, c.pan,
                                      c.set_mute, c.mute);
             }
             else if constexpr (std::is_same_v<T, jamwide::SetLocalChannelMonitoringCommand>)

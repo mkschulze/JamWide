@@ -119,9 +119,9 @@ ChannelStrip::ChannelStrip()
         if (onInputBusChanged)
         {
             int selectedId = inputBusSelector.getSelectedId();
-            // Convert to NJClient srcch: stereo pair index with bit 10 set for stereo
-            // Input 1-2 = 0 | (1<<10), Input 3-4 = 1 | (1<<10), etc.
-            int srcch = (selectedId - 1) | (1 << 10);
+            // Convert to NJClient srcch: mono channel start index with bit 10 set for stereo
+            // Input 1-2 = 0 | (1<<10), Input 3-4 = 2 | (1<<10), etc.
+            int srcch = ((selectedId - 1) * 2) | (1 << 10);
             onInputBusChanged(srcch);
         }
     };

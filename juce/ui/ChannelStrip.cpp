@@ -253,7 +253,7 @@ void ChannelStrip::setRoutingBus(int busIndex)
 void ChannelStrip::paint(juce::Graphics& g)
 {
     // Background fill per strip type
-    juce::uint32 bgColour;
+    juce::uint32 bgColour = JamWideLookAndFeel::kSurfaceStrip;
     switch (stripType)
     {
         case StripType::Master:      bgColour = JamWideLookAndFeel::kBgElevated; break;

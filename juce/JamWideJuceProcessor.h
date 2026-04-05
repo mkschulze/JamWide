@@ -111,7 +111,7 @@ public:
     // Persistent UI state (survives editor destruction)
     juce::String lastServerAddress{"ninbot.com"};
     juce::String lastUsername{"anonymous"};
-    float scaleFactor{1.0f};
+    float scaleFactor{1.5f};
 
     // Routing mode (0=manual, 1=by-channel, 2=by-user) -- persisted per D-12
     // REVIEW FIX: std::atomic<int> to prevent data race between message thread (write)
@@ -134,7 +134,7 @@ public:
     bool chatSidebarVisible{true};
 
     // Session info strip visibility (persisted via ValueTree per D-21)
-    bool infoStripVisible{false};  // D-15: hidden by default
+    bool infoStripVisible{true};
 
     // Local channel transmit state (persisted via ValueTree, per D-21 and D-15)
     std::array<bool, 4> localTransmit{true, false, false, false};

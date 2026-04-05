@@ -94,7 +94,7 @@ private:
     } chatToggleButton;
 
     bool chatSidebarVisible = true;
-    bool infoStripVisible = false;  // D-15: hidden by default
+    bool infoStripVisible = true;
     int prevPollStatus_ = -1;  // REVIEW FIX: member, not static
 
     static constexpr int kBaseWidth = 1000;

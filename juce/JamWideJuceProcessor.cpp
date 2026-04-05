@@ -210,8 +210,134 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         for (int ch = 0; ch < kTotalOutChannels; ++ch)
             outPtrs[ch] = outputScratch.getWritePointer(ch);
 
+        // --- DAW Transport Sync (D-01, D-02, SYNC-01, SYNC-02) ---
+        bool hostPlaying = true;  // Default: playing (standalone behavior per D-16)
+
+        if (auto* playHead = getPlayHead())
+        {
+            if (auto pos = playHead->getPosition())
+            {
+                bool rawPlaying = pos->getIsPlaying();
+
+                // Cache host BPM for sync validation on UI thread
+                if (auto bpm = pos->getBpm())
+                    cachedHostBpm_.store(static_cast<float>(*bpm),
+                                        std::memory_order_relaxed);
+
+                // Edge detection using RAW transport state (not overridden value)
+                // Addresses Claude review: wasPlaying_ was set to overridden hostPlaying
+                // which could cause spurious edge after WAITING->ACTIVE in same block.
+                bool transportJustStarted = rawPlaying && !rawHostPlaying_;
+                rawHostPlaying_ = rawPlaying;
+
+                hostPlaying = rawPlaying;
+
+                // --- Seek/loop discontinuity detection ---
+                // Addresses Codex HIGH concern: no handling for loop wrap, seek,
+                // punch-in, tempo automation, sample-position reset.
+                double ppqPos = 0.0;
+                bool hasPpq = false;
+                if (auto ppq = pos->getPpqPosition())
+                {
+                    ppqPos = *ppq;
+                    hasPpq = true;
+                }
+
+                // Detect seek: large PPQ jump (> 1 beat) that is not forward-continuous
+                // A seek while sync is ACTIVE invalidates the alignment
+                if (hasPpq && rawPlaying)
+                {
+                    double ppqDelta = ppqPos - prevPpqPos_;
+                    double expectedDelta = (numSamples / storedSampleRate) *
+                        (cachedHostBpm_.load(std::memory_order_relaxed) / 60.0);
+
+                    // If PPQ moved backward or jumped more than 2x expected, it's a seek/loop
+                    if (ppqDelta < -0.01 || ppqDelta > expectedDelta * 2.0 + 1.0)
+                    {
+                        int expected = kSyncActive;
+                        if (syncState_.compare_exchange_strong(expected, kSyncIdle,
+                                std::memory_order_acq_rel))
+                        {
+                            // Sync was active, now auto-disabled due to seek
+                            evt_queue.try_push(jamwide::SyncStateChangedEvent{
+                                kSyncIdle, jamwide::SyncReason::TransportSeek});
+                        }
+                    }
+                }
+                if (hasPpq)
+                    prevPpqPos_ = ppqPos;
+
+                // --- Sync state machine: WAITING -> ACTIVE transition ---
+                int currentSync = syncState_.load(std::memory_order_acquire);
+                if (currentSync == kSyncWaiting)
+                {
+                    if (transportJustStarted)
+                    {
+                        // Calculate PPQ sync offset (JamTaba algorithm adapted for JUCE)
+                        double hostBpm = cachedHostBpm_.load(std::memory_order_relaxed);
+                        double barStart = 0.0;
+                        int timeSigNum = 4;
+
+                        if (auto bar = pos->getPpqPositionOfLastBarStart()) barStart = *bar;
+                        if (auto sig = pos->getTimeSignature()) timeSigNum = sig->numerator;
+
+                        if (hostBpm > 0.0)
+                        {
+                            double samplesPerBeat = (60.0 * storedSampleRate) / hostBpm;
+                            int startPosition = 0;
+
+                            if (ppqPos > 0.0)
+                            {
+                                double cursorInMeasure = ppqPos - barStart;
+                                if (cursorInMeasure > 0.00000001)  // Float tolerance (Reaper workaround)
+                                {
+                                    double samplesUntilNextMeasure =
+                                        (timeSigNum - cursorInMeasure) * samplesPerBeat;
+                                    startPosition = -static_cast<int>(samplesUntilNextMeasure);
+                                }
+                            }
+                            else
+                            {
+                                startPosition = static_cast<int>(ppqPos * samplesPerBeat);
+                            }
+
+                            // Apply offset to NJClient interval position
+                            int iPos, iLen;
+                            client->GetPosition(&iPos, &iLen);
+                            if (iLen > 0)
+                            {
+                                int newPos;
+                                if (startPosition >= 0)
+                                    newPos = startPosition % iLen;
+                                else
+                                    newPos = iLen - std::abs(startPosition % iLen);
+                                client->SetIntervalPosition(newPos);
+                            }
+                        }
+
+                        // Atomic transition: WAITING -> ACTIVE (race-safe)
+                        // If run thread already set to IDLE (BPM change), this fails safely
+                        int expectedWaiting = kSyncWaiting;
+                        if (syncState_.compare_exchange_strong(expectedWaiting, kSyncActive,
+                                std::memory_order_acq_rel))
+                        {
+                            evt_queue.try_push(jamwide::SyncStateChangedEvent{
+                                kSyncActive, jamwide::SyncReason::TransportStarted});
+                        }
+                    }
+
+                    // While WAITING, send silence (D-04)
+                    hostPlaying = false;
+                }
+            }
+        }
+
+        // wasPlaying_ tracks the final hostPlaying for non-sync purposes
+        wasPlaying_ = hostPlaying;
+
         client->AudioProc(inPtrs, numInputChannels, outPtrs, kTotalOutChannels,
-                          numSamples, static_cast<int>(storedSampleRate));
+                          numSamples, static_cast<int>(storedSampleRate),
+                          false, hostPlaying);
 
         // Accumulate individual buses into main mix (D-08: Main Mix always has everything)
         // NJClient applies master volume to outbuf[0..1] only (channels 0-1).

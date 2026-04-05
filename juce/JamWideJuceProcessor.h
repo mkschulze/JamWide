@@ -118,6 +118,18 @@ public:
     // and run thread (read on connect). See threading contract above.
     std::atomic<int> routingMode{0};
 
+    // DAW Sync state (per D-02: 3-state machine IDLE/WAITING/ACTIVE)
+    // Single atomic int replaces two-boolean approach to prevent race condition
+    // between run thread auto-disable and audio thread WAITING->ACTIVE transition.
+    // (Addresses review consensus concern #1: two-boolean sync state machine is racy)
+    static constexpr int kSyncIdle = 0;
+    static constexpr int kSyncWaiting = 1;
+    static constexpr int kSyncActive = 2;
+    std::atomic<int> syncState_{kSyncIdle};
+
+    // Last known host BPM (for UI sync validation)
+    std::atomic<float> cachedHostBpm_{0.0f};
+
     // Chat sidebar visibility (persisted via ValueTree, NOT APVTS param per review)
     bool chatSidebarVisible{true};
 
@@ -144,6 +156,17 @@ private:
     juce::AudioBuffer<float> inputScratch;
     juce::AudioBuffer<float> outputScratch;
     double storedSampleRate = 48000.0;
+
+    // Audio-thread-only edge detection state (no sync primitive needed -- single thread)
+    // rawHostPlaying_ stores the ACTUAL host transport state before any overrides.
+    // wasPlaying_ could otherwise store the overridden value (false during WAITING),
+    // causing spurious edge detection after WAITING->ACTIVE transition.
+    // (Addresses Claude MEDIUM review concern: wasPlaying_ set to overridden hostPlaying)
+    bool wasPlaying_{false};
+    bool rawHostPlaying_{false};  // Raw transport state for edge detection
+
+    // Previous PPQ position for seek/loop detection
+    double prevPpqPos_{0.0};
 
     std::unique_ptr<NinjamRunThread> runThread;
 

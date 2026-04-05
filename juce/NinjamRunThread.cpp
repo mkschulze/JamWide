@@ -342,10 +342,66 @@ void NinjamRunThread::run()
             }
 
             // Update atomic snapshot for UI polling
-            processor.uiSnapshot.bpm.store(static_cast<float>(client->GetActualBPM()),
-                                            std::memory_order_relaxed);
+            // BPM/BPI change detection (D-10, D-11) -- read previous values before storing new
+            float prevBpm = processor.uiSnapshot.bpm.load(std::memory_order_relaxed);
+            int prevBpi = processor.uiSnapshot.bpi.load(std::memory_order_relaxed);
+
+            float newBpm = static_cast<float>(client->GetActualBPM());
+            processor.uiSnapshot.bpm.store(newBpm, std::memory_order_relaxed);
             int bpi = client->GetBPI();
             processor.uiSnapshot.bpi.store(bpi, std::memory_order_relaxed);
+
+            // Detect BPM change and push events
+            if (prevBpm > 0.0f && static_cast<int>(prevBpm) != static_cast<int>(newBpm))
+            {
+                processor.evt_queue.try_push(jamwide::BpmChangedEvent{prevBpm, newBpm});
+
+                // System chat message per D-11
+                ChatMessage msg;
+                msg.type = ChatMessageType::System;
+                msg.content = "[Server] BPM changed from "
+                              + std::to_string(static_cast<int>(prevBpm))
+                              + " to " + std::to_string(static_cast<int>(newBpm));
+                msg.timestamp = currentTimeString();
+                processor.chat_queue.try_push(std::move(msg));
+
+                // Auto-disable sync if active (D-05) -- uses compare_exchange_strong
+                // to prevent race with audio thread WAITING->ACTIVE transition
+                int expected = JamWideJuceProcessor::kSyncActive;
+                if (processor.syncState_.compare_exchange_strong(expected,
+                        JamWideJuceProcessor::kSyncIdle, std::memory_order_acq_rel))
+                {
+                    processor.evt_queue.try_push(jamwide::SyncStateChangedEvent{
+                        JamWideJuceProcessor::kSyncIdle,
+                        jamwide::SyncReason::ServerBpmChanged});
+
+                    ChatMessage syncMsg;
+                    syncMsg.type = ChatMessageType::System;
+                    syncMsg.content = "[Server] Sync disabled -- BPM changed";
+                    syncMsg.timestamp = currentTimeString();
+                    processor.chat_queue.try_push(std::move(syncMsg));
+                }
+            }
+
+            // Detect BPI change
+            if (prevBpi > 0 && prevBpi != bpi)
+            {
+                processor.evt_queue.try_push(jamwide::BpiChangedEvent{prevBpi, bpi});
+
+                ChatMessage msg;
+                msg.type = ChatMessageType::System;
+                msg.content = "[Server] BPI changed from "
+                              + std::to_string(prevBpi)
+                              + " to " + std::to_string(bpi);
+                msg.timestamp = currentTimeString();
+                processor.chat_queue.try_push(std::move(msg));
+            }
+
+            // Session tracking (SYNC-03) -- expose interval count and elapsed time
+            processor.uiSnapshot.interval_count.store(client->GetLoopCount(),
+                                                       std::memory_order_relaxed);
+            processor.uiSnapshot.session_elapsed_ms.store(client->GetSessionPosition(),
+                                                           std::memory_order_relaxed);
 
             int iPos = 0, iLen = 0;
             client->GetPosition(&iPos, &iLen);
@@ -464,6 +520,36 @@ void NinjamRunThread::processCommands(NJClient* client)
                     c.set_pan, c.pan,
                     c.set_mute, c.mute,
                     c.set_solo, c.solo);
+            }
+            else if constexpr (std::is_same_v<T, jamwide::SyncCommand>)
+            {
+                int expected = JamWideJuceProcessor::kSyncIdle;
+                if (processor.syncState_.compare_exchange_strong(expected,
+                        JamWideJuceProcessor::kSyncWaiting, std::memory_order_acq_rel))
+                {
+                    processor.evt_queue.try_push(jamwide::SyncStateChangedEvent{
+                        JamWideJuceProcessor::kSyncWaiting, jamwide::SyncReason::UserRequest});
+                }
+            }
+            else if constexpr (std::is_same_v<T, jamwide::SyncCancelCommand>)
+            {
+                int expected = JamWideJuceProcessor::kSyncWaiting;
+                if (processor.syncState_.compare_exchange_strong(expected,
+                        JamWideJuceProcessor::kSyncIdle, std::memory_order_acq_rel))
+                {
+                    processor.evt_queue.try_push(jamwide::SyncStateChangedEvent{
+                        JamWideJuceProcessor::kSyncIdle, jamwide::SyncReason::UserCancel});
+                }
+            }
+            else if constexpr (std::is_same_v<T, jamwide::SyncDisableCommand>)
+            {
+                int expected = JamWideJuceProcessor::kSyncActive;
+                if (processor.syncState_.compare_exchange_strong(expected,
+                        JamWideJuceProcessor::kSyncIdle, std::memory_order_acq_rel))
+                {
+                    processor.evt_queue.try_push(jamwide::SyncStateChangedEvent{
+                        JamWideJuceProcessor::kSyncIdle, jamwide::SyncReason::UserDisable});
+                }
             }
             else if constexpr (std::is_same_v<T, jamwide::SetRoutingModeCommand>)
             {

@@ -108,6 +108,9 @@ public:
     // User count (atomic for lock-free UI read)
     std::atomic<int> userCount{0};
 
+    // Last error message from server (written by editor drain, read by ConnectionBar)
+    juce::String lastErrorMsg;
+
     // Persistent UI state (survives editor destruction)
     juce::String lastServerAddress{"ninbot.com"};
     juce::String lastUsername{"anonymous"};

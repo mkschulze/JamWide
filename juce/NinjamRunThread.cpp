@@ -265,16 +265,14 @@ void NinjamRunThread::run()
             {
                 jamwide::StatusChangedEvent statusEvt;
                 statusEvt.status = currentStatus;
-                if (currentStatus == NJClient::NJC_STATUS_CANTCONNECT)
+                // Prefer server-provided error; fall back to generic text
+                const char* err = client->GetErrorStr();
+                if (err && err[0])
+                    statusEvt.error_msg = err;
+                else if (currentStatus == NJClient::NJC_STATUS_CANTCONNECT)
                     statusEvt.error_msg = "Connection failed";
                 else if (currentStatus == NJClient::NJC_STATUS_INVALIDAUTH)
                     statusEvt.error_msg = "Invalid credentials";
-                else
-                {
-                    const char* err = client->GetErrorStr();
-                    if (err && err[0])
-                        statusEvt.error_msg = err;
-                }
                 processor.evt_queue.try_push(std::move(statusEvt));
 
                 lastStatus_ = currentStatus;

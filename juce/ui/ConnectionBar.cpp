@@ -372,19 +372,28 @@ void ConnectionBar::updateStatus(int njcStatus, int numUsers)
         case NJClient::NJC_STATUS_OK:
             statusLabel.setText("Connected", juce::dontSendNotification);
             statusLabel.setColour(juce::Label::textColourId, juce::Colour(JamWideLookAndFeel::kAccentConnect));
+            processorRef.lastErrorMsg = {};  // Clear previous error on successful connect
             break;
         case NJClient::NJC_STATUS_PRECONNECT:
             statusLabel.setText("Connecting...", juce::dontSendNotification);
             statusLabel.setColour(juce::Label::textColourId, juce::Colour(JamWideLookAndFeel::kAccentWarning));
             break;
         case NJClient::NJC_STATUS_INVALIDAUTH:
-            statusLabel.setText("Invalid credentials", juce::dontSendNotification);
+        {
+            auto msg = processorRef.lastErrorMsg.isNotEmpty()
+                ? processorRef.lastErrorMsg : juce::String("Invalid credentials");
+            statusLabel.setText(msg, juce::dontSendNotification);
             statusLabel.setColour(juce::Label::textColourId, juce::Colour(JamWideLookAndFeel::kAccentDestructive));
             break;
+        }
         case NJClient::NJC_STATUS_CANTCONNECT:
-            statusLabel.setText("Connection failed", juce::dontSendNotification);
+        {
+            auto msg = processorRef.lastErrorMsg.isNotEmpty()
+                ? processorRef.lastErrorMsg : juce::String("Connection failed");
+            statusLabel.setText(msg, juce::dontSendNotification);
             statusLabel.setColour(juce::Label::textColourId, juce::Colour(JamWideLookAndFeel::kAccentDestructive));
             break;
+        }
         default:
             statusLabel.setText("Disconnected", juce::dontSendNotification);
             statusLabel.setColour(juce::Label::textColourId, juce::Colour(JamWideLookAndFeel::kTextSecondary));

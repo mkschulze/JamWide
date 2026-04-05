@@ -231,7 +231,9 @@ void JamWideJuceEditor::drainEvents()
 
             if constexpr (std::is_same_v<T, jamwide::StatusChangedEvent>)
             {
-                // Status updates are handled in pollStatus()
+                // Store error message for ConnectionBar to display
+                if (!e.error_msg.empty())
+                    processorRef.lastErrorMsg = juce::String(e.error_msg);
             }
             else if constexpr (std::is_same_v<T, jamwide::ServerListEvent>)
             {

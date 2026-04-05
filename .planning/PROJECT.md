@@ -2,86 +2,63 @@
 
 ## What This Is
 
-JamWide is a cross-platform NINJAM client for real-time online music collaboration. Currently implemented as a CLAP/VST3/AU audio plugin using Dear ImGui for UI and clap-wrapper for plugin format support. It connects musicians over the internet using the NINJAM protocol (interval-based audio exchange with OGG Vorbis encoding). This milestone evolves JamWide into a full JUCE-based application with lossless audio, multichannel routing, DAW sync, and standalone support.
+JamWide is a cross-platform NINJAM client for real-time online music collaboration. Built as a JUCE-based VST3/AU/CLAP audio plugin and standalone application. It connects musicians over the internet using the NINJAM protocol with FLAC lossless and Vorbis encoding, multichannel output routing for per-user DAW mixing, transport sync, and a Voicemeeter Banana-inspired dark UI.
 
 ## Core Value
 
 Musicians can jam together online with lossless audio quality and per-user mixing — in any DAW or standalone.
 
+## Current State (v1.0 shipped 2026-04-05)
+
+- **18,300 LOC** C++ across 8 phases, 21 plans
+- Full JUCE plugin: VST3, AU, CLAP, Standalone — pluginval validated
+- FLAC lossless + Vorbis codecs with interval-boundary switching
+- 34-channel multichannel output routing (by user / by channel / manual)
+- DAW transport sync with BPM/BPI voting
+- Custom Voicemeeter Banana dark theme LookAndFeel
+- VU meters, faders, chat, server browser, session recording
+- macOS, Windows, Linux builds via GitHub Actions
+
 ## Requirements
 
 ### Validated
 
-- ✓ NINJAM protocol connectivity (TCP, authentication, chat) — existing
-- ✓ OGG Vorbis audio encoding/decoding — existing
-- ✓ Three-thread architecture (audio, UI, network/run) — existing
-- ✓ CLAP/VST3/AU plugin format support — existing (via clap-wrapper)
-- ✓ Cross-platform (macOS, Windows) — existing
-- ✓ Server browser with public server list — existing
-- ✓ Chat functionality — existing
-- ✓ Local channel monitoring with VU meters — existing
-- ✓ Remote user channel display and mixing — existing
-- ✓ Metronome with volume/pan/mute — existing
-- ✓ BPM/BPI display from server — existing
-- ✓ Per-channel mixer controls (volume, pan, mute, solo) for remote and local channels — Validated in Phase 5: Mixer UI and Channel Controls
-- ✓ Plugin state persistence via APVTS getStateInformation/setStateInformation — Validated in Phase 5
-- ✓ Multi-bus audio path (4 stereo input buses for local channels) — Validated in Phase 5
+- ✓ FLAC lossless encoding/decoding — v1.0
+- ✓ Vorbis encoding/decoding — existing + v1.0
+- ✓ JUCE framework migration (VST3, AU, CLAP, Standalone) — v1.0
+- ✓ Multichannel output routing (by user, by channel, manual) — v1.0
+- ✓ DAW transport sync (read host state, sync intervals) — v1.0
+- ✓ Live BPM/BPI changes without reconnect — v1.0
+- ✓ Session position tracking — v1.0
+- ✓ Full mixer UI (volume, pan, mute, solo per channel) — v1.0
+- ✓ Plugin state persistence (save/restore with DAW session) — v1.0
+- ✓ Connection panel, chat, server browser, codec selector — v1.0
+- ✓ VU meters, metronome controls — v1.0
+- ✓ Video feasibility research (VDO.Ninja sidecar recommended) — v1.0
+- ✓ OSC evaluation (viable for REAPER/Bitwig/Ableton, ~37% coverage) — v1.0
+- ✓ MCP assessment (not viable for transport sync, good for workflow tooling) — v1.0
 
-### Active
+### Active (v1.1)
 
-- [ ] FLAC lossless audio encoding/decoding alongside Vorbis
-- [ ] JUCE framework migration (full rewrite — UI, plugin format, threading)
-- [ ] Standalone application mode (byproduct of JUCE migration)
-- [ ] Multichannel output — per-user stereo pair routing (ReaNINJAM-style, both auto-assign modes: by user and by channel)
-- [ ] DAW transport sync — read host transport state, sync intervals to playback
-- [ ] Live BPM/BPI changes without reconnecting to server
-- [ ] Session position tracking across intervals
-- [ ] Evaluate video support (JamTaba-style H.264 over NINJAM intervals — research only)
-- [ ] Evaluate MCP server bridge for cross-DAW sync (tempo, transport, loop control)
-- [ ] Evaluate OSC support for cross-DAW sync
+- [ ] OSC server for remote control via TouchOSC (bidirectional, full parameter mapping)
+- [ ] VDO.Ninja video companion synced to NINJAM interval timing
+- [ ] Video grid + per-user popout display modes (multi-monitor support)
 
 ### Out of Scope
 
-- Video implementation — research only this milestone, no code
-- REAPER-specific extension APIs — cannot replicate generically; pursue MCP/OSC alternatives instead
-- Capability negotiation for FLAC — v1 uses manual codec selection; auto-negotiation deferred
+- Video embedded in plugin (WebView) — browser companion approach instead
+- REAPER-specific extension APIs — not portable; OSC is the path
+- Capability negotiation for codecs — deferred to v2
 - Mobile support — desktop first
 - Peer-to-peer audio — NINJAM is server-relayed by design
+- MCP for real-time DAW sync — request/response model incompatible with streaming
 
 ## Context
 
-### Existing Codebase (Brownfield)
-
-JamWide has a working NINJAM client with a three-layer architecture:
-- **Plugin layer**: CLAP entry point, parameter handling via clap-wrapper
-- **Core/Network layer**: NJClient from Cockos NINJAM (njclient.cpp ~2500 lines), Vorbis codec, TCP networking via WDL jnetlib
-- **UI layer**: Dear ImGui with Metal (macOS) / D3D11 (Windows) backends
-- **Threading**: Lock-free SPSC ring buffers for UI↔Run thread communication, atomics for audio thread
-
-The JUCE migration is a **full rewrite** — not a port. JUCE idioms (AudioProcessor, Component, MessageManager) replace the current custom threading and plugin abstraction layers. NJClient core logic carries over but gets wrapped in JUCE patterns.
-
 ### Reference Implementations
 
-- **ReaNINJAM** (`/Users/cell/dev/ninjam/ninjam`): Reference for multichannel output routing (per-user stereo pairs, auto-assign by user/channel), DAW transport sync (`AudioProc` isPlaying/isSeek), and session position tracking. Sync settings (set tempo, set loop, start playback) use REAPER-only extension APIs.
-- **JamTaba** (`https://github.com/elieserdejesus/JamTaba`): Reference for video support — H.264 at 320x240 10FPS, server-relayed via NINJAM intervals with audio/video boolean flag, FFmpeg encode/decode, Qt camera capture. Also built with Qt/JUCE — useful architectural reference.
-
-### FLAC Integration Plan
-
-Detailed plan exists at `FLAC_INTEGRATION_PLAN.md`:
-- Client-only change — NINJAM server relays opaque bytes with FOURCC codec tag
-- New `FlacEncoder`/`FlacDecoder` classes implementing existing `I_NJEncoder`/`I_NJDecoder` interfaces
-- Runtime codec selection via `SetEncoderFormat()` with atomic requested/active pattern
-- Codec switch at interval boundaries only
-- Default Vorbis, FLAC opt-in via UI toggle
-- Mixed-codec sessions work naturally (server is a dumb pipe)
-
-### DAW Sync Gap
-
-Current JamWide requires reconnecting to the server when BPM changes. ReaNINJAM handles live BPM/BPI updates via `MESSAGE_SERVER_CONFIG_CHANGE_NOTIFY` with recalculation at interval boundaries. This needs to work without reconnect.
-
-Cross-DAW sync (tempo/transport/loop control) is not possible via standard plugin APIs. Two exploration paths:
-1. **MCP servers**: Each DAW could run an MCP server exposing tempo/transport APIs — plugin communicates via standardized protocol
-2. **OSC**: Many DAWs already support OSC — could send tempo/transport commands over OSC to the host
+- **IEM Plugin Suite** (`/Users/cell/dev/IEMPluginSuite`): Reference for OSC server in JUCE — `OSCParameterInterface`, bidirectional UDP, juce_osc module
+- **VDO.Ninja** (`docs.vdo.ninja`): Music sync buffer demo, chunked mode, external WebSocket API, room management
 
 ### Codebase Map
 
@@ -90,31 +67,31 @@ Full codebase analysis at `.planning/codebase/`:
 
 ## Constraints
 
-- **Tech stack**: JUCE framework — replaces Dear ImGui, clap-wrapper, and custom threading
-- **Protocol compatibility**: Must remain compatible with existing NINJAM servers and other clients (ReaNINJAM, JamTaba, etc.)
-- **Codec compatibility**: FLAC clients must coexist with Vorbis-only clients in same session
-- **Platform**: macOS and Windows (Linux nice-to-have but not required)
-- **Dependencies**: libFLAC (new), JUCE (replaces ImGui + clap-wrapper), existing libogg/libvorbis retained for Vorbis support
+- **Protocol compatibility**: Must remain compatible with existing NINJAM servers and other clients
+- **Codec compatibility**: FLAC clients coexist with Vorbis-only clients
+- **Platform**: macOS, Windows, Linux
+- **Dependencies**: JUCE, libFLAC, libogg/libvorbis, juce_osc (for v1.1)
 
 ## Milestones
 
 | Milestone | Focus | Status |
 |-----------|-------|--------|
-| v1: JUCE Migration | FLAC codec, JUCE rewrite, multichannel routing, DAW sync | Active (Phase 2 of 7) |
-| v2: Codec & Transport Redesign | Opus live codec, packetized transport, jitter handling, capability negotiation | Future |
+| v1.0: JUCE Migration | FLAC codec, JUCE rewrite, multichannel routing, DAW sync | ✅ Shipped 2026-04-05 |
+| v1.1: OSC + Video | OSC remote control, VDO.Ninja video companion | Planning |
+| v2.0: Codec & Transport Redesign | Opus live codec, packetized transport, jitter handling | Future |
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Full JUCE rewrite (not incremental port) | JUCE idioms for threading/UI/plugin are fundamentally different from current architecture — incremental port would create hybrid mess | — Pending |
-| FLAC before JUCE migration | FLAC is self-contained, lower risk, ships value quickly while JUCE rewrite is planned | — Pending |
-| ReaNINJAM-style multichannel (both modes) | Users expect per-user output routing for DAW mixing — both by-user and by-channel modes cover all workflows | — Pending |
-| Video as research only | JamTaba approach is proven but significant scope — evaluate feasibility before committing | — Pending |
-| MCP/OSC for cross-DAW sync | REAPER extension APIs aren't portable — MCP servers and OSC offer cross-DAW alternatives | — Pending |
-| Default Vorbis, FLAC opt-in | Preserves backward compatibility — old clients can't decode FLAC | — Pending |
-| Opus as v2 live default | Opus offers better quality/latency/bitrate than Vorbis; transport refactor needed first (v2 milestone) | — Planned |
-| Transport refactor before new codecs | Packet envelope + jitter buffer needed to support Opus FEC and robust FLAC — build foundation first | — Planned |
+| Full JUCE rewrite (not incremental port) | JUCE idioms fundamentally different from Dear ImGui architecture | ✓ Good — clean architecture |
+| FLAC before JUCE migration | Self-contained, lower risk, ships value quickly | ✓ Good |
+| ReaNINJAM-style multichannel (both modes) | Users expect per-user routing for DAW mixing | ✓ Good |
+| Default Vorbis (not FLAC) | Interop with legacy Vorbis-only NINJAM clients | ✓ Good — practical |
+| Voicemeeter Banana dark theme | User preference for familiar pro-audio aesthetic | ✓ Good |
+| VDO.Ninja browser companion (not embedded WebView) | Keeps plugin lightweight, browser handles video rendering | — Pending (v1.1) |
+| OSC via juce_osc (IEM pattern) | No external deps, proven across 20+ IEM plugins | — Pending (v1.1) |
+| Index-based OSC addressing for remote users | Stable fader mapping, name broadcast on roster change | — Pending (v1.1) |
 
 ---
-*Last updated: 2026-04-04 after Phase 4 completion*
+*Last updated: 2026-04-05 after v1.0 milestone*

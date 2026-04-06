@@ -124,7 +124,12 @@ echo ""
 # Step 2: Create zip for notarization (all bundles in one submission)
 echo "--- Packaging for notarization ---"
 NOTARIZE_ZIP="$BUILD_DIR/JamWide-notarize.zip"
-ditto -c -k --keepParent "${BUNDLES[@]}" "$NOTARIZE_ZIP"
+STAGING_DIR=$(mktemp -d)
+for bundle in "${BUNDLES[@]}"; do
+    cp -R "$bundle" "$STAGING_DIR/"
+done
+ditto -c -k --keepParent "$STAGING_DIR" "$NOTARIZE_ZIP"
+rm -rf "$STAGING_DIR"
 echo "  Created $NOTARIZE_ZIP ($(du -h "$NOTARIZE_ZIP" | cut -f1))"
 echo ""
 

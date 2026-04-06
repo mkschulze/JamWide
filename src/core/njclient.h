@@ -191,8 +191,6 @@ public:
     char name[kRemoteNameMax + 1] = {};
     int name_len = 0;
     bool mute = false;
-    float volume = 1.0f;
-    float pan = 0.0f;
     std::vector<RemoteChannelInfo> channels;
   };
 

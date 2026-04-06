@@ -36,10 +36,6 @@ Requirements for OSC remote control and VDO.Ninja video companion.
 - [ ] **VID-11**: User can control video features (open, close, mode switch, popout) via OSC
 - [ ] **VID-12**: User can select a bandwidth-aware video profile (mobile/balanced/desktop)
 
-### MIDI Remote Control
-
-- [ ] **MIDI-01**: User can map MIDI CC to any mixer parameter (local, remote, master, metronome) with bidirectional feedback and persistent mappings
-
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -59,7 +55,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | Username-based OSC addressing | Names contain special chars, change mid-session, break TouchOSC layouts; index-based is stable |
 | OSC auto-discovery (mDNS/Bonjour) | No standard, platform-specific, unreliable; one-time manual config is fine |
 | Video recording from plugin | Browser renders video, not plugin; OBS handles this well |
-| ~~MIDI remote control~~ | ~~7-bit resolution, no bidirectional feedback standard~~ — moved to Phase 14 |
+| MIDI remote control | 7-bit resolution, no bidirectional feedback standard; OSC is strictly superior |
 | Embedded TURN server | Only ~10% of users need TURN; VDO.Ninja's free servers are sufficient |
 | H.264-over-NINJAM video (JamTaba approach) | 0.03-0.13 FPS at typical BPI; VDO.Ninja WebRTC is 30fps at 100-300ms |
 | Real-time video sync with interval audio | NINJAM audio is 8-32s delayed by design; sub-second video sync is fundamentally incompatible |
@@ -93,11 +89,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VID-10 | Phase 12 | Pending |
 | VID-11 | Phase 13 | Pending |
 | VID-12 | Phase 12 | Pending |
-| MIDI-01 | Phase 14 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 24 total
-- Mapped to phases: 24
+- v1.1 requirements: 23 total
+- Mapped to phases: 23
 - Unmapped: 0
 
 ---

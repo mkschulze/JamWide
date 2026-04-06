@@ -29,6 +29,9 @@ public:
     juce::String getSendIP() const { return currentSendIP; }
     int getSendPort() const { return currentSendPort; }
 
+    // Processor access (for Plan 02 config persistence)
+    JamWideJuceProcessor& getProcessor() { return processor; }
+
 private:
     // Timer -- fires on message thread every 100ms (per D-12, D-20)
     void timerCallback() override;

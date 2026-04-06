@@ -46,12 +46,17 @@ JamWideJuceProcessor::JamWideJuceProcessor()
     // Vorbis default for compatibility (most NINJAM clients use Vorbis)
     // User can switch to FLAC via codec selector in ConnectionBar
     client->config_autosubscribe = 1;
+
+    // OSC server (created after NJClient because it takes a processor reference
+    // that may call getClient()). Does NOT start automatically -- user enables via dialog.
+    oscServer = std::make_unique<OscServer>(*this);
 }
 
 JamWideJuceProcessor::~JamWideJuceProcessor()
 {
-    // Order matters: runThread must stop before client is destroyed,
-    // because the run loop accesses client via getClient().
+    // Order matters: oscServer stops before runThread, runThread stops before client.
+    // OscServer's timer and sender/receiver must be torn down before NJClient is destroyed.
+    oscServer.reset();
     runThread.reset();
     client.reset();
 }
@@ -497,6 +502,12 @@ void JamWideJuceProcessor::getStateInformation(juce::MemoryBlock& destData)
     // Routing mode (per D-12: persist mode, not individual assignments)
     state.setProperty("routingMode", routingMode.load(std::memory_order_relaxed), nullptr);
 
+    // OSC config persistence (D-21: state version 2)
+    state.setProperty("oscEnabled", oscEnabled, nullptr);
+    state.setProperty("oscReceivePort", oscReceivePort, nullptr);
+    state.setProperty("oscSendIP", oscSendIP, nullptr);
+    state.setProperty("oscSendPort", oscSendPort, nullptr);
+
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -509,7 +520,7 @@ void JamWideJuceProcessor::setStateInformation(const void* data, int sizeInBytes
 
     auto tree = juce::ValueTree::fromXml(*xml);
     int version = tree.getProperty("stateVersion", 0);
-    juce::ignoreUnused(version);  // Future: migrate state based on version
+    juce::ignoreUnused(version);  // v1->v2 migration: OSC fields default gracefully
 
     // STEP 1: Extract non-APVTS state BEFORE replaceState
     // (replaceState may strip unknown properties depending on JUCE version)
@@ -539,6 +550,25 @@ void JamWideJuceProcessor::setStateInformation(const void* data, int sizeInBytes
     // Routing mode (per D-13: default Manual on first load)
     int rawRoutingMode = tree.getProperty("routingMode", 0);
     routingMode.store(juce::jlimit(0, 2, rawRoutingMode), std::memory_order_relaxed);
+
+    // OSC config (version 2 fields -- default to disabled with standard ports for v1 states)
+    oscEnabled = static_cast<bool>(tree.getProperty("oscEnabled", false));
+    oscReceivePort = static_cast<int>(tree.getProperty("oscReceivePort", 9000));
+    oscSendIP = tree.getProperty("oscSendIP", "127.0.0.1").toString();
+    oscSendPort = static_cast<int>(tree.getProperty("oscSendPort", 9001));
+
+    // Validate port ranges (per T-09-05 input validation)
+    oscReceivePort = juce::jlimit(1, 65535, oscReceivePort);
+    oscSendPort = juce::jlimit(1, 65535, oscSendPort);
+
+    // If OSC was enabled when saved, restart it
+    if (oscEnabled && oscServer)
+    {
+        if (!oscServer->start(oscReceivePort, oscSendIP, oscSendPort))
+        {
+            oscEnabled = false;  // Port bind failed on restore
+        }
+    }
 
     // STEP 2: Restore APVTS parameters
     // replaceState handles masterVol, masterMute, metroVol, metroMute,

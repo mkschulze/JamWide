@@ -12,6 +12,7 @@
 #include "ui/ui_state.h"
 #include "ui/ChatMessageModel.h"
 #include "core/njclient.h"  // For RemoteUserInfo
+#include "osc/OscServer.h"
 
 class JamWideJuceEditor;
 class NinjamRunThread;
@@ -79,13 +80,16 @@ public:
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-    static constexpr int currentStateVersion = 1;
+    static constexpr int currentStateVersion = 2;
     static constexpr int kTotalOutChannels = 34;  // 17 stereo buses
     static constexpr int kNumOutputBuses = 17;
     static constexpr int kMetronomeBus = 16;      // Last bus (channels 32-33)
 
     NJClient* getClient() { return client.get(); }
     juce::CriticalSection& getClientLock() { return clientLock; }
+
+    // OSC server (owned by processor, UI accesses via reference)
+    std::unique_ptr<OscServer> oscServer;
 
     juce::AudioProcessorValueTreeState apvts;
     jamwide::SpscRing<jamwide::UiCommand, 256> cmd_queue;
@@ -132,6 +136,12 @@ public:
 
     // Last known host BPM (for UI sync validation)
     std::atomic<float> cachedHostBpm_{0.0f};
+
+    // OSC config (persisted via ValueTree, per D-21)
+    bool oscEnabled{false};
+    int oscReceivePort{9000};               // per D-17
+    juce::String oscSendIP{"127.0.0.1"};    // per D-17
+    int oscSendPort{9001};                  // per D-17
 
     // Chat sidebar visibility (persisted via ValueTree, NOT APVTS param per review)
     bool chatSidebarVisible{true};

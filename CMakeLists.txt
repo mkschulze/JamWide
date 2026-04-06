@@ -273,6 +273,8 @@ if(JAMWIDE_BUILD_JUCE)
         juce/ui/LicenseDialog.cpp
         juce/osc/OscAddressMap.cpp
         juce/osc/OscServer.cpp
+        juce/osc/OscStatusDot.cpp
+        juce/osc/OscConfigDialog.cpp
         src/net/server_list.cpp
     )
 

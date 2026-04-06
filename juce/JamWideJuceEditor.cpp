@@ -2,6 +2,8 @@
 #include "core/njclient.h"
 #include "threading/ui_event.h"
 #include "threading/ui_command.h"
+#include "video/BrowserDetect.h"
+#include "video/VideoCompanion.h"
 
 #include <variant>
 
@@ -88,6 +90,47 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
     addChildComponent(licenseDialog);
     licenseDialog.onResponse = [this](bool accepted) { handleLicenseResponse(accepted); };
 
+    // Video privacy dialog (hidden by default)
+    addChildComponent(videoPrivacyDialog);
+    videoPrivacyDialog.onResponse = [this](bool accepted) {
+        if (accepted) {
+            if (processorRef.videoCompanion) {
+                bool launched = processorRef.videoCompanion->launchCompanion(
+                    connectionBar.getServerAddress(),
+                    connectionBar.getUsername(),
+                    connectionBar.getPassword());
+                if (launched) {
+                    connectionBar.setVideoActive(true);
+                } else {
+                    // Addresses review concern #8: port bind failure.
+                    // launchCompanion returned false -- WS server failed to start.
+                    // Button stays inactive. Log for debugging.
+                    DBG("VideoCompanion: launch failed (WebSocket server could not start)");
+                }
+            }
+        }
+    };
+
+    // Wire video button click (D-01 through D-07)
+    connectionBar.onVideoClicked = [this]() {
+        if (!processorRef.videoCompanion) return;
+
+        // D-04 + review concern #12: If already active, re-open companion page only.
+        // No modal shown. No server restart. Just call relaunchBrowser().
+        // Addresses review concern #13: privacy modal ONLY on first activation per session.
+        if (processorRef.videoCompanion->isActive()) {
+            processorRef.videoCompanion->relaunchBrowser();
+            return;
+        }
+
+        // D-05, D-06: Show privacy modal on every new activation.
+        // D-07 + review concern #5: Browser detection is best-effort advisory.
+        // If detection fails, defaults to true (assume Chromium = skip warning).
+        // Warning is shown but NEVER blocks launch.
+        bool showBrowserWarning = !jamwide::isDefaultBrowserChromium();
+        videoPrivacyDialog.show(showBrowserWarning);
+    };
+
     // Restore state if already connected (editor recreated while session active).
     // HasUserInfoChanged() is destructive — the flag was consumed before the old
     // editor was destroyed, so no UserInfoChangedEvent will fire. We must
@@ -101,6 +144,11 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
             if (!processorRef.cachedUsers.empty())
                 channelStripArea.refreshFromUsers(processorRef.cachedUsers);
             prevPollStatus_ = NJClient::NJC_STATUS_OK;
+
+            // Restore video button state if videoCompanion is active (editor recreated mid-session)
+            if (processorRef.videoCompanion && processorRef.videoCompanion->isActive()) {
+                connectionBar.setVideoActive(true);
+            }
         }
     }
 
@@ -188,6 +236,7 @@ void JamWideJuceEditor::resized()
     // Overlays: full editor bounds
     serverBrowser.setBounds(getLocalBounds());
     licenseDialog.setBounds(getLocalBounds());
+    videoPrivacyDialog.setBounds(getLocalBounds());
 }
 
 void JamWideJuceEditor::timerCallback()

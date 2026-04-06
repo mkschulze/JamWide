@@ -50,12 +50,16 @@ JamWideJuceProcessor::JamWideJuceProcessor()
     // OSC server (created after NJClient because it takes a processor reference
     // that may call getClient()). Does NOT start automatically -- user enables via dialog.
     oscServer = std::make_unique<OscServer>(*this);
+
+    // Video companion (created after NJClient, same ownership pattern as OscServer)
+    videoCompanion = std::make_unique<jamwide::VideoCompanion>(*this);
 }
 
 JamWideJuceProcessor::~JamWideJuceProcessor()
 {
-    // Order matters: oscServer stops before runThread, runThread stops before client.
-    // OscServer's timer and sender/receiver must be torn down before NJClient is destroyed.
+    // Order matters: videoCompanion stops WS server, oscServer stops before runThread,
+    // runThread stops before client.
+    videoCompanion.reset();
     oscServer.reset();
     runThread.reset();
     client.reset();

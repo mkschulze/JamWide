@@ -29,6 +29,9 @@ public:
     std::function<void(float)> onScaleChanged;  // D-23
     std::function<void()> onFitClicked;
     std::function<void(int)> onRouteModeChanged;  // 0=manual, 1=by-channel, 2=by-user
+    std::function<void()> onVideoClicked;
+
+    void setVideoActive(bool active);
 
     void setRoutingModeHighlight(int mode);  // Updates Route button text color
     void updateSyncState(int state);
@@ -62,6 +65,9 @@ private:
     int syncState_ = 0;  // 0=IDLE, 1=WAITING, 2=ACTIVE (mirrors processor syncState_ atomic)
 
     int currentStatus = -1;
+
+    // Video button (D-01: in ConnectionBar, D-02: toggle with color states)
+    juce::TextButton videoButton;
 
     // OSC status dot (between Sync button and right-aligned controls)
     std::unique_ptr<OscStatusDot> oscStatusDot;

@@ -119,6 +119,22 @@ void OscServer::oscMessageReceived(const juce::OSCMessage& msg)
     // Called on juce_osc network thread (RealtimeCallback)
     auto address = msg.getAddressPattern().toString();
 
+    // Phase 10: String argument path (connect trigger per D-09, holistic string support)
+    if (msg.size() > 0 && msg[0].isString())
+    {
+        juce::String strValue = msg[0].getString();
+        auto aliveFlag = alive;
+        juce::MessageManager::callAsync([this, aliveFlag,
+                                         addr = std::move(address),
+                                         str = std::move(strValue)]()
+        {
+            if (!aliveFlag->load(std::memory_order_acquire))
+                return;
+            handleOscStringOnMessageThread(addr, str);
+        });
+        return;
+    }
+
     float value = 0.0f;
     if (msg.size() > 0)
     {
@@ -161,6 +177,29 @@ void OscServer::oscBundleReceived(const juce::OSCBundle& bundle)
 
 void OscServer::handleOscOnMessageThread(const juce::String& address, float value)
 {
+    // Phase 10: remote user prefix dispatch (per D-18)
+    // Addresses review concern: "stale slot index" -- resolution happens HERE on the
+    // message thread, which is the same thread that updates cachedUsers. This guarantees
+    // the roster snapshot is current at dispatch time (single-threaded serialization).
+    if (address.startsWith("/JamWide/remote/"))
+    {
+        handleRemoteUserOsc(address, value);
+        return;
+    }
+
+    // Phase 10: session disconnect float trigger (per D-09)
+    // Disconnect accepts: any float >= 0.5, or int 1
+    if (address == "/JamWide/session/disconnect")
+    {
+        if (value >= 0.5f)
+        {
+            jamwide::DisconnectCommand cmd;
+            processor.cmd_queue.try_push(std::move(cmd));
+        }
+        return;
+    }
+
+    // Existing static map lookup follows...
     int idx = addressMap.resolve(address);
     if (idx < 0)
         return;  // Unknown address
@@ -439,6 +478,228 @@ void OscServer::sendVuMeters(juce::OSCBundle& bundle, bool& hasContent)
     }
 
     hasContent = true;
+}
+
+// ── Phase 10: Remote user receive methods ──
+
+void OscServer::handleRemoteUserOsc(const juce::String& address, float value)
+{
+    // Parse: /JamWide/remote/{idx}/...
+    // "/JamWide/remote/" is 16 characters
+    juce::String remainder = address.substring(16);
+
+    int slashPos = remainder.indexOf("/");
+    if (slashPos < 0) return;  // malformed
+
+    int oscIdx = remainder.substring(0, slashPos).getIntValue();
+    if (oscIdx < 1 || oscIdx > kMaxRemoteSlots) return;  // T-10-01: bounds check
+
+    // Resolve against CURRENT roster (message thread -- same thread that updates cachedUsers)
+    const auto& users = processor.cachedUsers;
+    int userIndex = oscIdx - 1;  // 1-based OSC -> 0-based NJClient (Pitfall 1)
+    if (userIndex >= static_cast<int>(users.size())) return;  // slot empty
+
+    juce::String control = remainder.substring(slashPos + 1);
+
+    // Clamp value for all numeric controls
+    float clamped = juce::jlimit(0.0f, 1.0f, value);
+
+    // ── Sub-channel path: /ch/{n}/... ──
+    if (control.startsWith("ch/"))
+    {
+        juce::String chRemainder = control.substring(3);  // after "ch/"
+        int chSlash = chRemainder.indexOf("/");
+        if (chSlash < 0) return;
+
+        // {n} is SEQUENTIAL 1-based (review concern #3: explicitly defined)
+        int oscChIdx = chRemainder.substring(0, chSlash).getIntValue();
+        if (oscChIdx < 1) return;
+        int seqIdx = oscChIdx - 1;  // 0-based sequential index
+
+        // Resolve NINJAM bit index from sequential index (Pitfall 2)
+        const auto& user = users[static_cast<size_t>(userIndex)];
+        if (seqIdx >= static_cast<int>(user.channels.size())) return;
+        int njChannelIdx = user.channels[static_cast<size_t>(seqIdx)].channel_index;
+
+        juce::String chControl = chRemainder.substring(chSlash + 1);
+
+        jamwide::SetUserChannelStateCommand cmd;
+        cmd.user_index = userIndex;
+        cmd.channel_index = njChannelIdx;
+
+        if (chControl == "volume")
+        {
+            cmd.set_vol = true;
+            cmd.volume = clamped * 2.0f;  // OSC 0-1 -> NJClient 0-2
+            if (seqIdx < kMaxSubChannels)
+                remoteChOscSourced[static_cast<size_t>(userIndex)][static_cast<size_t>(seqIdx)].volume = true;
+        }
+        else if (chControl == "volume/db")
+        {
+            cmd.set_vol = true;
+            cmd.volume = OscAddressMap::dbToLinear(juce::jlimit(-100.0f, 6.0f, value));
+            if (seqIdx < kMaxSubChannels)
+                remoteChOscSourced[static_cast<size_t>(userIndex)][static_cast<size_t>(seqIdx)].volume = true;
+        }
+        else if (chControl == "pan")
+        {
+            cmd.set_pan = true;
+            cmd.pan = OscAddressMap::oscPanToApvts(clamped);
+            if (seqIdx < kMaxSubChannels)
+                remoteChOscSourced[static_cast<size_t>(userIndex)][static_cast<size_t>(seqIdx)].pan = true;
+        }
+        else if (chControl == "mute")
+        {
+            cmd.set_mute = true;
+            cmd.mute = (value >= 0.5f);
+            if (seqIdx < kMaxSubChannels)
+                remoteChOscSourced[static_cast<size_t>(userIndex)][static_cast<size_t>(seqIdx)].mute = true;
+        }
+        else if (chControl == "solo")
+        {
+            cmd.set_solo = true;
+            cmd.solo = (value >= 0.5f);
+            if (seqIdx < kMaxSubChannels)
+                remoteChOscSourced[static_cast<size_t>(userIndex)][static_cast<size_t>(seqIdx)].solo = true;
+        }
+        else return;  // Unknown sub-channel control, silently ignore
+
+        processor.cmd_queue.try_push(std::move(cmd));
+    }
+    // ── Group bus path: volume, pan, mute, solo ──
+    else
+    {
+        if (control == "volume")
+        {
+            jamwide::SetUserStateCommand cmd;
+            cmd.user_index = userIndex;
+            cmd.set_vol = true;
+            cmd.volume = clamped * 2.0f;  // OSC 0-1 -> NJClient 0-2
+            processor.cmd_queue.try_push(std::move(cmd));
+            remoteOscSourced[static_cast<size_t>(userIndex)].volume = true;
+        }
+        else if (control == "volume/db")
+        {
+            jamwide::SetUserStateCommand cmd;
+            cmd.user_index = userIndex;
+            cmd.set_vol = true;
+            cmd.volume = OscAddressMap::dbToLinear(juce::jlimit(-100.0f, 6.0f, value));
+            processor.cmd_queue.try_push(std::move(cmd));
+            remoteOscSourced[static_cast<size_t>(userIndex)].volume = true;
+        }
+        else if (control == "pan")
+        {
+            jamwide::SetUserStateCommand cmd;
+            cmd.user_index = userIndex;
+            cmd.set_pan = true;
+            cmd.pan = OscAddressMap::oscPanToApvts(clamped);
+            processor.cmd_queue.try_push(std::move(cmd));
+            remoteOscSourced[static_cast<size_t>(userIndex)].pan = true;
+        }
+        else if (control == "mute")
+        {
+            jamwide::SetUserStateCommand cmd;
+            cmd.user_index = userIndex;
+            cmd.set_mute = true;
+            cmd.mute = (value >= 0.5f);
+            processor.cmd_queue.try_push(std::move(cmd));
+            remoteOscSourced[static_cast<size_t>(userIndex)].mute = true;
+        }
+        else if (control == "solo")
+        {
+            // GROUP SOLO: Authoritative behavior (addresses review concern #1)
+            // NJClient has NO group-level solo primitive. SetUserStateCommand has no set_solo.
+            // Implementation: set solo on ALL sub-channels to the same state.
+            // This means: toggling group solo ON solos every sub-channel of this user.
+            //             toggling group solo OFF un-solos every sub-channel.
+            // Individual sub-channel solo states are OVERRIDDEN by group solo toggle.
+            const auto& user = users[static_cast<size_t>(userIndex)];
+            bool soloState = (value >= 0.5f);
+            for (const auto& ch : user.channels)
+            {
+                jamwide::SetUserChannelStateCommand cmd;
+                cmd.user_index = userIndex;
+                cmd.channel_index = ch.channel_index;  // NINJAM bit index
+                cmd.set_solo = true;
+                cmd.solo = soloState;
+                processor.cmd_queue.try_push(std::move(cmd));
+            }
+        }
+        // else: unknown group control, silently ignore (T-10-05)
+    }
+}
+
+void OscServer::handleOscStringOnMessageThread(const juce::String& address, const juce::String& value)
+{
+    if (address == "/JamWide/session/connect")
+    {
+        // Defensive parsing (per D-09, addresses review concern #7)
+        juce::String trimmed = value.trim();
+        if (trimmed.isEmpty() || trimmed.length() > 256) return;  // T-10-03: length limit
+
+        juce::String host;
+        int port = 2049;  // NINJAM default
+
+        // Handle IPv6 bracketed notation: [::1]:2049
+        if (trimmed.startsWithChar('['))
+        {
+            int closeBracket = trimmed.indexOf("]");
+            if (closeBracket < 0) return;  // malformed IPv6
+            host = trimmed.substring(1, closeBracket);  // strip brackets
+            // Check for :port after closing bracket
+            if (closeBracket + 1 < trimmed.length() && trimmed[closeBracket + 1] == ':')
+            {
+                juce::String portStr = trimmed.substring(closeBracket + 2);
+                int parsed = portStr.getIntValue();
+                if (parsed >= 1 && parsed <= 65535)
+                    port = parsed;
+                else
+                    return;  // invalid port
+            }
+        }
+        else
+        {
+            // Standard host:port or host-only
+            int colonIdx = trimmed.lastIndexOfChar(':');
+            if (colonIdx > 0)
+            {
+                juce::String portStr = trimmed.substring(colonIdx + 1);
+                int parsed = portStr.getIntValue();
+                if (parsed >= 1 && parsed <= 65535)
+                {
+                    host = trimmed.substring(0, colonIdx);
+                    port = parsed;
+                }
+                else
+                {
+                    // Port part is not a valid number -- treat entire string as host
+                    host = trimmed;
+                }
+            }
+            else
+            {
+                host = trimmed;
+                // port stays at default 2049
+            }
+        }
+
+        if (host.isEmpty()) return;
+
+        juce::String serverStr = host + ":" + juce::String(port);
+
+        // Use stored credentials (per D-09)
+        // Fallback to "anonymous" if lastUsername empty (per Pitfall 5)
+        std::string username = processor.lastUsername.toStdString();
+        if (username.empty())
+            username = "anonymous";
+
+        jamwide::ConnectCommand cmd;
+        cmd.server = serverStr.toStdString();
+        cmd.username = username;
+        cmd.password = "";
+        processor.cmd_queue.try_push(std::move(cmd));
+    }
+    // else: unknown string-argument address, silently ignore
 }
 
 // ── Phase 10: Remote user send methods ──

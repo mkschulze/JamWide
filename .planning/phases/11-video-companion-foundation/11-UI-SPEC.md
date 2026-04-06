@@ -5,6 +5,7 @@ status: draft
 shadcn_initialized: false
 preset: none
 created: 2026-04-06
+revised: 2026-04-06
 ---
 
 # Phase 11 — UI Design Contract
@@ -27,10 +28,10 @@ created: 2026-04-06
 
 This phase has two rendering contexts with matched visual language:
 
-| Surface | Technology | Scope |
-|---------|-----------|-------|
-| JUCE plugin | C++ / JamWideLookAndFeel | Video toggle button in ConnectionBar, privacy/browser-warning modal dialog |
-| Web companion page | HTML / CSS / TypeScript (Vite build) | Branded page with VDO.Ninja iframe grid, session info header, connection status |
+| Surface | Technology | Scope | Primary Focal Point |
+|---------|-----------|-------|---------------------|
+| JUCE plugin | C++ / JamWideLookAndFeel | Video toggle button in ConnectionBar, privacy/browser-warning modal dialog | Privacy modal dialog (centered, scrim-isolated, demands user decision) |
+| Web companion page | HTML / CSS / TypeScript (Vite build) | Branded page with VDO.Ninja iframe grid, session info header, connection status | VDO.Ninja iframe grid (fills 90%+ of viewport height between header and footer) |
 
 ---
 
@@ -41,14 +42,14 @@ Declared values (must be multiples of 4):
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4px | Icon gaps, inline padding |
-| sm | 8px | Compact element spacing, ConnectionBar gap between controls |
+| sm | 8px | Compact element spacing, companion page small gaps |
 | md | 16px | Default element spacing, modal inner padding, companion page grid gap |
 | lg | 24px | Section padding, companion header padding |
 | xl | 32px | Companion page outer margins |
 | 2xl | 48px | Major section breaks |
 | 3xl | 64px | Not used in this phase |
 
-Exceptions: ConnectionBar uses 6px gap between controls (established pattern from existing code — do not change).
+No exceptions. All new layout values in this phase use multiples of 4.
 
 ---
 
@@ -69,9 +70,10 @@ Uses existing font sizes established in JamWideLookAndFeel and ConnectionBar:
 | Role | Size | Weight | Line Height | Usage |
 |------|------|--------|-------------|-------|
 | Body | 14px | Regular (400) | 1.5 | Status text, user labels, footer |
-| Label | 12px | Medium (500) | 1.3 | Username overlay on video tiles, connection badge |
+| Label | 12px | Regular (400) | 1.3 | Username overlay on video tiles, connection badge, debug/connection status text |
 | Heading | 20px | Semibold (600) | 1.2 | Session header ("JamWide Video") |
-| Mono | 13px | Regular (400) | 1.4 | Debug/connection status text |
+
+Two weights only: Regular (400) and Semibold (600). Three sizes: 12px, 14px, 20px.
 
 ---
 
@@ -107,7 +109,7 @@ Dark theme CSS variables that mirror the JUCE palette:
 | Secondary (30%) | --bg-elevated | #222540 | Session header bar, status bar |
 | Surface | --surface-card | #2A2D48 | Video tile backgrounds (before stream loads) |
 | Accent (10%) | --accent-connect | #40E070 | "Connected" badge, active status dot |
-| Warning | --accent-warning | #CCB833 | "Reconnect" button, degraded status |
+| Warning | --accent-warning | #CCB833 | "Reconnect to Plugin" button, degraded status |
 | Error | --accent-error | #E04040 | "Disconnected" status, WebSocket error |
 | Border | --border-subtle | #3A3D58 | Video tile borders, header bottom border |
 | Text — primary | --text-primary | #E0E0E0 | Body text, user labels |
@@ -139,6 +141,7 @@ Accent reserved for: "Connected" status badge, active WebSocket indicator dot, v
 | Click — inactive | Launch privacy modal flow |
 | Click — active | Re-open companion page in browser (re-launch) |
 | Tooltip | "Open video companion in browser" |
+| Layout note | ConnectionBar uses an existing inter-control gap that is inherited from prior code and is outside this spacing contract's scope. Do not modify that existing gap value. |
 
 Layout in `ConnectionBar::resized()` — insert between OSC status dot and Fit button:
 ```
@@ -158,9 +161,9 @@ Reuses the LicenseDialog pattern (dark modal with scrim overlay).
 | Title | "Video — Privacy Notice" at 16px Bold, kTextHeading |
 | Body area | kSurfaceInput background, 13px regular, kTextPrimary |
 | Accept button | "I Understand — Open Video" at kAccentConnect text on kAccentConnect 20% alpha background, 120px wide |
-| Cancel button | "Cancel" at kAccentDestructive text on kAccentDestructive 20% alpha background, 90px wide |
+| Dismiss button | "Skip Video" at kAccentDestructive text on kAccentDestructive 20% alpha background, 90px wide |
 | Button row | Centered, 16px gap between buttons, 36px tall |
-| Modal blocking | No outside-click dismiss. Must press Accept or Cancel. |
+| Modal blocking | No outside-click dismiss. Must press Accept or Skip Video. |
 
 ##### Privacy Modal Body Copy
 
@@ -199,7 +202,7 @@ Chrome, Edge, or Brave.
 |                                                          |
 |                                                          |
 +----------------------------------------------------------+
-|  [WS status dot] Connected to plugin   [Reconnect btn]  |  <- Footer (36px)
+|  [WS status dot] Connected to plugin  [Reconnect btn]   |  <- Footer (36px)
 +----------------------------------------------------------+
 ```
 
@@ -212,7 +215,7 @@ Chrome, Edge, or Brave.
 | Bottom border | 1px solid --border-subtle (#3A3D58) |
 | Logo | JamWide favicon SVG (24x24), left-aligned with 16px left padding |
 | Title | "JamWide Video" at 20px semibold, --text-heading, 8px left of logo |
-| Status badge | Right-aligned, 12px medium, inside a pill (border-radius 12px) |
+| Status badge | Right-aligned, 12px regular, inside a pill (border-radius 12px) |
 | Status badge — connected | Text: --accent-connect, border: --accent-connect at 30% alpha, background: --accent-connect at 10% alpha |
 | Status badge — disconnected | Text: --accent-error, border: --accent-error at 30% alpha, background: --accent-error at 10% alpha |
 | Session info | "Room: {roomId}" at 12px regular, --text-secondary, right of title (hidden on narrow viewport) |
@@ -236,7 +239,7 @@ Chrome, Edge, or Brave.
 | Top border | 1px solid --border-subtle (#3A3D58) |
 | Status dot | 8px circle, left-aligned with 16px padding. Green (--accent-connect) when WS connected, red (--accent-error) when disconnected |
 | Status text | "Connected to plugin" / "Disconnected" at 12px, --text-secondary, 8px right of dot |
-| Reconnect button | Right-aligned, visible only when WS disconnected. Text: "Reconnect" at 12px, --accent-warning, padding 8px 16px, border: 1px solid --accent-warning at 50% alpha, border-radius 4px, background: transparent. Hover: background --accent-warning at 10% alpha |
+| Reconnect button | Right-aligned, visible only when WS disconnected. Text: "Reconnect to Plugin" at 12px, --accent-warning, padding 8px 16px, border: 1px solid --accent-warning at 50% alpha, border-radius 4px, background: transparent. Hover: background --accent-warning at 10% alpha |
 
 ---
 
@@ -254,7 +257,7 @@ User clicks "Video" button
   +-- IF connected:
         Show Video Privacy Modal (scrim + centered dialog)
           |
-          +-- User clicks "Cancel":
+          +-- User clicks "Skip Video":
           |     Dismiss modal, return to normal state
           |
           +-- User clicks "I Understand — Open Video":
@@ -291,9 +294,9 @@ Page loads
         |
         +-- Failure / Close:
               Update footer: red dot + "Disconnected"
-              Show "Reconnect" button in footer
+              Show "Reconnect to Plugin" button in footer
               Update header: status badge = "Disconnected"
-              Show centered message: "Connection lost. Click Reconnect or re-click Video in JamWide."
+              Show centered message: "Connection lost. Click Reconnect to Plugin or re-click Video in JamWide."
 ```
 
 ### Companion Page Responsive Behavior
@@ -311,7 +314,7 @@ Page loads
 | Element | Copy |
 |---------|------|
 | Primary CTA (modal) | "I Understand — Open Video" |
-| Secondary action (modal) | "Cancel" |
+| Secondary action (modal) | "Skip Video" |
 | Video button label | "Video" |
 | Video button tooltip — enabled | "Open video companion in browser" |
 | Video button tooltip — disabled | "Connect to a server first" |
@@ -324,8 +327,8 @@ Page loads
 | Companion — pre-connection state | "Connecting to JamWide plugin..." |
 | Companion — WS connected | "Connected to plugin" |
 | Companion — WS disconnected | "Disconnected" |
-| Companion — reconnect button | "Reconnect" |
-| Companion — connection lost body | "Connection lost. Click Reconnect or re-click Video in JamWide." |
+| Companion — reconnect button | "Reconnect to Plugin" |
+| Companion — connection lost body | "Connection lost. Click Reconnect to Plugin or re-click Video in JamWide." |
 | Companion — empty room state | "No participants yet. Waiting for others to join..." |
 
 ---
@@ -347,8 +350,8 @@ Page loads
 | Connecting | Not loaded | -- | -- | "Connecting to JamWide plugin..." |
 | Connected | Loading | "Connected" (green) | Green | "Waiting for video..." |
 | Connected | Active | "Connected" (green) | Green | VDO.Ninja iframe grid |
-| Disconnected | Active | "Disconnected" (red) | Red | VDO.Ninja iframe remains visible + "Reconnect" in footer |
-| Disconnected | Not loaded | "Disconnected" (red) | Red | "Connection lost. Click Reconnect or re-click Video in JamWide." |
+| Disconnected | Active | "Disconnected" (red) | Red | VDO.Ninja iframe remains visible + "Reconnect to Plugin" in footer |
+| Disconnected | Not loaded | "Disconnected" (red) | Red | "Connection lost. Click Reconnect to Plugin or re-click Video in JamWide." |
 
 ---
 
@@ -358,7 +361,7 @@ Page loads
 |---------|---------------|
 | Video button click target | 44px wide x 28px tall (meets 44px minimum touch target width) |
 | Modal keyboard focus | Accept button receives initial focus when modal opens |
-| Modal escape key | Escape key triggers Cancel (dismiss modal without action) |
+| Modal escape key | Escape key triggers "Skip Video" (dismiss modal without action) |
 | Color contrast — modal body | kTextPrimary (#E0E0E0) on kSurfaceInput (#252840) = 9.3:1 ratio (AAA) |
 | Color contrast — button text | kAccentConnect (#40E070) on kSurfaceStrip 20% alpha = 5.2:1 ratio (AA) |
 | Companion — status dot | Accompanied by text label (not color-only indicator) |

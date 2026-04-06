@@ -46,8 +46,8 @@
   5. User can see an OSC status indicator in the plugin footer showing active, error, or off state
 **Plans**: 2 plans
 Plans:
-- [ ] 09-01-PLAN.md — OSC server engine: juce_osc linkage, OscAddressMap, OscServer (bidirectional OSC, dirty-flag sender, echo suppression, telemetry, VU)
-- [ ] 09-02-PLAN.md — OSC UI and persistence: OscStatusDot, OscConfigDialog, ConnectionBar integration, state version 2
+- [x] 09-01-PLAN.md — OSC server engine: juce_osc linkage, OscAddressMap, OscServer (bidirectional OSC, dirty-flag sender, echo suppression, telemetry, VU)
+- [x] 09-02-PLAN.md — OSC UI and persistence: OscStatusDot, OscConfigDialog, ConnectionBar integration, state version 2
 **UI hint**: yes
 
 ### Phase 10: OSC Remote Users and Template

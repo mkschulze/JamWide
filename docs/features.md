@@ -65,6 +65,35 @@ JamWide packs the full NINJAM experience into a plugin you can use in any DAW, o
 
 ---
 
+## OSC Remote Control
+
+### Bidirectional OSC Server
+- Control all mixer parameters from any OSC control surface (TouchOSC, Open Stage Control, etc.)
+- Real-time bidirectional feedback: move a fader on your surface, it moves in JamWide, and vice versa
+- Echo suppression prevents feedback oscillation between plugin and control surface
+- 100ms update rate with dirty-flag optimization (only changed values are sent)
+
+### Full Parameter Mapping
+- Master volume, mute
+- Metronome volume, pan, mute
+- 4 local channels: volume, pan, mute, solo
+- Dual namespace: normalized 0-1 (`/JamWide/local/1/volume`) and dB scale (`/JamWide/local/1/volume/db`)
+
+### Session Telemetry
+- BPM, BPI, beat position, connection status
+- User count, codec name, sample rate
+- VU meters for master and all local channels
+
+### Configuration
+- Click the OSC status dot in the footer to configure
+- Set receive port (default 9000), send IP (default 127.0.0.1), send port (default 9001)
+- 3-state status indicator: green (active), red (error), grey (disabled)
+- Settings persist across DAW sessions
+
+See the [OSC Reference](/osc) for the complete address list.
+
+---
+
 ## User Interface
 
 ### Custom Dark Theme

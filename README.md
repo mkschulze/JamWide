@@ -24,6 +24,7 @@ JamWide brings the full NINJAM experience into your DAW as a plugin, or runs as 
 - **FLAC lossless audio** — Send and receive uncompressed audio quality alongside Vorbis
 - **DAW transport sync** — Plugin only broadcasts when the DAW is playing
 - **Standalone mode** — Use JamWide without a DAW, with built-in audio device selection
+- **OSC remote control** — Bidirectional OSC server for control surfaces like TouchOSC
 
 ## Features
 
@@ -43,6 +44,18 @@ JamWide brings the full NINJAM experience into your DAW as a plugin, or runs as 
 - Real-time VU meters for all channels (30 Hz refresh)
 - Custom fader with power-curve mapping for precise low-end control
 - Full state persistence across DAW save/load cycles
+
+### OSC Remote Control
+- Bidirectional OSC server for control surfaces (TouchOSC, Open Stage Control, etc.)
+- Full parameter mapping: volume, pan, mute, solo for all local channels, master, and metronome
+- Dual namespace: normalized 0-1 values and dB scale (`/volume` and `/volume/db`)
+- Session telemetry: BPM, BPI, beat position, connection status, user count, codec, sample rate
+- VU meters for all channels broadcast at 100ms rate
+- 100ms dirty-flag sender with echo suppression (no feedback oscillation)
+- Configurable send/receive ports and target IP via status dot popup dialog
+- 3-state status indicator: green (active), red (error), grey (disabled)
+- Config persists across DAW sessions (state version 2)
+- See [OSC Documentation](docs/osc.md) for the full address reference
 
 ### User Interface
 - Custom JUCE LookAndFeel (dark pro-audio theme)
@@ -191,6 +204,11 @@ JamWide/
 │   ├── JamWideJuceProcessor.h/cpp   # AudioProcessor, processBlock, state
 │   ├── JamWideJuceEditor.h/cpp      # Editor shell, event drain, layout
 │   ├── NinjamRunThread.h/cpp        # NJClient run loop, command dispatch
+│   ├── osc/             # OSC remote control
+│   │   ├── OscServer.h/cpp          # Bidirectional OSC server
+│   │   ├── OscAddressMap.h/cpp      # Address-to-parameter mapping
+│   │   ├── OscStatusDot.h/cpp       # Footer status indicator
+│   │   └── OscConfigDialog.h/cpp    # Config popup dialog
 │   └── ui/              # JUCE UI components
 │       ├── ConnectionBar.h/cpp      # Server, codec, routing, sync controls
 │       ├── ChatPanel.h/cpp          # Chat messages
@@ -220,8 +238,9 @@ JamWide/
 | **Audio Thread** | `processBlock` → `AudioProc`, transport sync, VU peaks | Lock-free atomics |
 | **Run Thread** | `NJClient::Run()`, command dispatch, network I/O | SPSC cmd_queue (UI→Run), evt_queue (Run→UI) |
 | **UI Thread** | JUCE Components, 20 Hz timer, event drain | SPSC evt_queue + chat_queue |
+| **OSC Thread** | juce_osc UDP receive | callAsync to UI thread |
 
-All inter-thread communication is lock-free via SPSC ring buffers and atomics.
+All inter-thread communication is lock-free via SPSC ring buffers and atomics. OSC receive callbacks dispatch to the UI thread via `callAsync()` to preserve the SPSC single-producer invariant.
 
 ## Contributing
 

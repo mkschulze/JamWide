@@ -47,6 +47,7 @@ Load JamWide, connect to a server, and start jamming with musicians around the g
 | **FLAC Lossless Audio** | Send and receive uncompressed audio quality. Switch between FLAC and Vorbis per session. |
 | **DAW Transport Sync** | Plugin only broadcasts when the DAW is playing. Live BPM/BPI changes without reconnecting. |
 | **Full Mixer** | Per-channel volume, pan, mute, solo with real-time VU meters. State persists across DAW save/load. |
+| **OSC Remote Control** | Bidirectional OSC server for TouchOSC and other control surfaces. Full parameter mapping with echo suppression. |
 | **Built-in Chat** | Communicate with other musicians in the session. Vote on BPM/BPI changes inline. |
 
 ---

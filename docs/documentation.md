@@ -116,6 +116,41 @@ Local channels can be expanded to show up to 4 input channels with individual co
 
 ---
 
+## OSC Remote Control
+
+JamWide includes a bidirectional OSC server for controlling the mixer from external control surfaces like [TouchOSC](https://hexler.net/touchosc) or [Open Stage Control](https://openstagecontrol.ammd.net/).
+
+### Quick Setup
+
+1. Click the **OSC status dot** (grey dot labeled "OSC") in the bottom connection bar
+2. Toggle **Enable OSC** on
+3. Default ports: receive on **9000**, send to **127.0.0.1:9001**
+4. The dot turns green when OSC is active
+
+### TouchOSC Quick Start
+
+1. Install TouchOSC on your phone/tablet
+2. In TouchOSC connections, set:
+   - **Send**: `127.0.0.1` port `9000` (or your computer's IP for remote devices)
+   - **Receive**: port `9001`
+3. Map faders to JamWide addresses (e.g., `/JamWide/local/1/volume` with range 0-1)
+4. Move faders on either end — changes sync bidirectionally with no oscillation
+
+### Status Indicator
+
+The OSC dot in the connection bar shows three states:
+- **Grey** — OSC disabled
+- **Green** — OSC active and connected
+- **Red** — Error (port bind failed). Click to see the error message.
+
+### Configuration Persistence
+
+OSC settings (enabled state, ports, send IP) persist across DAW save/load cycles. Version 1 sessions load with OSC disabled and default ports (9000/9001).
+
+See the [OSC Address Reference](/osc) for the complete message list.
+
+---
+
 ## Parameters Reference
 
 | Parameter | Range | Default | Description |

@@ -4,6 +4,7 @@
 #include "core/njclient.h"
 #include "threading/ui_command.h"
 #include "build_number.h"
+#include "osc/OscServer.h"
 
 // MAKE_NJ_FOURCC is private to njclient.cpp -- define locally (per Plan 03-01 decision)
 #ifndef MAKE_NJ_FOURCC
@@ -173,6 +174,13 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
     // Hide in standalone (D-07)
     bool isStandalone = (processorRef.wrapperType == juce::AudioProcessor::wrapperType_Standalone);
     syncButton.setVisible(!isStandalone);
+
+    // OSC status dot (per D-08: IEM-style footer status dot)
+    if (processorRef.oscServer)
+    {
+        oscStatusDot = std::make_unique<OscStatusDot>(*processorRef.oscServer);
+        addAndMakeVisible(*oscStatusDot);
+    }
 }
 
 void ConnectionBar::resized()
@@ -223,6 +231,13 @@ void ConnectionBar::resized()
     if (syncButton.isVisible())
     {
         syncButton.setBounds(rightX - 44, y, 44, h);
+        rightX -= 44 + gap;
+    }
+    // OSC status dot: 44px wide click target (per UI-SPEC accessibility)
+    // Positioned between Sync button and Fit button
+    if (oscStatusDot)
+    {
+        oscStatusDot->setBounds(rightX - 44, 0, 44, getHeight());
         rightX -= 44 + gap;
     }
     fitButton.setBounds(rightX - 36, y, 36, h);

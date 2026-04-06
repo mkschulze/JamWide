@@ -1,6 +1,8 @@
 #pragma once
 #include <JuceHeader.h>
 #include <functional>
+#include <memory>
+#include "osc/OscStatusDot.h"
 
 class JamWideJuceProcessor;
 
@@ -60,6 +62,9 @@ private:
     int syncState_ = 0;  // 0=IDLE, 1=WAITING, 2=ACTIVE (mirrors processor syncState_ atomic)
 
     int currentStatus = -1;
+
+    // OSC status dot (between Sync button and right-aligned controls)
+    std::unique_ptr<OscStatusDot> oscStatusDot;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ConnectionBar)
 };

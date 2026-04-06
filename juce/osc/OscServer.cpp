@@ -82,6 +82,14 @@ bool OscServer::start(int receivePort, const juce::String& sendIP, int sendPort)
     lastSentSampleRate = -1.0f;
     lastSentCodec.clear();
 
+    // Phase 10: Reset remote user dirty tracking
+    for (auto& u : lastSentRemoteUsers) u = RemoteUserLastSent{};
+    for (auto& u : lastSentRemoteChannels) for (auto& c : u) c = RemoteChannelLastSent{};
+    for (auto& u : remoteOscSourced) u = RemoteUserOscSourced{};
+    for (auto& u : remoteChOscSourced) for (auto& c : u) c = RemoteChannelOscSourced{};
+    lastSentRosterCount = -1;
+    lastSentRosterHash = -1;
+
     // Start 100ms timer per D-12
     startTimer(100);
 
@@ -255,6 +263,9 @@ void OscServer::timerCallback()
     sendDirtyNonApvtsParams(bundle, hasContent);
     sendDirtyTelemetry(bundle, hasContent);
     sendVuMeters(bundle, hasContent);
+    sendRemoteRoster(bundle, hasContent);     // BEFORE dirty params (roster change resets cache)
+    sendDirtyRemoteUsers(bundle, hasContent);
+    sendRemoteVuMeters(bundle, hasContent);
 
     if (hasContent)
         sender.send(bundle);
@@ -427,6 +438,214 @@ void OscServer::sendVuMeters(juce::OSCBundle& bundle, bool& hasContent)
             snap.local_ch_vu_right[static_cast<size_t>(ch)].load(std::memory_order_relaxed)));
     }
 
+    hasContent = true;
+}
+
+// ── Phase 10: Remote user send methods ──
+
+void OscServer::sendDirtyRemoteUsers(juce::OSCBundle& bundle, bool& hasContent)
+{
+    const auto& users = processor.cachedUsers;
+    const int count = juce::jmin(static_cast<int>(users.size()), kMaxRemoteSlots);
+
+    for (int i = 0; i < count; ++i)
+    {
+        const auto& user = users[static_cast<size_t>(i)];
+        auto& last = lastSentRemoteUsers[static_cast<size_t>(i)];
+        auto& src = remoteOscSourced[static_cast<size_t>(i)];
+        juce::String prefix = "/JamWide/remote/" + juce::String(i + 1);
+
+        // Group bus volume: normalize NJClient 0-2 -> OSC 0-1
+        float oscVol = user.volume * 0.5f;
+        if (!src.volume && oscVol != last.volume)
+        {
+            bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(prefix + "/volume"), oscVol));
+            bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(prefix + "/volume/db"),
+                OscAddressMap::linearToDb(user.volume)));
+            last.volume = oscVol;
+            hasContent = true;
+        }
+        src.volume = false;
+
+        // Group bus pan: NJClient -1..1 -> OSC 0-1
+        float oscPan = OscAddressMap::apvtsPanToOsc(user.pan);
+        if (!src.pan && oscPan != last.pan)
+        {
+            bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(prefix + "/pan"), oscPan));
+            last.pan = oscPan;
+            hasContent = true;
+        }
+        src.pan = false;
+
+        // Group bus mute
+        float oscMute = user.mute ? 1.0f : 0.0f;
+        if (!src.mute && oscMute != last.mute)
+        {
+            bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(prefix + "/mute"), oscMute));
+            last.mute = oscMute;
+            hasContent = true;
+        }
+        src.mute = false;
+
+        // Per sub-channel (per D-03)
+        // {n} is SEQUENTIAL 1-based, matching array index in user.channels
+        const int chCount = juce::jmin(static_cast<int>(user.channels.size()), kMaxSubChannels);
+        for (int c = 0; c < chCount; ++c)
+        {
+            const auto& ch = user.channels[static_cast<size_t>(c)];
+            auto& chLast = lastSentRemoteChannels[static_cast<size_t>(i)][static_cast<size_t>(c)];
+            auto& chSrc = remoteChOscSourced[static_cast<size_t>(i)][static_cast<size_t>(c)];
+            juce::String chPrefix = prefix + "/ch/" + juce::String(c + 1);
+
+            float chOscVol = ch.volume * 0.5f;
+            if (!chSrc.volume && chOscVol != chLast.volume)
+            {
+                bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(chPrefix + "/volume"), chOscVol));
+                bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(chPrefix + "/volume/db"),
+                    OscAddressMap::linearToDb(ch.volume)));
+                chLast.volume = chOscVol;
+                hasContent = true;
+            }
+            chSrc.volume = false;
+
+            float chOscPan = OscAddressMap::apvtsPanToOsc(ch.pan);
+            if (!chSrc.pan && chOscPan != chLast.pan)
+            {
+                bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(chPrefix + "/pan"), chOscPan));
+                chLast.pan = chOscPan;
+                hasContent = true;
+            }
+            chSrc.pan = false;
+
+            float chOscMute = ch.mute ? 1.0f : 0.0f;
+            if (!chSrc.mute && chOscMute != chLast.mute)
+            {
+                bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(chPrefix + "/mute"), chOscMute));
+                chLast.mute = chOscMute;
+                hasContent = true;
+            }
+            chSrc.mute = false;
+
+            float chOscSolo = ch.solo ? 1.0f : 0.0f;
+            if (!chSrc.solo && chOscSolo != chLast.solo)
+            {
+                bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(chPrefix + "/solo"), chOscSolo));
+                chLast.solo = chOscSolo;
+                hasContent = true;
+            }
+            chSrc.solo = false;
+        }
+
+        // Group bus solo feedback (derived -- see design note in objective)
+        bool allSoloed = !user.channels.empty();
+        for (const auto& ch : user.channels)
+            if (!ch.solo) { allSoloed = false; break; }
+        float oscGroupSolo = allSoloed ? 1.0f : 0.0f;
+        if (oscGroupSolo != last.solo)
+        {
+            bundle.addElement(juce::OSCMessage(
+                juce::OSCAddressPattern(prefix + "/solo"), oscGroupSolo));
+            last.solo = oscGroupSolo;
+            hasContent = true;
+        }
+    }
+}
+
+void OscServer::sendRemoteVuMeters(juce::OSCBundle& bundle, bool& hasContent)
+{
+    const auto& users = processor.cachedUsers;
+    const int count = juce::jmin(static_cast<int>(users.size()), kMaxRemoteSlots);
+
+    for (int i = 0; i < count; ++i)
+    {
+        const auto& user = users[static_cast<size_t>(i)];
+        juce::String prefix = "/JamWide/remote/" + juce::String(i + 1);
+
+        // Aggregate VU: max across sub-channels
+        float maxL = 0.0f, maxR = 0.0f;
+        for (const auto& ch : user.channels)
+        {
+            maxL = juce::jmax(maxL, ch.vu_left);
+            maxR = juce::jmax(maxR, ch.vu_right);
+        }
+        bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(prefix + "/vu/left"), maxL));
+        bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(prefix + "/vu/right"), maxR));
+
+        // Per sub-channel VU
+        const int chCount = juce::jmin(static_cast<int>(user.channels.size()), kMaxSubChannels);
+        for (int c = 0; c < chCount; ++c)
+        {
+            juce::String chPrefix = prefix + "/ch/" + juce::String(c + 1);
+            bundle.addElement(juce::OSCMessage(
+                juce::OSCAddressPattern(chPrefix + "/vu/left"), user.channels[static_cast<size_t>(c)].vu_left));
+            bundle.addElement(juce::OSCMessage(
+                juce::OSCAddressPattern(chPrefix + "/vu/right"), user.channels[static_cast<size_t>(c)].vu_right));
+        }
+        hasContent = true;
+    }
+}
+
+void OscServer::sendRemoteRoster(juce::OSCBundle& bundle, bool& hasContent)
+{
+    const auto& users = processor.cachedUsers;
+    const int count = juce::jmin(static_cast<int>(users.size()), kMaxRemoteSlots);
+
+    // Compute hash: size + sum of name lengths (simple, sufficient for change detection)
+    int hash = count;
+    for (int i = 0; i < count; ++i)
+    {
+        hash += static_cast<int>(strlen(users[static_cast<size_t>(i)].name));
+        for (const auto& ch : users[static_cast<size_t>(i)].channels)
+            hash += static_cast<int>(strlen(ch.name));
+    }
+
+    if (hash == lastSentRosterHash && count == lastSentRosterCount)
+        return;  // No change
+
+    // ── ROSTER CHANGED: Reset all per-slot cached state ──
+    // Addresses review concern: "stale slot index handling" and "cached send-state reset"
+    // This prevents a new user in slot N from inheriting the previous occupant's
+    // echo suppression flags or last-sent values.
+    for (auto& u : lastSentRemoteUsers) u = RemoteUserLastSent{};
+    for (auto& u : lastSentRemoteChannels) for (auto& c : u) c = RemoteChannelLastSent{};
+    for (auto& u : remoteOscSourced) u = RemoteUserOscSourced{};
+    for (auto& u : remoteChOscSourced) for (auto& c : u) c = RemoteChannelOscSourced{};
+
+    // Broadcast names for active slots
+    for (int i = 0; i < count; ++i)
+    {
+        juce::String idx(i + 1);
+        juce::String prefix = "/JamWide/remote/" + idx;
+
+        // Strip @IP suffix from username (same pattern as ChannelStripArea.cpp)
+        juce::String fullName(users[static_cast<size_t>(i)].name);
+        int atIdx = fullName.lastIndexOfChar('@');
+        juce::String displayName = (atIdx > 0) ? fullName.substring(0, atIdx) : fullName;
+
+        bundle.addElement(juce::OSCMessage(
+            juce::OSCAddressPattern(prefix + "/name"), displayName));
+
+        // Sub-channel names (per D-08)
+        const auto& user = users[static_cast<size_t>(i)];
+        for (size_t c = 0; c < user.channels.size() && c < static_cast<size_t>(kMaxSubChannels); ++c)
+        {
+            juce::String chName(user.channels[c].name);
+            bundle.addElement(juce::OSCMessage(
+                juce::OSCAddressPattern(prefix + "/ch/" + juce::String(static_cast<int>(c) + 1) + "/name"),
+                chName));
+        }
+    }
+
+    // Clear empty slots (per D-06: send empty string)
+    for (int i = count; i < kMaxRemoteSlots; ++i)
+    {
+        juce::String idx(i + 1);
+        bundle.addElement(juce::OSCMessage(
+            juce::OSCAddressPattern("/JamWide/remote/" + idx + "/name"), juce::String()));
+    }
+
+    lastSentRosterCount = count;
+    lastSentRosterHash = hash;
     hasContent = true;
 }
 

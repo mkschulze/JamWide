@@ -309,21 +309,35 @@ if(JAMWIDE_BUILD_JUCE)
         CLAP_FEATURES audio-effect utility mixing
     )
 
-    # macOS dev codesigning (required for AU validation on recent macOS)
+    # macOS code signing
+    # - Dev builds: ad-hoc signing (default, no certificate needed)
+    # - Release builds: Developer ID signing with hardened runtime
+    #   cmake -DJAMWIDE_CODESIGN_IDENTITY="Developer ID Application: ..." -DJAMWIDE_HARDENED_RUNTIME=ON
     if(APPLE)
-        option(JAMWIDE_DEV_CODESIGN "Ad-hoc codesign plugin bundles after build" ON)
-        if(JAMWIDE_DEV_CODESIGN)
-            foreach(_fmt Standalone VST3 AU CLAP)
-                if(TARGET JamWideJuce_${_fmt})
-                    add_custom_command(TARGET JamWideJuce_${_fmt} POST_BUILD
-                        COMMAND /usr/bin/codesign --force --sign "-"
-                                --timestamp=none --deep "$<TARGET_BUNDLE_DIR:JamWideJuce_${_fmt}>"
-                        COMMENT "Dev codesign JamWideJuce_${_fmt}"
-                        VERBATIM
-                    )
-                endif()
-            endforeach()
+        set(JAMWIDE_CODESIGN_IDENTITY "-" CACHE STRING "Code signing identity (- = ad-hoc)")
+        option(JAMWIDE_HARDENED_RUNTIME "Enable hardened runtime (required for notarization)" OFF)
+
+        set(_sign_flags --force --deep)
+        if(JAMWIDE_HARDENED_RUNTIME)
+            list(APPEND _sign_flags --options runtime --timestamp)
+            if(EXISTS "${CMAKE_SOURCE_DIR}/JamWide.entitlements")
+                list(APPEND _sign_flags --entitlements "${CMAKE_SOURCE_DIR}/JamWide.entitlements")
+            endif()
+        else()
+            list(APPEND _sign_flags --timestamp=none)
         endif()
+
+        foreach(_fmt Standalone VST3 AU CLAP)
+            if(TARGET JamWideJuce_${_fmt})
+                add_custom_command(TARGET JamWideJuce_${_fmt} POST_BUILD
+                    COMMAND /usr/bin/codesign ${_sign_flags}
+                            --sign "${JAMWIDE_CODESIGN_IDENTITY}"
+                            "$<TARGET_BUNDLE_DIR:JamWideJuce_${_fmt}>"
+                    COMMENT "Codesign JamWideJuce_${_fmt} (${JAMWIDE_CODESIGN_IDENTITY})"
+                    VERBATIM
+                )
+            endif()
+        endforeach()
     endif()
     # Pluginval validation: cmake --build build --target validate
     # Downloads pluginval automatically on first run, caches in build dir

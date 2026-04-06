@@ -76,6 +76,35 @@ jobs:
             --timeout-ms 120000 \
             --validate "build/JamWideJuce_artefacts/Release/Standalone/JamWide.app"
 
+      - name: Import signing certificate
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          CERTIFICATE_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          echo "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+
+      - name: Sign and notarize bundles
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          NOTARIZE_KEY_ID: ${{ secrets.NOTARIZE_KEY_ID }}
+          NOTARIZE_ISSUER_ID: ${{ secrets.NOTARIZE_ISSUER_ID }}
+          NOTARIZE_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          NOTARIZE_API_KEY_B64: ${{ secrets.NOTARIZE_API_KEY_P8 }}
+        run: |
+          echo "$NOTARIZE_API_KEY_B64" | base64 --decode > "$NOTARIZE_KEY_PATH"
+          ./scripts/notarize.sh build/JamWideJuce_artefacts/Release
+          rm -f "$NOTARIZE_KEY_PATH"
+
       - name: Stage artifacts
         run: |
           mkdir -p staging

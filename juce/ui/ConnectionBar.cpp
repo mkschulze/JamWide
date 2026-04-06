@@ -5,6 +5,7 @@
 #include "threading/ui_command.h"
 #include "build_number.h"
 #include "osc/OscServer.h"
+#include "video/VideoCompanion.h"
 
 // MAKE_NJ_FOURCC is private to njclient.cpp -- define locally (per Plan 03-01 decision)
 #ifndef MAKE_NJ_FOURCC
@@ -181,6 +182,19 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
         oscStatusDot = std::make_unique<OscStatusDot>(*processorRef.oscServer);
         addAndMakeVisible(*oscStatusDot);
     }
+
+    // Video button (D-01: in ConnectionBar, D-02: toggle with color states)
+    videoButton.setButtonText("Video");
+    videoButton.setColour(juce::TextButton::buttonColourId,
+        juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
+    videoButton.setColour(juce::TextButton::textColourOffId,
+        juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    videoButton.setTooltip("Open video companion in browser");
+    videoButton.setEnabled(false);  // D-03: disabled until connected
+    videoButton.onClick = [this]() {
+        if (onVideoClicked) onVideoClicked();
+    };
+    addAndMakeVisible(videoButton);
 }
 
 void ConnectionBar::resized()
@@ -234,12 +248,15 @@ void ConnectionBar::resized()
         rightX -= 44 + gap;
     }
     // OSC status dot: 44px wide click target (per UI-SPEC accessibility)
-    // Positioned between Sync button and Fit button
+    // Positioned between Sync button and Video button
     if (oscStatusDot)
     {
         oscStatusDot->setBounds(rightX - 44, 0, 44, getHeight());
         rightX -= 44 + gap;
     }
+    // Video button (D-01: between OSC dot and Fit, UI-SPEC: 44x28)
+    videoButton.setBounds(rightX - 44, y, 44, h);
+    rightX -= 44 + gap;
     fitButton.setBounds(rightX - 36, y, 36, h);
 }
 
@@ -442,6 +459,32 @@ void ConnectionBar::updateStatus(int njcStatus, int /*numUsers*/)
             break;
     }
 
+    // D-03: Video button disabled when not connected
+    if (njcStatus == NJClient::NJC_STATUS_OK) {
+        videoButton.setEnabled(true);
+        // Restore correct color based on video active state
+        if (processorRef.videoCompanion && processorRef.videoCompanion->isActive())
+            videoButton.setColour(juce::TextButton::textColourOffId,
+                juce::Colour(JamWideLookAndFeel::kAccentConnect));
+        else
+            videoButton.setColour(juce::TextButton::textColourOffId,
+                juce::Colour(JamWideLookAndFeel::kTextSecondary));
+        videoButton.setTooltip("Open video companion in browser");
+    } else {
+        videoButton.setEnabled(false);
+        // D-03: 50% alpha for disabled state text
+        videoButton.setColour(juce::TextButton::textColourOffId,
+            juce::Colour(JamWideLookAndFeel::kTextSecondary).withAlpha(0.5f));
+        videoButton.setTooltip("Connect to a server first");
+    }
+
+    // D-19: Deactivate video on disconnect (no persistence across sessions)
+    if (njcStatus != NJClient::NJC_STATUS_OK && njcStatus != NJClient::NJC_STATUS_PRECONNECT) {
+        if (processorRef.videoCompanion && processorRef.videoCompanion->isActive()) {
+            processorRef.videoCompanion->deactivate();
+        }
+    }
+
     // Update connect button
     bool connected = (njcStatus == NJClient::NJC_STATUS_OK
                    || njcStatus == NJClient::NJC_STATUS_PRECONNECT);
@@ -546,4 +589,14 @@ void ConnectionBar::updateSyncState(int state)
     else
         textCol = juce::Colour(JamWideLookAndFeel::kAccentConnect);
     syncButton.setColour(juce::TextButton::textColourOffId, textCol);
+}
+
+void ConnectionBar::setVideoActive(bool active)
+{
+    if (active)
+        videoButton.setColour(juce::TextButton::textColourOffId,
+            juce::Colour(JamWideLookAndFeel::kAccentConnect));  // D-02: green when active
+    else
+        videoButton.setColour(juce::TextButton::textColourOffId,
+            juce::Colour(JamWideLookAndFeel::kTextSecondary));
 }

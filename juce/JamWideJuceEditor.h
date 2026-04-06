@@ -9,6 +9,7 @@
 #include "ui/SessionInfoStrip.h"
 #include "ui/ServerBrowserOverlay.h"
 #include "ui/LicenseDialog.h"
+#include "video/VideoPrivacyDialog.h"
 
 class JamWideJuceEditor : public juce::AudioProcessorEditor,
                            private juce::Timer
@@ -48,6 +49,7 @@ private:
 
     ServerBrowserOverlay serverBrowser;
     LicenseDialog licenseDialog;
+    VideoPrivacyDialog videoPrivacyDialog;
 
     // Custom arrow button — TextButton truncates to "..." at 16px width
     struct ChatToggleButton : public juce::Component

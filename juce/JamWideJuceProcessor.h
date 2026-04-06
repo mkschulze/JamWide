@@ -13,6 +13,7 @@
 #include "ui/ChatMessageModel.h"
 #include "core/njclient.h"  // For RemoteUserInfo
 #include "osc/OscServer.h"
+#include "video/VideoCompanion.h"
 
 class JamWideJuceEditor;
 class NinjamRunThread;
@@ -90,6 +91,9 @@ public:
 
     // OSC server (owned by processor, UI accesses via reference)
     std::unique_ptr<OscServer> oscServer;
+
+    // Video companion (owned by processor, UI accesses via reference)
+    std::unique_ptr<jamwide::VideoCompanion> videoCompanion;
 
     juce::AudioProcessorValueTreeState apvts;
     jamwide::SpscRing<jamwide::UiCommand, 256> cmd_queue;

@@ -5,6 +5,7 @@
 #include "threading/ui_event.h"
 #include "ui/ui_state.h"
 #include "net/server_list.h"
+#include "video/VideoCompanion.h"
 
 #include <chrono>
 #include <mutex>
@@ -330,6 +331,13 @@ void NinjamRunThread::run()
                 processor.userCount.store(static_cast<int>(processor.cachedUsers.size()),
                                           std::memory_order_relaxed);
                 processor.evt_queue.try_push(jamwide::UserInfoChangedEvent{});
+
+                // Bridge roster to VideoCompanion WebSocket clients (per D-14: roster message on user change).
+                // onRosterChanged is thread-safe: it marshals to message thread via callAsync internally
+                // (same pattern as OscServer). Does NOT touch SPSC cmd_queue single-producer invariant.
+                if (processor.videoCompanion && processor.videoCompanion->isActive()) {
+                    processor.videoCompanion->onRosterChanged(processor.cachedUsers);
+                }
             }
 
             // Update remote VU levels every iteration (not just on user info change).

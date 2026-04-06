@@ -566,7 +566,9 @@ void JamWideJuceProcessor::setStateInformation(const void* data, int sizeInBytes
     {
         if (!oscServer->start(oscReceivePort, oscSendIP, oscSendPort))
         {
-            oscEnabled = false;  // Port bind failed on restore
+            // Port bind failed on restore — keep oscEnabled true so the status dot
+            // shows red (error) instead of grey (disabled), signaling to the user
+            // that OSC was supposed to be on but couldn't start
         }
     }
 

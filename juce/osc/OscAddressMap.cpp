@@ -43,9 +43,9 @@ void OscAddressMap::buildMap()
     entries.push_back({"/JamWide/metro/volume/db", "metroVol",
                        OscParamType::ApvtsFloat, -100.0f, 6.0f, -1, true});
 
-    // Metronome pan (NJClient atomic, -1..1 direct)
+    // Metronome pan (NJClient atomic, OSC 0..1 normalized like local pan)
     entries.push_back({"/JamWide/metro/pan", "",
-                       OscParamType::NjclientAtomic, -1.0f, 1.0f, -1, false});
+                       OscParamType::NjclientAtomic, 0.0f, 1.0f, -1, false, true});
 
     // Metronome mute
     entries.push_back({"/JamWide/metro/mute", "metroMute",
@@ -70,7 +70,7 @@ void OscAddressMap::buildMap()
         // Pan (OSC 0-1, APVTS -1..1)
         entries.push_back({"/JamWide/local/" + chNum + "/pan",
                            "localPan_" + suffix,
-                           OscParamType::ApvtsFloat, 0.0f, 1.0f, ch, false});
+                           OscParamType::ApvtsFloat, 0.0f, 1.0f, ch, false, true});
 
         // Mute
         entries.push_back({"/JamWide/local/" + chNum + "/mute",

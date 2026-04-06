@@ -31,6 +31,7 @@ OscServer::OscServer(JamWideJuceProcessor& proc)
 
 OscServer::~OscServer()
 {
+    alive->store(false, std::memory_order_release);
     stop();
 }
 
@@ -126,8 +127,13 @@ void OscServer::oscMessageReceived(const juce::OSCMessage& msg)
     }
 
     // CRITICAL per D-19: dispatch to message thread to preserve SPSC single-producer invariant
-    juce::MessageManager::callAsync([this, addr = std::move(address), val = value]()
+    // Capture shared alive flag to guard against use-after-free if OscServer is destroyed
+    // while lambdas are pending in the message queue
+    auto aliveFlag = alive;
+    juce::MessageManager::callAsync([this, aliveFlag, addr = std::move(address), val = value]()
     {
+        if (!aliveFlag->load(std::memory_order_acquire))
+            return;
         handleOscOnMessageThread(addr, val);
     });
 }
@@ -175,7 +181,7 @@ void OscServer::handleOscOnMessageThread(const juce::String& address, float valu
                 float norm = param->getNormalisableRange().convertTo0to1(linear);
                 param->setValueNotifyingHost(norm);
             }
-            else if (address.contains("/pan"))
+            else if (entry.isPanParam)
             {
                 // Convert OSC 0-1 to APVTS -1..1, then normalize
                 float apvtsPan = OscAddressMap::oscPanToApvts(clamped);
@@ -203,31 +209,29 @@ void OscServer::handleOscOnMessageThread(const juce::String& address, float valu
 
         case OscParamType::NjclientAtomic:
         {
-            // Metro pan: direct store to NJClient atomic (Pattern 4)
+            // Metro pan: convert OSC 0..1 to NJClient -1..1 (Pattern 4)
             auto* client = processor.getClient();
             if (client != nullptr)
+            {
+                float nativeVal = entry.isPanParam
+                    ? OscAddressMap::oscPanToApvts(clamped)  // 0..1 -> -1..1
+                    : clamped;
                 client->config_metronome_pan.store(
-                    juce::jlimit(-1.0f, 1.0f, clamped),
+                    juce::jlimit(-1.0f, 1.0f, nativeVal),
                     std::memory_order_relaxed);
+            }
             break;
         }
 
         case OscParamType::CmdQueue:
         {
             // Local solo: dispatch via cmd_queue
+            // Feedback reads actual state from NJClient::GetLocalChannelMonitoring()
             jamwide::SetLocalChannelMonitoringCommand cmd;
             cmd.channel = entry.channelIndex;
             cmd.set_solo = true;
             cmd.solo = (clamped >= 0.5f);
             processor.cmd_queue.try_push(cmd);
-
-            // Update local solo bitmask for outgoing feedback
-            uint8_t mask = localSoloBitmask.load(std::memory_order_relaxed);
-            if (cmd.solo)
-                mask |= static_cast<uint8_t>(1 << entry.channelIndex);
-            else
-                mask &= static_cast<uint8_t>(~(1 << entry.channelIndex));
-            localSoloBitmask.store(mask, std::memory_order_relaxed);
             break;
         }
 
@@ -446,7 +450,7 @@ float OscServer::getCurrentValue(int index)
                 float linear = param->getNormalisableRange().convertFrom0to1(param->getValue());
                 return OscAddressMap::linearToDb(linear);
             }
-            else if (entry.oscAddress.contains("/pan"))
+            else if (entry.isPanParam)
             {
                 // Get unnormalized APVTS pan (-1..1), convert to OSC 0..1
                 float apvtsPan = param->getNormalisableRange().convertFrom0to1(param->getValue());
@@ -469,18 +473,28 @@ float OscServer::getCurrentValue(int index)
 
         case OscParamType::NjclientAtomic:
         {
-            // Metro pan: send as -1..1 directly
+            // Metro pan: read NJClient -1..1, convert to OSC 0..1
             auto* client = processor.getClient();
             if (client != nullptr)
-                return client->config_metronome_pan.load(std::memory_order_relaxed);
-            return 0.0f;
+            {
+                float nativeVal = client->config_metronome_pan.load(std::memory_order_relaxed);
+                return entry.isPanParam ? OscAddressMap::apvtsPanToOsc(nativeVal) : nativeVal;
+            }
+            return 0.5f;  // center default for pan
         }
 
         case OscParamType::CmdQueue:
         {
-            // Solo: read from local bitmask
-            uint8_t mask = localSoloBitmask.load(std::memory_order_relaxed);
-            return (mask & (1 << entry.channelIndex)) ? 1.0f : 0.0f;
+            // Solo: read actual state from NJClient (fixes one-directional feedback gap)
+            auto* client = processor.getClient();
+            if (client != nullptr && entry.channelIndex >= 0)
+            {
+                bool solo = false;
+                client->GetLocalChannelMonitoring(entry.channelIndex,
+                    nullptr, nullptr, nullptr, &solo);
+                return solo ? 1.0f : 0.0f;
+            }
+            return 0.0f;
         }
 
         case OscParamType::ReadOnly:

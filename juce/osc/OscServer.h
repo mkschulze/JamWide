@@ -79,9 +79,8 @@ private:
     juce::String currentSendIP{"127.0.0.1"};
     int currentSendPort = 9001;
 
-    // Solo state tracking (per Open Question 1 in research)
-    // Atomic bitmask: bit 0 = ch0 solo, bit 1 = ch1 solo, etc.
-    std::atomic<uint8_t> localSoloBitmask{0};
+    // Shared flag for callAsync UAF safety — set false in destructor
+    std::shared_ptr<std::atomic<bool>> alive = std::make_shared<std::atomic<bool>>(true);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OscServer)
 };

@@ -23,6 +23,7 @@ struct OscParamEntry
     float rangeMax = 1.0f;       // OSC value range max
     int channelIndex = -1;       // For local channels: 0-3; for cmd_queue solo
     bool isDbVariant = false;    // True for /volume/db addresses
+    bool isPanParam = false;     // True for pan addresses (OSC 0-1 <-> APVTS/NJClient -1..1)
 };
 
 class OscAddressMap

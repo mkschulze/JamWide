@@ -100,6 +100,12 @@ if(JAMWIDE_DEV_BUILD)
     target_compile_definitions(njclient PRIVATE JAMWIDE_DEV_BUILD=1)
 endif()
 
+# ── IXWebSocket (WebSocket server for video companion, per D-12) ──
+set(USE_TLS OFF CACHE BOOL "" FORCE)
+set(USE_WS OFF CACHE BOOL "" FORCE)
+set(IXWEBSOCKET_INSTALL OFF CACHE BOOL "" FORCE)
+add_subdirectory(libs/ixwebsocket EXCLUDE_FROM_ALL)
+
 # ── CLAP/ImGui Plugin Targets ──
 if(JAMWIDE_BUILD_CLAP)
 
@@ -292,6 +298,7 @@ if(JAMWIDE_BUILD_JUCE)
     target_link_libraries(JamWideJuce
         PRIVATE
             njclient
+            ixwebsocket
             juce::juce_audio_utils
             juce::juce_opengl
             juce::juce_gui_extra

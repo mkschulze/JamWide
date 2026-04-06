@@ -167,10 +167,118 @@ Settings persist across DAW save/load cycles. Fields remain editable when OSC is
 
 ---
 
-## Future (Phase 10)
+## Remote Users (1-16)
 
-The following OSC features are planned for a future release:
-- Remote user control: `/JamWide/remote/{idx}/volume`, `/pan`, `/mute`, `/solo`
-- Roster change broadcast (user names)
-- Connect/disconnect via OSC trigger
-- Shipped TouchOSC template (`.tosc` file)
+Replace `{idx}` with a 1-based index. Slot 1 = first connected user, slot 2 = second, etc. When users leave, subsequent indices shift down. The roster name broadcast tells the control surface who is in each slot.
+
+### Group Bus Control
+
+| Address | Type | Range | Description |
+|---------|------|-------|-------------|
+| `/JamWide/remote/{idx}/volume` | float | 0 -- 1 | User volume (normalized) |
+| `/JamWide/remote/{idx}/volume/db` | float | -100 -- 6 | User volume in dB |
+| `/JamWide/remote/{idx}/pan` | float | 0 -- 1 | User pan |
+| `/JamWide/remote/{idx}/mute` | float | 0 or 1 | User mute |
+| `/JamWide/remote/{idx}/solo` | float | 0 or 1 | User solo (sets solo on ALL sub-channels) |
+
+### Sub-Channel Control
+
+Replace `{n}` with a **sequential 1-based** channel index (NOT the sparse NINJAM bit index). `/ch/1` is the user's first channel, `/ch/2` is the second, etc.
+
+| Address | Type | Range | Description |
+|---------|------|-------|-------------|
+| `/JamWide/remote/{idx}/ch/{n}/volume` | float | 0 -- 1 | Sub-channel volume |
+| `/JamWide/remote/{idx}/ch/{n}/pan` | float | 0 -- 1 | Sub-channel pan |
+| `/JamWide/remote/{idx}/ch/{n}/mute` | float | 0 or 1 | Sub-channel mute |
+| `/JamWide/remote/{idx}/ch/{n}/solo` | float | 0 or 1 | Sub-channel solo |
+
+### Remote VU Meters (Read-Only)
+
+| Address | Type | Description |
+|---------|------|-------------|
+| `/JamWide/remote/{idx}/vu/left` | float | User left VU level |
+| `/JamWide/remote/{idx}/vu/right` | float | User right VU level |
+| `/JamWide/remote/{idx}/ch/{n}/vu/left` | float | Sub-channel left VU |
+| `/JamWide/remote/{idx}/ch/{n}/vu/right` | float | Sub-channel right VU |
+
+**Template note:** The shipped TouchOSC template omits remote VU meters intentionally for layout density reasons. The OSC server still broadcasts them.
+
+### Roster Broadcast (Read-Only)
+
+Sent when users join or leave the session. Empty string for unused slots.
+
+| Address | Type | Description |
+|---------|------|-------------|
+| `/JamWide/remote/{idx}/name` | string | Username (stripped of @IP suffix) |
+| `/JamWide/remote/{idx}/ch/{n}/name` | string | Sub-channel name |
+
+---
+
+## Session Control
+
+### Connect/Disconnect via OSC
+
+| Address | Type | Description |
+|---------|------|-------------|
+| `/JamWide/session/connect` | string | Connect to server. Send `"host:port"` (e.g. `"ninbot.com:2049"`). Uses stored username/password. |
+| `/JamWide/session/disconnect` | float | Disconnect from server. Send `1.0` to trigger. |
+
+**Connect validation:** Host is required. Port defaults to 2049 if omitted. IPv6 addresses must be in brackets (e.g. `"[::1]:2049"`). Maximum string length is 256 characters.
+
+---
+
+## TouchOSC Setup Guide
+
+### Quick Start
+
+1. Download JamWide's TouchOSC template: [`assets/JamWide.tosc`](https://github.com/mkschulze/JamWide/raw/main/assets/JamWide.tosc)
+2. Import the `.tosc` file into TouchOSC (File > Open)
+3. Configure the OSC connection (see below)
+4. Switch to Play mode and start controlling
+
+### Connection Setup
+
+**In JamWide** (click the OSC dot in the footer):
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| Enable OSC | On | Check the box |
+| Receive Port | 9000 | JamWide listens here |
+| Send IP | *your device's IP* | Use `127.0.0.1` if TouchOSC is on the same computer. Use your iPad/phone's IP if on a different device. |
+| Send Port | 9001 | JamWide sends feedback here |
+
+**In TouchOSC** (Connections > OSC > Connection 1):
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| Protocol | UDP | |
+| Host | *your computer's IP* | Use `127.0.0.1` if on the same computer. Otherwise your Mac/PC's local IP (e.g. `192.168.1.x`). |
+| Send Port | 9000 | Must match JamWide's Receive Port |
+| Receive Port | 9001 | Must match JamWide's Send Port |
+
+**Finding your IP:**
+- **macOS:** `ifconfig en0 | grep "inet "` or System Settings > Network
+- **Windows:** `ipconfig` in Command Prompt
+- **iPad/iPhone:** Settings > Wi-Fi > tap your network > IP Address
+
+### Template Contents
+
+The shipped template (`JamWide.tosc`) targets iPad landscape (1024x768) and includes:
+
+| Section | Controls |
+|---------|----------|
+| **Session Info** | BPM, BPI, beat, status, users display |
+| **Connect** | Server address text field, Connect + Disconnect buttons |
+| **Master** | Volume fader, mute button, VU L/R meters |
+| **Metronome** | Volume fader, pan knob, mute button |
+| **Local 1-4** | Volume, pan, mute, solo, VU L/R per channel |
+| **Remote 1-8** | Name label, volume, pan, mute, solo per user |
+
+The OSC server supports 16 remote user slots. The template shows 8 (covers most sessions). You can extend it in the TouchOSC editor if needed.
+
+### Troubleshooting
+
+- **Nothing happens when moving faders:** Check that both ports match between JamWide and TouchOSC. The Send Port in TouchOSC must equal the Receive Port in JamWide (default: 9000).
+- **Faders don't update in TouchOSC:** Check JamWide's Send IP points to your TouchOSC device's IP.
+- **OSC dot is red:** Port is in use by another application. Try different ports (e.g. 9002/9003).
+- **Feedback oscillation:** Should not happen (echo suppression is built-in). If it does, check that you don't have two OSC sources sending to the same port.

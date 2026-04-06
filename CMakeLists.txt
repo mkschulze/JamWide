@@ -271,6 +271,8 @@ if(JAMWIDE_BUILD_JUCE)
         juce/ui/ChannelStripArea.cpp
         juce/ui/ServerBrowserOverlay.cpp
         juce/ui/LicenseDialog.cpp
+        juce/osc/OscAddressMap.cpp
+        juce/osc/OscServer.cpp
         src/net/server_list.cpp
     )
 
@@ -291,6 +293,7 @@ if(JAMWIDE_BUILD_JUCE)
             juce::juce_audio_utils
             juce::juce_opengl
             juce::juce_gui_extra
+            juce::juce_osc
         PUBLIC
             juce::juce_recommended_config_flags
             juce::juce_recommended_lto_flags
@@ -344,6 +347,28 @@ if(JAMWIDE_BUILD_JUCE)
         )
     endif()
 
+    # OSC loopback smoke test (inside JUCE section for module access)
+    if(JAMWIDE_BUILD_TESTS)
+        juce_add_console_app(test_osc_loopback PRODUCT_NAME "OSC Loopback Test")
+        juce_generate_juce_header(test_osc_loopback)
+
+        target_sources(test_osc_loopback PRIVATE tests/test_osc_loopback.cpp)
+        target_include_directories(test_osc_loopback PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_SOURCE_DIR}/juce
+        )
+        target_link_libraries(test_osc_loopback PRIVATE
+            juce::juce_osc
+            juce::juce_events
+            juce::juce_core
+        )
+        target_compile_definitions(test_osc_loopback PRIVATE
+            JUCE_STANDALONE_APPLICATION=1
+        )
+        add_test(NAME osc_loopback COMMAND test_osc_loopback)
+    endif()
+
 endif() # JAMWIDE_BUILD_JUCE
 
 # Tests
@@ -358,4 +383,5 @@ if(JAMWIDE_BUILD_TESTS)
     # Only expose interfaces from vorbisencdec.h (no Vorbis codec deps)
     target_compile_definitions(test_flac_codec PRIVATE WDL_VORBIS_INTERFACE_ONLY)
     add_test(NAME flac_codec COMMAND test_flac_codec)
+
 endif()

@@ -73,7 +73,11 @@ Plans:
   2. User hears no duplicate audio from the video companion (VDO.Ninja audio is suppressed)
   3. User's video room ID is automatically derived from the NINJAM server address (no manual room setup)
   4. User sees a privacy notice about IP exposure before their first video use, and a warning if their default browser is not Chromium-based
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 11-01-PLAN.md -- VideoCompanion core: IXWebSocket dependency, WebSocket server, room ID derivation (SHA-1), username sanitization, config/roster JSON protocol
+- [ ] 11-02-PLAN.md -- Web companion page: Vite/TypeScript project in docs/video/, VDO.Ninja iframe with &noaudio, branded UI, WebSocket client, connection status
+- [ ] 11-03-PLAN.md -- Video button + privacy modal: ConnectionBar integration, VideoPrivacyDialog, BrowserDetect, processor/editor wiring, human verification checkpoint
 **UI hint**: yes
 
 ### Phase 12: Video Sync and Roster Discovery
@@ -122,6 +126,6 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 8. JUCE Integration Polish | v1.0 | 1/1 | Complete | 2026-04-05 |
 | 9. OSC Server Core | v1.1 | 0/2 | In Progress | - |
 | 10. OSC Remote Users and Template | v1.1 | 0/2 | Planned | - |
-| 11. Video Companion Foundation | v1.1 | 0/0 | Not started | - |
+| 11. Video Companion Foundation | v1.1 | 0/3 | Planned | - |
 | 12. Video Sync and Roster Discovery | v1.1 | 0/0 | Not started | - |
 | 13. Video Display Modes and OSC Integration | v1.1 | 0/0 | Not started | - |

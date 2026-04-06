@@ -56,3 +56,5 @@ logs/
 *.p8
 *.p12
 notarize.env
+docs/video/node_modules/
+docs/video/dist/

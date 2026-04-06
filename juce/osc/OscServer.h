@@ -45,17 +45,6 @@ private:
     void sendDirtyTelemetry(juce::OSCBundle& bundle, bool& hasContent);
     void sendVuMeters(juce::OSCBundle& bundle, bool& hasContent);
 
-    // Phase 10: Remote user send methods (D-01 through D-08, D-17)
-    void sendDirtyRemoteUsers(juce::OSCBundle& bundle, bool& hasContent);
-    void sendRemoteVuMeters(juce::OSCBundle& bundle, bool& hasContent);
-    void sendRemoteRoster(juce::OSCBundle& bundle, bool& hasContent);
-
-    // Phase 10: Remote user receive dispatch (D-18)
-    void handleRemoteUserOsc(const juce::String& address, float value);
-
-    // Phase 10: String-argument OSC handler (D-09, D-10)
-    void handleOscStringOnMessageThread(const juce::String& address, const juce::String& value);
-
     // Get current value for a controllable parameter (for dirty comparison)
     float getCurrentValue(int index);
 
@@ -77,48 +66,6 @@ private:
     int lastSentUsers = -1;
     float lastSentSampleRate = -1.0f;
     juce::String lastSentCodec;
-
-    // ── Phase 10: Remote user dirty tracking ──
-    static constexpr int kMaxRemoteSlots = 16;   // per D-05
-    static constexpr int kMaxSubChannels = 8;    // practical upper bound per user
-
-    // Group bus last-sent state per remote user
-    struct RemoteUserLastSent {
-        float volume = -999.0f;
-        float pan = -999.0f;
-        float mute = -999.0f;
-        float solo = -999.0f;  // derived: 1.0 if ALL sub-channels soloed, 0.0 otherwise
-    };
-    std::array<RemoteUserLastSent, kMaxRemoteSlots> lastSentRemoteUsers{};
-
-    // Sub-channel last-sent state
-    struct RemoteChannelLastSent {
-        float volume = -999.0f;
-        float pan = -999.0f;
-        float mute = -999.0f;
-        float solo = -999.0f;
-    };
-    std::array<std::array<RemoteChannelLastSent, kMaxSubChannels>, kMaxRemoteSlots> lastSentRemoteChannels{};
-
-    // Per-slot echo suppression (cleared on roster change to prevent inherited state)
-    struct RemoteUserOscSourced {
-        bool volume = false;
-        bool pan = false;
-        bool mute = false;
-    };
-    std::array<RemoteUserOscSourced, kMaxRemoteSlots> remoteOscSourced{};
-
-    struct RemoteChannelOscSourced {
-        bool volume = false;
-        bool pan = false;
-        bool mute = false;
-        bool solo = false;
-    };
-    std::array<std::array<RemoteChannelOscSourced, kMaxSubChannels>, kMaxRemoteSlots> remoteChOscSourced{};
-
-    // Roster change detection (per D-07 -- do NOT broadcast every tick)
-    int lastSentRosterCount = -1;
-    int lastSentRosterHash = -1;
 
     // Connection state
     std::atomic<bool> enabled{false};

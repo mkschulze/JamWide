@@ -31,7 +31,6 @@
 - [ ] **Phase 11: Video Companion Foundation** -- One-click VDO.Ninja launch with auto room ID, companion page, local WebSocket server, safety notices
 - [ ] **Phase 12: Video Sync and Roster Discovery** -- Interval-synced buffering, VDO.Ninja API roster mapping, room security, bandwidth profiles
 - [ ] **Phase 13: Video Display Modes and OSC Integration** -- Per-user popout windows, OSC video control, grid/popout mode switching
-- [ ] **Phase 14: MIDI Remote Control** -- MIDI CC mapping for mixer parameters including remote channels, bidirectional feedback where possible
 
 ## Phase Details
 
@@ -102,17 +101,6 @@ Plans:
 **Plans**: TBD
 **UI hint**: yes
 
-### Phase 14: MIDI Remote Control
-**Goal**: Users can control all mixer parameters including remote channels via MIDI CC, with bidirectional feedback to motorized controllers
-**Depends on**: Phase 10
-**Requirements**: MIDI-01
-**Success Criteria** (what must be TRUE):
-  1. User can map MIDI CC messages to any mixer parameter (local, remote, master, metronome)
-  2. User can control remote participant volume/pan/mute via MIDI controller
-  3. Parameter changes in JamWide send MIDI CC feedback to the controller
-  4. MIDI mappings persist across DAW sessions
-**Plans**: TBD
-
 ## Future Milestones
 
 ### v2.0: Codec & Transport Redesign
@@ -137,7 +125,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 7. DAW Sync and Session Polish | v1.0 | 3/3 | Complete | 2026-04-05 |
 | 8. JUCE Integration Polish | v1.0 | 1/1 | Complete | 2026-04-05 |
 | 9. OSC Server Core | v1.1 | 0/2 | In Progress | - |
-| 10. OSC Remote Users and Template | v1.1 | 0/2 | Planned    |  |
+| 10. OSC Remote Users and Template | v1.1 | 0/2 | Planned | - |
 | 11. Video Companion Foundation | v1.1 | 0/3 | Planned | - |
 | 12. Video Sync and Roster Discovery | v1.1 | 0/0 | Not started | - |
 | 13. Video Display Modes and OSC Integration | v1.1 | 0/0 | Not started | - |

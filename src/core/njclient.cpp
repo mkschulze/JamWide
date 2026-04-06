@@ -2721,8 +2721,6 @@ void NJClient::GetRemoteUsersSnapshot(std::vector<RemoteUserInfo>& out)
       info.name_len = copy_len;
     }
     info.mute = user->muted;
-    info.volume = user->volume;
-    info.pan = user->pan;
 
     const unsigned int present_mask =
         static_cast<unsigned int>(user->chanpresentmask);

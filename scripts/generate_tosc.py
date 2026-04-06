@@ -245,10 +245,12 @@ def build_vu_pair(parent_children, prefix, x, y, h):
     """Build a pair of narrow VU meter faders (receive-only, no interaction)."""
     vu_w = 8
     gap = 2
-    make_fader_v(parent_children, f"{prefix}_vu_L", x, y, vu_w, h,
+    # Extract short name from prefix (e.g. "/JamWide/master" -> "master")
+    short = prefix.rsplit("/", 1)[-1]
+    make_fader_v(parent_children, f"{short}_vu_L", x, y, vu_w, h,
                  f"{prefix}/vu/left", color=COLOR_VU,
                  send=False, receive=True, interactive=False)
-    make_fader_v(parent_children, f"{prefix}_vu_R", x + vu_w + gap, y, vu_w, h,
+    make_fader_v(parent_children, f"{short}_vu_R", x + vu_w + gap, y, vu_w, h,
                  f"{prefix}/vu/right", color=COLOR_VU,
                  send=False, receive=True, interactive=False)
 

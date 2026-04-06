@@ -282,8 +282,16 @@ if(JAMWIDE_BUILD_JUCE)
         juce/osc/OscStatusDot.cpp
         juce/osc/OscConfigDialog.cpp
         juce/video/VideoCompanion.cpp
+        juce/video/VideoPrivacyDialog.cpp
         src/net/server_list.cpp
     )
+
+    # BrowserDetect: macOS uses .mm, Windows/Linux uses .cpp
+    if(APPLE)
+        target_sources(JamWideJuce PRIVATE juce/video/BrowserDetect_mac.mm)
+    else()
+        target_sources(JamWideJuce PRIVATE juce/video/BrowserDetect_win.cpp)
+    endif()
 
     target_compile_definitions(JamWideJuce PUBLIC
         JUCE_WEB_BROWSER=0

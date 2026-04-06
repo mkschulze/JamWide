@@ -281,6 +281,7 @@ if(JAMWIDE_BUILD_JUCE)
         juce/osc/OscServer.cpp
         juce/osc/OscStatusDot.cpp
         juce/osc/OscConfigDialog.cpp
+        juce/video/VideoCompanion.cpp
         src/net/server_list.cpp
     )
 

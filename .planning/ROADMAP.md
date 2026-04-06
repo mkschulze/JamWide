@@ -59,7 +59,10 @@ Plans:
   2. User's TouchOSC layout updates with correct usernames when participants join or leave the session
   3. User can connect to and disconnect from a NINJAM server by sending an OSC trigger message
   4. User can import the shipped `.tosc` template into TouchOSC and immediately control JamWide without manual layout creation
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 10-01-PLAN.md — Remote user OSC send/receive: extend RemoteUserInfo snapshot, dynamic address generation, prefix-based dispatch, roster broadcast, connect/disconnect triggers, docs/osc.md update
+- [ ] 10-02-PLAN.md — TouchOSC template: generate and ship JamWide.tosc with 8 remote slots, local channels, master, metronome, session info, verification checkpoint
 
 ### Phase 11: Video Companion Foundation
 **Goal**: Users can launch video collaboration with one click and see all session participants in a browser-based grid
@@ -118,7 +121,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 7. DAW Sync and Session Polish | v1.0 | 3/3 | Complete | 2026-04-05 |
 | 8. JUCE Integration Polish | v1.0 | 1/1 | Complete | 2026-04-05 |
 | 9. OSC Server Core | v1.1 | 0/2 | In Progress | - |
-| 10. OSC Remote Users and Template | v1.1 | 0/0 | Not started | - |
+| 10. OSC Remote Users and Template | v1.1 | 0/2 | Planned | - |
 | 11. Video Companion Foundation | v1.1 | 0/0 | Not started | - |
 | 12. Video Sync and Roster Discovery | v1.1 | 0/0 | Not started | - |
 | 13. Video Display Modes and OSC Integration | v1.1 | 0/0 | Not started | - |

@@ -546,22 +546,16 @@ function connectToPlugin(port: number): WebSocket {
 | A2 | Port 7170 is unlikely to conflict with other software | Standard Stack | If conflicting, WS server fails to start; documented as known limitation for Phase 11 |
 | A3 | VDO.Ninja room guests automatically see all other guests in a grid layout | Architecture Patterns | If not, companion page may need &scene or additional parameters |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Windows Firewall Prompt on Localhost Bind**
-   - What we know: macOS firewall may prompt; binding to 127.0.0.1 usually avoids it. Windows Defender Firewall behavior for localhost binding is unvalidated.
-   - What's unclear: Does Windows prompt when a JUCE plugin binds a TCP server socket to 127.0.0.1?
-   - Recommendation: Test during implementation. If prompted, document as known behavior. The state blocker in STATE.md ("OpenSSL linkage on Windows CI unvalidated") is unrelated since we chose IXWebSocket without TLS.
+   - RESOLVED: Test during implementation. Binding to 127.0.0.1 (loopback) does not trigger Windows Defender Firewall prompts — firewall only monitors external interfaces. If prompted, document as known behavior. Non-blocking.
 
 2. **IXWebSocket Thread Safety with JUCE Message Thread**
-   - What we know: IXWebSocket's send() is thread-safe. IXWebSocket runs its own event loop thread.
-   - What's unclear: Are there potential issues with IXWebSocket's thread interacting with JUCE's message thread or process lifecycle?
-   - Recommendation: VideoCompanion destructor must call `server.stop()` before IXWebSocket is destroyed. Follow OscServer's `alive` shared_ptr pattern for safe async callbacks.
+   - RESOLVED: Plans use `callAsync` + `alive_` shared_ptr pattern (same as OscServer) for safe cross-thread callbacks. VideoCompanion destructor calls `server.stop()` before destruction. Thread safety addressed in Plan 01 design.
 
 3. **GitHub Pages CNAME for video.jamwide.app**
-   - What we know: D-21 mentions custom subdomain. GitHub Pages supports CNAME.
-   - What's unclear: Is the domain jamwide.app registered and configured for GitHub Pages? Is the CNAME already set up?
-   - Recommendation: Use relative path (`/docs/video/`) during development. CNAME setup is a deployment task, not a code task.
+   - RESOLVED: Use relative path (`/video/`) during development. CNAME setup is a deployment task outside plan scope. Plans use `base: '/video/'` in Vite config.
 
 ## Environment Availability
 

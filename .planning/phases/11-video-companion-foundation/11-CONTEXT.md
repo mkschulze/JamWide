@@ -33,7 +33,7 @@ One-click browser-based video companion for NINJAM sessions via VDO.Ninja. Cover
 
 ### WebSocket Protocol
 - **D-13:** JSON message format over WebSocket. Plugin sends messages like `{"type":"config","room":"xyz","push":"username","noaudio":true}`. Easy to parse in JS, human-readable for debugging.
-- **D-14:** Phase 11 message types: (1) `config` — room, push, password, noaudio, wsPort. Sent on WS connect. (2) `roster` — `{type:"roster", users:[{idx, name, streamId}]}`. Sent on roster change. Companion page can show user labels alongside video.
+- **D-14:** Phase 11 message types: (1) `config` — room, push, noaudio, wsPort. Sent on WS connect. Password is intentionally excluded from the config message — sending the NINJAM session password to a browser page is a security leak risk; the password is only used server-side for room ID derivation. (2) `roster` — `{type:"roster", users:[{idx, name, streamId}]}`. Sent on roster change. Companion page can show user labels alongside video.
 - **D-15:** No auto-reconnect on WebSocket drop. Companion page shows a "Reconnect" button or user re-clicks Video in the plugin. Simpler; avoids complexity of exponential backoff for foundation phase.
 
 ### Room ID & Connection Flow

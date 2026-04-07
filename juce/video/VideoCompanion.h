@@ -67,6 +67,12 @@ public:
     /// Call from message thread only.
     void deactivate();
 
+    /// Called from message thread when BPM or BPI changes.
+    /// Broadcasts {"type":"bufferDelay","delayMs":N} to all connected WebSocket clients.
+    /// Also called internally on initial client connection via sendConfigToClient.
+    /// Guard: no-op if !isActive() or no wsServer_, or if bpm/bpi are invalid (<=0 or NaN).
+    void broadcastBufferDelay(float bpm, int bpi);
+
     static constexpr int kDefaultWsPort = 7170;
 
 private:
@@ -82,7 +88,24 @@ private:
 
     juce::String buildCompanionUrl(const juce::String& roomId,
                                    const juce::String& pushId,
-                                   int wsPort);
+                                   int wsPort,
+                                   const juce::String& derivedPassword);
+
+    /// Derive a deterministic VDO.Ninja room password from NINJAM session password.
+    /// Uses SHA-256(password + ":" + roomId), truncated to 16 hex chars (64 bits).
+    ///
+    /// Truncation rationale (addresses review concern R-HIGH-01):
+    /// 16 hex chars = 64 bits of entropy. VDO.Ninja itself internally truncates its
+    /// own password hashes to just 4 hex chars (16 bits) via
+    /// SHA-256(encodeURIComponent(pw) + salt).substring(0, 4).
+    /// Our 64 bits is 2^48 times stronger than VDO.Ninja's own security level.
+    /// The NINJAM password is the primary access control; this derived password
+    /// prevents casual unauthorized viewers from joining the VDO.Ninja room.
+    /// Brute-forcing 64 bits is computationally infeasible.
+    ///
+    /// Returns empty string for public rooms (no password).
+    juce::String deriveRoomPassword(const juce::String& password,
+                                    const juce::String& roomId);
 
     void sendConfigToClient(ix::WebSocket& client);
     void broadcastRoster(const std::vector<NJClient::RemoteUserInfo>& users);
@@ -98,6 +121,9 @@ private:
     juce::String currentRoom_;
     juce::String currentPush_;
     juce::String currentCompanionUrl_;
+    juce::String currentPassword_;       // Stored for password derivation, never sent over WebSocket
+    juce::String currentDerivedPassword_; // SHA-256 derived VDO.Ninja password, used in URL fragment
+    int cachedDelayMs_ = 0;              // Last computed buffer delay, sent to new WS clients
 
     // callAsync UAF safety -- same pattern as OscServer
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);

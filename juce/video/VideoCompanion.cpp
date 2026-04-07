@@ -12,6 +12,7 @@
 #include "JamWideJuceProcessor.h"
 #include "core/njclient.h"
 #include "wdl/sha.h"
+#include <cmath>
 
 namespace jamwide {
 
@@ -74,6 +75,25 @@ juce::String VideoCompanion::deriveRoomId(const juce::String& serverAddr,
     return "jw-" + hexString;
 }
 
+// ── Derived Room Password (D-05, D-06, D-07) ──────────────────────────────
+
+juce::String VideoCompanion::deriveRoomPassword(const juce::String& password,
+                                                const juce::String& roomId)
+{
+    if (password.isEmpty()) return {};  // D-07: no password for public rooms
+
+    // D-06: SHA-256(ninjam_password + ":" + room_id)
+    // Passed to VDO.Ninja as a password (not hash) per RESEARCH.md Open Question 1:
+    // VDO.Ninja sees a password and handles its own internal hashing.
+    // All JamWide users with same NINJAM password derive the same VDO.Ninja password.
+    //
+    // Truncation: 16 hex chars = 64 bits >> VDO.Ninja's internal 4 hex chars (16 bits).
+    // See header comment for full rationale.
+    juce::String input = password + ":" + roomId;
+    juce::SHA256 sha(input.toUTF8());
+    return sha.toHexString().substring(0, 16);
+}
+
 // ── Username Sanitization (D-22) ───────────────────────────────────────────
 
 juce::String VideoCompanion::sanitizeUsername(const juce::String& name)
@@ -131,14 +151,22 @@ juce::String VideoCompanion::resolveCollision(const juce::String& sanitized,
 
 juce::String VideoCompanion::buildCompanionUrl(const juce::String& roomId,
                                                const juce::String& pushId,
-                                               int wsPort)
+                                               int wsPort,
+                                               const juce::String& derivedPassword)
 {
-    return "https://jamwide.audio/video/?room="
+    juce::String url = "https://jamwide.audio/video/?room="
          + juce::URL::addEscapeChars(roomId, true)
          + "&push="
          + juce::URL::addEscapeChars(pushId, true)
          + "&wsPort="
          + juce::String(wsPort);
+
+    // D-05: Append derived room password as URL fragment (# not ?) -- never sent to server
+    // Uses #password= so VDO.Ninja handles its own internal hashing from this value
+    if (derivedPassword.isNotEmpty())
+        url += "#password=" + derivedPassword;
+
+    return url;
 }
 
 // ── Launch / Relaunch ──────────────────────────────────────────────────────
@@ -149,6 +177,7 @@ bool VideoCompanion::launchCompanion(const juce::String& serverAddr,
 {
     currentRoom_ = deriveRoomId(serverAddr, password);
     currentPush_ = sanitizeUsername(username);
+    currentPassword_ = password;  // Store for derivation, never sent over WebSocket
 
     if (!startWebSocketServer())
     {
@@ -156,9 +185,18 @@ bool VideoCompanion::launchCompanion(const juce::String& serverAddr,
         return false;
     }
 
-    currentCompanionUrl_ = buildCompanionUrl(currentRoom_, currentPush_, wsPort_);
+    currentDerivedPassword_ = deriveRoomPassword(password, currentRoom_);
+    currentCompanionUrl_ = buildCompanionUrl(currentRoom_, currentPush_, wsPort_, currentDerivedPassword_);
     juce::URL(currentCompanionUrl_).launchInDefaultBrowser();
     active_.store(true, std::memory_order_relaxed);
+
+    // Compute initial buffer delay from current BPM/BPI (Pitfall 6: cache for late-connecting WS clients)
+    // Addresses review concern: invalid BPM/BPI guards
+    float bpm = processor_.uiSnapshot.bpm.load(std::memory_order_relaxed);
+    int bpi = processor_.uiSnapshot.bpi.load(std::memory_order_relaxed);
+    if (bpm > 0.0f && bpi > 0 && !std::isnan(bpm))
+        cachedDelayMs_ = static_cast<int>((60.0 / static_cast<double>(bpm)) * bpi * 1000.0);
+
     return true;
 }
 
@@ -254,6 +292,15 @@ void VideoCompanion::sendConfigToClient(ix::WebSocket& client)
                         "}";
 
     client.send(json.toStdString());
+
+    // Send cached buffer delay if available (protocol contract: config then bufferDelay)
+    // Addresses review concern: state preservation -- new/reconnecting clients get full state
+    if (cachedDelayMs_ > 0)
+    {
+        juce::String delayJson = "{\"type\":\"bufferDelay\",\"delayMs\":"
+                                 + juce::String(cachedDelayMs_) + "}";
+        client.send(delayJson.toStdString());
+    }
 }
 
 // ── Roster Dispatch (Thread-Safe) ──────────────────────────────────────────
@@ -308,6 +355,32 @@ void VideoCompanion::broadcastRoster(const std::vector<NJClient::RemoteUserInfo>
     }
 }
 
+// ── Buffer Delay Broadcast (D-01, D-02, D-03, D-04) ──────────────────────
+
+void VideoCompanion::broadcastBufferDelay(float bpm, int bpi)
+{
+    // D-02: Called on BPM/BPI change only, not on every beat
+    // Addresses review concern: invalid BPM/BPI guards (zero, NaN, transitional state)
+    if (bpm <= 0.0f || bpi <= 0) return;
+    if (std::isnan(bpm)) return;  // Guard against NaN during session transitions
+    if (!isActive()) return;      // Pitfall 6: guard if video not active
+
+    // D-03: delay_ms = (60.0 / bpm) * bpi * 1000, truncated to integer
+    // Integer truncation (not rounding) is deliberate -- sub-millisecond precision
+    // is irrelevant for video buffering at multi-second intervals.
+    cachedDelayMs_ = static_cast<int>((60.0 / static_cast<double>(bpm)) * bpi * 1000.0);
+
+    // D-04: {"type":"bufferDelay","delayMs":N}
+    juce::String json = "{\"type\":\"bufferDelay\",\"delayMs\":"
+                        + juce::String(cachedDelayMs_) + "}";
+
+    std::lock_guard<std::mutex> lock(wsMutex_);
+    if (!wsServer_) return;
+    auto clients = wsServer_->getClients();
+    for (auto& client : clients)
+        client->send(json.toStdString());
+}
+
 // ── Deactivate ─────────────────────────────────────────────────────────────
 
 void VideoCompanion::deactivate()
@@ -317,6 +390,9 @@ void VideoCompanion::deactivate()
     currentRoom_.clear();
     currentPush_.clear();
     currentCompanionUrl_.clear();
+    currentPassword_.clear();
+    currentDerivedPassword_.clear();
+    cachedDelayMs_ = 0;
 }
 
 }  // namespace jamwide

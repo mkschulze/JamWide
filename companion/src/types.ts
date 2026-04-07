@@ -24,7 +24,16 @@ export interface BufferDelayMessage {
   delayMs: number;
 }
 
-export type PluginMessage = ConfigMessage | RosterMessage | BufferDelayMessage;
+export interface PopoutMessage {
+  type: 'popout';
+  streamId: string;
+}
+
+export interface DeactivateMessage {
+  type: 'deactivate';
+}
+
+export type PluginMessage = ConfigMessage | RosterMessage | BufferDelayMessage | PopoutMessage | DeactivateMessage;
 
 // ── Runtime validation (addresses review: protocol resilience) ──
 
@@ -62,4 +71,17 @@ export function isBufferDelayMessage(msg: unknown): msg is BufferDelayMessage {
   if (typeof msg !== 'object' || msg === null) return false;
   const m = msg as Record<string, unknown>;
   return m.type === 'bufferDelay' && typeof m.delayMs === 'number';
+}
+
+/** Validate that a parsed object is a valid PopoutMessage */
+export function isPopoutMessage(msg: unknown): msg is PopoutMessage {
+  if (typeof msg !== 'object' || msg === null) return false;
+  const m = msg as Record<string, unknown>;
+  return m.type === 'popout' && typeof m.streamId === 'string';
+}
+
+/** Validate that a parsed object is a valid DeactivateMessage */
+export function isDeactivateMessage(msg: unknown): msg is DeactivateMessage {
+  if (typeof msg !== 'object' || msg === null) return false;
+  return (msg as Record<string, unknown>).type === 'deactivate';
 }

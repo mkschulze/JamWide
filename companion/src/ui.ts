@@ -68,19 +68,14 @@ export function setSessionInfo(roomId: string): void {
 }
 
 // ── Background Effects ──
+// VDO.Ninja supports these via URL params:
+//   &effects=3 = blur background
+//   &effects=5 = virtual green screen (VDO.Ninja provides its own image picker)
+// Custom image injection via URL is not supported by VDO.Ninja.
 
-export type BgEffect = 'none' | 'blur' | 'greenscreen' | 'bg-studio-neon' | 'bg-concert-stage' | 'bg-vinyl-wall' | 'bg-synth-wave' | 'bg-jam-room';
+export type BgEffect = 'none' | 'blur' | 'virtual-bg';
 
 const EFFECT_STORAGE_KEY = 'jamwide-bg-effect';
-const BG_BASE_URL = 'https://jamwide.audio/video/backgrounds/';
-
-const BACKGROUND_IMAGES: Record<string, string> = {
-  'bg-studio-neon': 'studio-neon.png',
-  'bg-concert-stage': 'concert-stage.png',
-  'bg-vinyl-wall': 'vinyl-wall.png',
-  'bg-synth-wave': 'synth-wave.png',
-  'bg-jam-room': 'jam-room.png',
-};
 
 export function getSavedEffect(): BgEffect {
   return (localStorage.getItem(EFFECT_STORAGE_KEY) as BgEffect) || 'none';
@@ -92,12 +87,7 @@ export function saveEffect(effect: BgEffect): void {
 
 function effectToParams(effect: BgEffect): string {
   if (effect === 'blur') return '&effects=3';
-  if (effect === 'greenscreen') return '&effects=5';
-  const bgFile = BACKGROUND_IMAGES[effect];
-  if (bgFile) {
-    const imgUrl = BG_BASE_URL + bgFile;
-    return '&effects=4&imageSrc=' + encodeURIComponent(imgUrl);
-  }
+  if (effect === 'virtual-bg') return '&effects=5';
   return '';
 }
 

@@ -27,7 +27,18 @@ VideoCompanion::~VideoCompanion()
     // Prevent pending callAsync lambdas from accessing dead object
     // (same UAF safety pattern as OscServer)
     alive_->store(false, std::memory_order_release);
-    stopWebSocketServer();
+
+    // Destructor must block until server is fully stopped (unlike deactivate()
+    // which defers to a background thread to avoid DAW state-save timeout).
+    {
+        std::lock_guard<std::mutex> lock(wsMutex_);
+        if (wsServer_)
+        {
+            wsServer_->stop();
+            wsServer_->wait();
+            wsServer_.reset();
+        }
+    }
 }
 
 // ── Room ID Derivation (D-16, D-17) ────────────────────────────────────────
@@ -202,13 +213,26 @@ bool VideoCompanion::startWebSocketServer()
 
 void VideoCompanion::stopWebSocketServer()
 {
-    std::lock_guard<std::mutex> lock(wsMutex_);
-    if (!wsServer_)
-        return;
+    std::unique_ptr<ix::WebSocketServer> serverToStop;
+    {
+        std::lock_guard<std::mutex> lock(wsMutex_);
+        if (!wsServer_)
+            return;
 
-    wsServer_->stop();
-    wsServer_->wait();
-    wsServer_.reset();
+        wsServer_->stop();
+        serverToStop = std::move(wsServer_);
+        // wsServer_ is now null — broadcastRoster/sendConfig will bail early
+    }
+
+    // Wait + destroy off the message thread to avoid DAW state-save timeout.
+    // The destructor (~VideoCompanion) also calls this, so blocking is fine there.
+    if (serverToStop)
+    {
+        std::thread([s = std::move(serverToStop)]() mutable {
+            s->wait();
+            s.reset();
+        }).detach();
+    }
 }
 
 // ── JSON Protocol (D-13, D-14) ─────────────────────────────────────────────

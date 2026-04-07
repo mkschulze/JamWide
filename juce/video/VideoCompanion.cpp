@@ -386,7 +386,11 @@ void VideoCompanion::broadcastBufferDelay(float bpm, int bpi)
     // D-03: delay_ms = (60.0 / bpm) * bpi * 1000, truncated to integer
     // Integer truncation (not rounding) is deliberate -- sub-millisecond precision
     // is irrelevant for video buffering at multi-second intervals.
-    cachedDelayMs_ = static_cast<int>((60.0 / static_cast<double>(bpm)) * bpi * 1000.0);
+    // WR-03 fix: Guard against zero/negative delay before caching or broadcasting.
+    // Extreme BPM values can truncate to 0; sending delayMs:0 would disable VDO.Ninja buffering.
+    int computed = static_cast<int>((60.0 / static_cast<double>(bpm)) * bpi * 1000.0);
+    if (computed <= 0) return;
+    cachedDelayMs_ = computed;
 
     // D-04: {"type":"bufferDelay","delayMs":N}
     juce::String json = "{\"type\":\"bufferDelay\",\"delayMs\":"

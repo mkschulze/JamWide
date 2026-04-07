@@ -37,6 +37,17 @@ namespace jamwide {
 /// - Room ID: SHA-1 hash of (serverAddr + ":" + password) or (serverAddr + ":jamwide-public")
 ///   for password-less servers. Prefix "jw-", 16 hex chars. D-16/D-17 deliberately include
 ///   password so private servers get unique rooms and public servers share a deterministic room.
+/// Snapshot of session config captured before WS server start.
+/// Passed by value into the IXWebSocket callback to avoid data races
+/// (CR-01: callback fires on IXWebSocket thread, members written on message thread).
+struct SessionSnapshot
+{
+    juce::String room;
+    juce::String push;
+    int wsPort = 0;
+    int cachedDelayMs = 0;
+};
+
 class VideoCompanion
 {
 public:
@@ -76,7 +87,7 @@ public:
     static constexpr int kDefaultWsPort = 7170;
 
 private:
-    bool startWebSocketServer();
+    bool startWebSocketServer(const SessionSnapshot& snap);
     void stopWebSocketServer();
 
     juce::String deriveRoomId(const juce::String& serverAddr,
@@ -107,7 +118,7 @@ private:
     juce::String deriveRoomPassword(const juce::String& password,
                                     const juce::String& roomId);
 
-    void sendConfigToClient(ix::WebSocket& client);
+    void sendConfigToClient(ix::WebSocket& client, const SessionSnapshot& snap);
     void broadcastRoster(const std::vector<NJClient::RemoteUserInfo>& users);
 
     JamWideJuceProcessor& processor_;

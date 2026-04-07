@@ -179,7 +179,20 @@ bool VideoCompanion::launchCompanion(const juce::String& serverAddr,
     currentPush_ = sanitizeUsername(username);
     currentPassword_ = password;  // Store for derivation, never sent over WebSocket
 
-    if (!startWebSocketServer())
+    // Compute initial buffer delay from current BPM/BPI BEFORE starting WS server
+    // (Pitfall 6: cache for late-connecting WS clients)
+    // Addresses review concern: invalid BPM/BPI guards
+    float bpm = processor_.uiSnapshot.bpm.load(std::memory_order_relaxed);
+    int bpi = processor_.uiSnapshot.bpi.load(std::memory_order_relaxed);
+    if (bpm > 0.0f && bpi > 0 && !std::isnan(bpm))
+        cachedDelayMs_ = static_cast<int>((60.0 / static_cast<double>(bpm)) * bpi * 1000.0);
+
+    // CR-01 fix: Snapshot session config before starting WS server.
+    // The IXWebSocket callback fires on its own thread; passing a value snapshot
+    // avoids a data race on currentRoom_, currentPush_, wsPort_, cachedDelayMs_.
+    SessionSnapshot snap { currentRoom_, currentPush_, wsPort_, cachedDelayMs_ };
+
+    if (!startWebSocketServer(snap))
     {
         DBG("VideoCompanion: Failed to start WebSocket server on port " + juce::String(wsPort_));
         return false;
@@ -189,13 +202,6 @@ bool VideoCompanion::launchCompanion(const juce::String& serverAddr,
     currentCompanionUrl_ = buildCompanionUrl(currentRoom_, currentPush_, wsPort_, currentDerivedPassword_);
     juce::URL(currentCompanionUrl_).launchInDefaultBrowser();
     active_.store(true, std::memory_order_relaxed);
-
-    // Compute initial buffer delay from current BPM/BPI (Pitfall 6: cache for late-connecting WS clients)
-    // Addresses review concern: invalid BPM/BPI guards
-    float bpm = processor_.uiSnapshot.bpm.load(std::memory_order_relaxed);
-    int bpi = processor_.uiSnapshot.bpi.load(std::memory_order_relaxed);
-    if (bpm > 0.0f && bpi > 0 && !std::isnan(bpm))
-        cachedDelayMs_ = static_cast<int>((60.0 / static_cast<double>(bpm)) * bpi * 1000.0);
 
     return true;
 }
@@ -211,7 +217,7 @@ void VideoCompanion::relaunchBrowser()
 
 // ── WebSocket Server Lifecycle ─────────────────────────────────────────────
 
-bool VideoCompanion::startWebSocketServer()
+bool VideoCompanion::startWebSocketServer(const SessionSnapshot& snap)
 {
     std::lock_guard<std::mutex> lock(wsMutex_);
 
@@ -222,14 +228,17 @@ bool VideoCompanion::startWebSocketServer()
     // CRITICAL: Bind to 127.0.0.1 only (T-11-01 mitigation, Research pitfall 1 & 7)
     wsServer_ = std::make_unique<ix::WebSocketServer>(wsPort_, "127.0.0.1");
 
+    // CR-01 fix: Capture snapshot by value so the callback reads a thread-safe copy
+    // instead of unsynchronized shared members. IXWebSocket fires this callback on
+    // its own internal thread.
     wsServer_->setOnClientMessageCallback(
-        [this](std::shared_ptr<ix::ConnectionState> /*connectionState*/,
+        [this, snap](std::shared_ptr<ix::ConnectionState> /*connectionState*/,
                ix::WebSocket& webSocket,
                const ix::WebSocketMessagePtr& msg)
         {
             if (msg->type == ix::WebSocketMessageType::Open)
             {
-                sendConfigToClient(webSocket);
+                sendConfigToClient(webSocket, snap);
             }
             // Close: no-op (client disconnected)
         }
@@ -280,25 +289,27 @@ static juce::String escapeJsonString(const juce::String& s)
     return s.replace("\\", "\\\\").replace("\"", "\\\"");
 }
 
-void VideoCompanion::sendConfigToClient(ix::WebSocket& client)
+void VideoCompanion::sendConfigToClient(ix::WebSocket& client, const SessionSnapshot& snap)
 {
     // D-13: config message with room, push, noaudio, wsPort
     // D-14: Password intentionally excluded from config message (security)
+    // CR-01 fix: Reads snapshot (captured by value) instead of shared members,
+    // eliminating the data race when this runs on IXWebSocket's callback thread.
     juce::String json = "{\"type\":\"config\""
-                        ",\"room\":\"" + escapeJsonString(currentRoom_) + "\""
-                        ",\"push\":\"" + escapeJsonString(currentPush_) + "\""
+                        ",\"room\":\"" + escapeJsonString(snap.room) + "\""
+                        ",\"push\":\"" + escapeJsonString(snap.push) + "\""
                         ",\"noaudio\":true"
-                        ",\"wsPort\":" + juce::String(wsPort_) +
+                        ",\"wsPort\":" + juce::String(snap.wsPort) +
                         "}";
 
     client.send(json.toStdString());
 
     // Send cached buffer delay if available (protocol contract: config then bufferDelay)
     // Addresses review concern: state preservation -- new/reconnecting clients get full state
-    if (cachedDelayMs_ > 0)
+    if (snap.cachedDelayMs > 0)
     {
         juce::String delayJson = "{\"type\":\"bufferDelay\",\"delayMs\":"
-                                 + juce::String(cachedDelayMs_) + "}";
+                                 + juce::String(snap.cachedDelayMs) + "}";
         client.send(delayJson.toStdString());
     }
 }

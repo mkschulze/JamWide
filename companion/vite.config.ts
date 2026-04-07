@@ -4,7 +4,7 @@ export default defineConfig({
   root: '.',
   base: '/video/',
   build: {
-    outDir: 'dist',
+    outDir: '../docs/video',
     emptyOutDir: true,
   },
   server: {

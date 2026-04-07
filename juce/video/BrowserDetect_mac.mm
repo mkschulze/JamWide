@@ -1,6 +1,5 @@
 #include "BrowserDetect.h"
 
-#if JUCE_MAC
 #import <CoreServices/CoreServices.h>
 #import <Foundation/Foundation.h>
 
@@ -33,5 +32,3 @@ bool isDefaultBrowserChromium()
 }
 
 }  // namespace jamwide
-
-#endif  // JUCE_MAC

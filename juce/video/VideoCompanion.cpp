@@ -122,7 +122,7 @@ juce::String VideoCompanion::buildCompanionUrl(const juce::String& roomId,
                                                const juce::String& pushId,
                                                int wsPort)
 {
-    return "https://video.jamwide.app/?room="
+    return "https://jamwide.audio/video/?room="
          + juce::URL::addEscapeChars(roomId, true)
          + "&push="
          + juce::URL::addEscapeChars(pushId, true)

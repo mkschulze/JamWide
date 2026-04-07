@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JamWide Video</title>
-  <script type="module" crossorigin src="/video/assets/index-CMJvdKao.js"></script>
-  <link rel="stylesheet" crossorigin href="/video/assets/index-CB2l5ndO.css">
+  <script type="module" crossorigin src="/video/assets/index-Bla1S-mj.js"></script>
+  <link rel="stylesheet" crossorigin href="/video/assets/index-g_1o59Wf.css">
 </head>
 <body>
   <header id="header">
@@ -26,11 +26,17 @@
       <option value="blur">Blur Background</option>
       <option value="virtual-bg">Virtual Background</option>
     </select>
+    <select id="bandwidth-profile" title="Video quality">
+      <option value="low">Low (360p)</option>
+      <option value="balanced" selected>Balanced (720p)</option>
+      <option value="high">High (1080p)</option>
+    </select>
     <span id="status-badge" class="badge-disconnected">Disconnected</span>
   </header>
 
   <main id="main-area">
     <p class="center-text">Connecting to JamWide plugin...</p>
+    <div id="roster-strip" role="status" aria-label="Connected participants" style="display:none;"></div>
   </main>
 
   <footer id="footer">

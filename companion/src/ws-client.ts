@@ -2,12 +2,13 @@
 // Connects to plugin's local WebSocket server.
 // No auto-reconnect per D-15 -- manual reconnect button only.
 
-import { isConfigMessage, isRosterMessage } from './types';
-import type { ConfigMessage, RosterMessage } from './types';
+import { isConfigMessage, isRosterMessage, isBufferDelayMessage } from './types';
+import type { ConfigMessage, RosterMessage, BufferDelayMessage } from './types';
 
 export type WsCallbacks = {
   onConfig: (msg: ConfigMessage) => void;
   onRoster: (msg: RosterMessage) => void;
+  onBufferDelay: (msg: BufferDelayMessage) => void;
   onStatusChange: (connected: boolean) => void;
 };
 
@@ -42,8 +43,9 @@ export function connectToPlugin(port: number, callbacks: WsCallbacks): WebSocket
       callbacks.onConfig(parsed);
     } else if (isRosterMessage(parsed)) {
       callbacks.onRoster(parsed);
+    } else if (isBufferDelayMessage(parsed)) {
+      callbacks.onBufferDelay(parsed);
     } else {
-      // Unknown message type -- ignore gracefully (forward compatibility)
       console.warn('VideoCompanion: unknown message type, ignoring:', parsed);
     }
   };

@@ -25,11 +25,17 @@
       <option value="blur">Blur Background</option>
       <option value="virtual-bg">Virtual Background</option>
     </select>
+    <select id="bandwidth-profile" title="Video quality">
+      <option value="low">Low (360p)</option>
+      <option value="balanced" selected>Balanced (720p)</option>
+      <option value="high">High (1080p)</option>
+    </select>
     <span id="status-badge" class="badge-disconnected">Disconnected</span>
   </header>
 
   <main id="main-area">
     <p class="center-text">Connecting to JamWide plugin...</p>
+    <div id="roster-strip" role="status" aria-label="Connected participants" style="display:none;"></div>
   </main>
 
   <footer id="footer">

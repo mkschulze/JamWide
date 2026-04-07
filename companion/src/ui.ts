@@ -69,9 +69,18 @@ export function setSessionInfo(roomId: string): void {
 
 // ── Background Effects ──
 
-export type BgEffect = 'none' | 'blur' | 'greenscreen' | 'image';
+export type BgEffect = 'none' | 'blur' | 'greenscreen' | 'bg-studio-neon' | 'bg-concert-stage' | 'bg-vinyl-wall' | 'bg-synth-wave' | 'bg-jam-room';
 
 const EFFECT_STORAGE_KEY = 'jamwide-bg-effect';
+const BG_BASE_URL = 'https://jamwide.audio/video/backgrounds/';
+
+const BACKGROUND_IMAGES: Record<string, string> = {
+  'bg-studio-neon': 'studio-neon.svg',
+  'bg-concert-stage': 'concert-stage.svg',
+  'bg-vinyl-wall': 'vinyl-wall.svg',
+  'bg-synth-wave': 'synth-wave.svg',
+  'bg-jam-room': 'jam-room.svg',
+};
 
 export function getSavedEffect(): BgEffect {
   return (localStorage.getItem(EFFECT_STORAGE_KEY) as BgEffect) || 'none';
@@ -81,20 +90,22 @@ export function saveEffect(effect: BgEffect): void {
   localStorage.setItem(EFFECT_STORAGE_KEY, effect);
 }
 
-function effectToParam(effect: BgEffect): string {
-  switch (effect) {
-    case 'blur': return '&effects=3';
-    case 'greenscreen': return '&effects=5';
-    case 'image': return '&effects=4';
-    default: return '';
+function effectToParams(effect: BgEffect): string {
+  if (effect === 'blur') return '&effects=3';
+  if (effect === 'greenscreen') return '&effects=5';
+  const bgFile = BACKGROUND_IMAGES[effect];
+  if (bgFile) {
+    const imgUrl = BG_BASE_URL + bgFile;
+    return '&effects=4&imageSrc=' + encodeURIComponent(imgUrl);
   }
+  return '';
 }
 
 // ── VDO.Ninja URL Builder ──
 
 export function buildVdoNinjaUrl(room: string, push: string, effect?: BgEffect): string {
-  const base = `https://vdo.ninja/?room=${encodeURIComponent(room)}&push=${encodeURIComponent(push)}&noaudio&cleanoutput&webcam`;
-  const fx = effectToParam(effect ?? getSavedEffect());
+  const base = `https://vdo.ninja/?room=${encodeURIComponent(room)}&push=${encodeURIComponent(push)}&noaudio&cleanoutput`;
+  const fx = effectToParams(effect ?? getSavedEffect());
   return base + fx;
 }
 

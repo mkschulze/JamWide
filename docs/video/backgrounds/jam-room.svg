@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>
+    <radialGradient id="lamp" cx="50%" cy="0%">
+      <stop offset="0%" stop-color="#ffcc66" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="transparent"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <!-- Warm overhead light -->
+  <rect width="1920" height="600" fill="url(#lamp)"/>
+  <!-- Back wall with foam panels -->
+  <g opacity="0.12">
+    <rect x="100" y="80" width="150" height="150" rx="6" fill="#333" stroke="#444" stroke-width="1"/>
+    <rect x="280" y="80" width="150" height="150" rx="6" fill="#2a2a3a" stroke="#444" stroke-width="1"/>
+    <rect x="460" y="80" width="150" height="150" rx="6" fill="#333" stroke="#444" stroke-width="1"/>
+    <rect x="640" y="80" width="150" height="150" rx="6" fill="#2a2a3a" stroke="#444" stroke-width="1"/>
+    <rect x="100" y="260" width="150" height="150" rx="6" fill="#2a2a3a" stroke="#444" stroke-width="1"/>
+    <rect x="280" y="260" width="150" height="150" rx="6" fill="#333" stroke="#444" stroke-width="1"/>
+    <rect x="460" y="260" width="150" height="150" rx="6" fill="#2a2a3a" stroke="#444" stroke-width="1"/>
+    <rect x="640" y="260" width="150" height="150" rx="6" fill="#333" stroke="#444" stroke-width="1"/>
+    <rect x="1130" y="80" width="150" height="150" rx="6" fill="#333" stroke="#444" stroke-width="1"/>
+    <rect x="1310" y="80" width="150" height="150" rx="6" fill="#2a2a3a" stroke="#444" stroke-width="1"/>
+    <rect x="1490" y="80" width="150" height="150" rx="6" fill="#333" stroke="#444" stroke-width="1"/>
+    <rect x="1670" y="80" width="150" height="150" rx="6" fill="#2a2a3a" stroke="#444" stroke-width="1"/>
+    <rect x="1130" y="260" width="150" height="150" rx="6" fill="#2a2a3a" stroke="#444" stroke-width="1"/>
+    <rect x="1310" y="260" width="150" height="150" rx="6" fill="#333" stroke="#444" stroke-width="1"/>
+    <rect x="1490" y="260" width="150" height="150" rx="6" fill="#2a2a3a" stroke="#444" stroke-width="1"/>
+    <rect x="1670" y="260" width="150" height="150" rx="6" fill="#333" stroke="#444" stroke-width="1"/>
+  </g>
+  <!-- Amp stack left -->
+  <g transform="translate(150,500)" opacity="0.25">
+    <rect x="0" y="0" width="140" height="100" rx="5" fill="#1a1a1a" stroke="#333" stroke-width="2"/>
+    <rect x="0" y="110" width="140" height="100" rx="5" fill="#1a1a1a" stroke="#333" stroke-width="2"/>
+    <circle cx="35" cy="50" r="20" fill="#111" stroke="#222"/>
+    <circle cx="105" cy="50" r="20" fill="#111" stroke="#222"/>
+    <circle cx="35" cy="160" r="20" fill="#111" stroke="#222"/>
+    <circle cx="105" cy="160" r="20" fill="#111" stroke="#222"/>
+    <!-- LED -->
+    <circle cx="120" cy="15" r="3" fill="#ff3333" opacity="0.8"/>
+  </g>
+  <!-- Amp right -->
+  <g transform="translate(1630,520)" opacity="0.25">
+    <rect x="0" y="0" width="140" height="100" rx="5" fill="#1a1a1a" stroke="#333" stroke-width="2"/>
+    <circle cx="35" cy="50" r="20" fill="#111" stroke="#222"/>
+    <circle cx="105" cy="50" r="20" fill="#111" stroke="#222"/>
+    <circle cx="120" cy="15" r="3" fill="#33cc33" opacity="0.8"/>
+  </g>
+  <!-- Floor -->
+  <rect x="0" y="800" width="1920" height="280" fill="#111122" opacity="0.5"/>
+  <!-- Cables on floor -->
+  <path d="M300,850 Q500,870 700,840 Q900,810 960,850" stroke="#222" stroke-width="3" fill="none" opacity="0.3"/>
+  <path d="M1200,860 Q1400,830 1600,850" stroke="#333" stroke-width="2" fill="none" opacity="0.2"/>
+  <!-- Drum kit silhouette center-back -->
+  <g transform="translate(920,450)" opacity="0.1">
+    <ellipse cx="0" cy="50" rx="80" ry="40" fill="#222" stroke="#333"/>
+    <ellipse cx="-100" cy="20" rx="45" ry="35" fill="#222" stroke="#333"/>
+    <ellipse cx="100" cy="20" rx="45" ry="35" fill="#222" stroke="#333"/>
+    <circle cx="-130" cy="-30" r="25" fill="#222" stroke="#333"/>
+    <circle cx="130" cy="-30" r="25" fill="#222" stroke="#333"/>
+    <rect x="-3" y="-100" width="6" height="120" fill="#333"/>
+  </g>
+</svg>

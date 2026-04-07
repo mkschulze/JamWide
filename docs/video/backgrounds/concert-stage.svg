@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+  <defs>
+    <radialGradient id="spot1" cx="30%" cy="20%">
+      <stop offset="0%" stop-color="#ff6600" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="transparent"/>
+    </radialGradient>
+    <radialGradient id="spot2" cx="70%" cy="20%">
+      <stop offset="0%" stop-color="#0066ff" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="transparent"/>
+    </radialGradient>
+    <radialGradient id="spot3" cx="50%" cy="15%">
+      <stop offset="0%" stop-color="#ff0066" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="transparent"/>
+    </radialGradient>
+  </defs>
+  <!-- Dark stage -->
+  <rect width="1920" height="1080" fill="#080810"/>
+  <!-- Stage floor -->
+  <polygon points="0,700 1920,700 1920,1080 0,1080" fill="#111118"/>
+  <line x1="0" y1="700" x2="1920" y2="700" stroke="#222" stroke-width="3"/>
+  <!-- Spotlights -->
+  <rect width="1920" height="1080" fill="url(#spot1)"/>
+  <rect width="1920" height="1080" fill="url(#spot2)"/>
+  <rect width="1920" height="1080" fill="url(#spot3)"/>
+  <!-- Light beams from top -->
+  <polygon points="500,0 400,700 600,700" fill="white" opacity="0.03"/>
+  <polygon points="960,0 860,700 1060,700" fill="white" opacity="0.04"/>
+  <polygon points="1400,0 1300,700 1500,700" fill="white" opacity="0.03"/>
+  <!-- Truss bars at top -->
+  <rect x="0" y="30" width="1920" height="12" fill="#1a1a1a"/>
+  <rect x="0" y="60" width="1920" height="8" fill="#151515"/>
+  <!-- Stage monitors -->
+  <polygon points="200,700 280,700 260,650 220,650" fill="#1a1a1a" stroke="#222" stroke-width="1"/>
+  <polygon points="1640,700 1720,700 1700,650 1660,650" fill="#1a1a1a" stroke="#222" stroke-width="1"/>
+  <!-- Floor tape marks -->
+  <rect x="900" y="720" width="120" height="4" rx="2" fill="#ffcc00" opacity="0.3"/>
+  <rect x="400" y="750" width="80" height="3" rx="1" fill="#ff3333" opacity="0.2"/>
+  <rect x="1440" y="750" width="80" height="3" rx="1" fill="#ff3333" opacity="0.2"/>
+</svg>

@@ -70,7 +70,7 @@ export function setSessionInfo(roomId: string): void {
 // ── VDO.Ninja URL Builder ──
 
 export function buildVdoNinjaUrl(room: string, push: string): string {
-  return `https://vdo.ninja/?room=${encodeURIComponent(room)}&push=${encodeURIComponent(push)}&noaudio&cleanoutput`;
+  return `https://vdo.ninja/?room=${encodeURIComponent(room)}&push=${encodeURIComponent(push)}&noaudio&cleanoutput&webcam`;
 }
 
 // ── VDO.Ninja Iframe ──

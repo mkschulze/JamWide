@@ -209,3 +209,13 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |
 | 18. Testing Infrastructure | v1.2 | 0/0 | Not started | - |
+
+## Backlog
+
+### Phase 999.1: Hide Bot Users from NINJAM Mixer Channels (BACKLOG)
+**Goal**: Filter known bot usernames (ninbot, jambot, etc.) from the mixer channel strip UI so they don't appear as audio channels. Shared bot detection utility reuses the same bot-name list as Phase 12 roster strip filtering.
+**Requirements**: TBD
+**Plans**: 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd-review-backlog when ready)

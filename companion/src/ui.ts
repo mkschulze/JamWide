@@ -133,16 +133,25 @@ export function buildVdoNinjaUrl(
   push: string,
   effect?: BgEffect,
   bandwidthProfile?: BandwidthProfile,
-  hashFragment?: string
+  hashFragment?: string,
+  viewStreamId?: string
 ): string {
   const profile = bandwidthProfile ?? getSavedBandwidthProfile();
   const bw = BANDWIDTH_PROFILES[profile];
   const fx = effectToParams(effect ?? getSavedEffect());
 
   // Base URL with chunked mode (Pitfall 2: required for setBufferDelay > 4s)
-  let url = `https://vdo.ninja/?room=${encodeURIComponent(room)}`
-    + `&push=${encodeURIComponent(push)}`
-    + '&noaudio&cleanoutput'
+  let url = `https://vdo.ninja/?room=${encodeURIComponent(room)}`;
+
+  // Phase 13 (VID-07): When viewStreamId is set, this is a view-only popout window.
+  // Omit &push= (no outbound camera/audio) and add &view= to filter to one stream.
+  if (viewStreamId) {
+    url += `&view=${encodeURIComponent(viewStreamId)}`;
+  } else {
+    url += `&push=${encodeURIComponent(push)}`;
+  }
+
+  url += '&noaudio&cleanoutput'
     + '&chunked'
     + '&chunkbufferadaptive=0'
     + '&chunkbufferceil=180000'
@@ -234,11 +243,12 @@ export function renderRosterStrip(users: RosterUser[]): void {
   strip.style.display = 'flex';
 
   visibleUsers.forEach(user => {
-    const pill = document.createElement('span');
+    const pill = document.createElement('button');
     pill.className = 'roster-pill';
     // T-12-02 mitigation: textContent is XSS-safe (never use innerHTML for user names)
     pill.textContent = user.name;
     pill.dataset.streamId = user.streamId;
+    pill.title = `Pop out ${user.name} video`;
     strip.appendChild(pill);
   });
 }

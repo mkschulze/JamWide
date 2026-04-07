@@ -75,11 +75,11 @@ const EFFECT_STORAGE_KEY = 'jamwide-bg-effect';
 const BG_BASE_URL = 'https://jamwide.audio/video/backgrounds/';
 
 const BACKGROUND_IMAGES: Record<string, string> = {
-  'bg-studio-neon': 'studio-neon.svg',
-  'bg-concert-stage': 'concert-stage.svg',
-  'bg-vinyl-wall': 'vinyl-wall.svg',
-  'bg-synth-wave': 'synth-wave.svg',
-  'bg-jam-room': 'jam-room.svg',
+  'bg-studio-neon': 'studio-neon.png',
+  'bg-concert-stage': 'concert-stage.png',
+  'bg-vinyl-wall': 'vinyl-wall.png',
+  'bg-synth-wave': 'synth-wave.png',
+  'bg-jam-room': 'jam-room.png',
 };
 
 export function getSavedEffect(): BgEffect {

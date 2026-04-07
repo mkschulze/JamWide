@@ -91,7 +91,10 @@ Plans:
   2. User can see which VDO.Ninja video streams correspond to which NINJAM usernames in the companion page
   3. User's video room is automatically secured with a password derived from the NINJAM session (unauthorized viewers cannot join)
   4. User can select a bandwidth-aware video profile (mobile/balanced/desktop) and see the quality change accordingly
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 12-01-PLAN.md — C++ plugin: juce_cryptography linkage, buffer delay calculation+broadcast, SHA-256 room hash derivation, companion URL hash fragment, BPM/BPI event wiring
+- [ ] 12-02-PLAN.md — Companion page: Vitest setup, BufferDelayMessage type, URL builder (chunked/quality/hash), bandwidth dropdown, roster name label strip, buffer delay relay, all tests
 
 ### Phase 13: Video Display Modes and OSC Integration
 **Goal**: Users can pop out individual participant video into separate windows and control all video features from their OSC surface
@@ -199,7 +202,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 9. OSC Server Core | v1.1 | 0/2 | In Progress | - |
 | 10. OSC Remote Users and Template | v1.1 | 2/2 | Complete    | 2026-04-07 |
 | 11. Video Companion Foundation | v1.1 | 3/3 | Complete    | 2026-04-07 |
-| 12. Video Sync and Roster Discovery | v1.1 | 0/0 | Not started | - |
+| 12. Video Sync and Roster Discovery | v1.1 | 0/2 | In Progress | - |
 | 13. Video Display Modes and OSC Integration | v1.1 | 0/0 | Not started | - |
 | 14. MIDI Remote Control | v1.1 | 0/0 | Not started | - |
 | 15. Connection Encryption | v1.2 | 0/0 | Not started | - |

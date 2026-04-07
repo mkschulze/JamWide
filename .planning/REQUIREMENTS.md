@@ -40,6 +40,20 @@ Requirements for OSC remote control and VDO.Ninja video companion.
 
 - [ ] **MIDI-01**: User can map MIDI CC to any mixer parameter (local, remote, master, metronome) with bidirectional feedback and persistent mappings
 
+### Security & Quality
+
+- [ ] **SEC-01**: User's NINJAM credentials are transmitted over an encrypted channel (AES-256-CBC or TLS)
+- [ ] **SEC-02**: User's audio stream is encrypted end-to-end when connecting with a session password
+- [ ] **SEC-03**: Encryption is backward-compatible — unencrypted connections still work with legacy NINJAM servers
+- [ ] **COD-01**: User can use Opus codec for low-latency real-time audio with automatic bitrate adaptation
+- [ ] **COD-02**: User experiences packet loss concealment (no abrupt silence on network glitches)
+- [ ] **COD-03**: User can negotiate codec capability with remote peers (mixed Opus/Vorbis/FLAC sessions)
+- [ ] **NET-01**: User's connection automatically reconnects with exponential backoff (1s–30s) on network interruption
+- [ ] **NET-02**: User sees a per-peer adaptive jitter buffer that smooths network timing variance
+- [ ] **QA-01**: Plugin survives 1000x rapid create/destroy cycles and 10 concurrent instances without crash (stress tests)
+- [ ] **QA-02**: Plugin has documented multi-phase thread shutdown sequence preventing DAW state-save timeouts
+- [ ] **QA-03**: CI pipeline runs integration and stress tests before every release
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -94,10 +108,21 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VID-11 | Phase 13 | Pending |
 | VID-12 | Phase 12 | Pending |
 | MIDI-01 | Phase 14 | Pending |
+| SEC-01 | Phase 15 | Pending |
+| SEC-02 | Phase 15 | Pending |
+| SEC-03 | Phase 15 | Pending |
+| COD-01 | Phase 16 | Pending |
+| COD-02 | Phase 16 | Pending |
+| COD-03 | Phase 16 | Pending |
+| NET-01 | Phase 17 | Pending |
+| NET-02 | Phase 17 | Pending |
+| QA-01 | Phase 18 | Pending |
+| QA-02 | Phase 18 | Pending |
+| QA-03 | Phase 18 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 24 total
-- Mapped to phases: 24
+- v1.1 requirements: 35 total
+- Mapped to phases: 35
 - Unmapped: 0
 
 ---

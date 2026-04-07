@@ -388,10 +388,11 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
         int atIdx = userName.lastIndexOfChar('@');
         juce::String cleanName = (atIdx > 0) ? userName.substring(0, atIdx) : userName;
 
-        // Hide known bot users from the mixer (shared list with companion page)
-        if (cleanName.compareIgnoreCase("ninbot") == 0
-            || cleanName.compareIgnoreCase("jambot") == 0
-            || cleanName.compareIgnoreCase("ninjam") == 0)
+        // Hide known bot users from the mixer (shared list with companion page).
+        // Prefix match handles variants like "ninbot_", "ninbot2", "Jambot_server".
+        if (cleanName.startsWithIgnoreCase("ninbot")
+            || cleanName.startsWithIgnoreCase("jambot")
+            || cleanName.startsWithIgnoreCase("ninjam"))
             continue;
         // Apply the cleaned name (with @IP stripped)
         userName = cleanName;

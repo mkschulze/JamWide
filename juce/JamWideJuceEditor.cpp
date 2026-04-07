@@ -303,10 +303,26 @@ void JamWideJuceEditor::drainEvents()
             else if constexpr (std::is_same_v<T, jamwide::BpmChangedEvent>)
             {
                 beatBar.triggerFlash();
+                // D-01, D-02: Forward BPM change to VideoCompanion for buffer delay update.
+                // Source is session state change (NJClient event), not editor visibility,
+                // so this works for hidden/minimized plugin and standalone mode.
+                if (processorRef.videoCompanion && processorRef.videoCompanion->isActive())
+                {
+                    float bpm = e.newBpm;
+                    int bpi = processorRef.uiSnapshot.bpi.load(std::memory_order_relaxed);
+                    processorRef.videoCompanion->broadcastBufferDelay(bpm, bpi);
+                }
             }
             else if constexpr (std::is_same_v<T, jamwide::BpiChangedEvent>)
             {
                 beatBar.triggerFlash();
+                // D-01, D-02: Forward BPI change to VideoCompanion for buffer delay update.
+                if (processorRef.videoCompanion && processorRef.videoCompanion->isActive())
+                {
+                    float bpm = processorRef.uiSnapshot.bpm.load(std::memory_order_relaxed);
+                    int bpi = e.newBpi;
+                    processorRef.videoCompanion->broadcastBufferDelay(bpm, bpi);
+                }
             }
             else if constexpr (std::is_same_v<T, jamwide::SyncStateChangedEvent>)
             {

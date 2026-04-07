@@ -313,6 +313,7 @@ if(JAMWIDE_BUILD_JUCE)
             juce::juce_opengl
             juce::juce_gui_extra
             juce::juce_osc
+            juce::juce_cryptography
         PUBLIC
             juce::juce_recommended_config_flags
             juce::juce_recommended_lto_flags

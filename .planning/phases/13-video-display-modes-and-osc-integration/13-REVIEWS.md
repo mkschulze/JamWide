@@ -2,6 +2,7 @@
 phase: 13
 reviewers: [codex]
 reviewed_at: 2026-04-07
+review_rounds: 2
 plans_reviewed: [13-01-PLAN.md, 13-02-PLAN.md]
 ---
 
@@ -96,3 +97,33 @@ Plan 02 has the right broad responsibilities for `VID-11`, but it carries materi
 
 ### Divergent Views
 - No divergent views (single reviewer)
+
+---
+
+## Round 2: Codex Review (Post-Revision)
+
+### Prior Concern Resolution
+
+| Concern | Status |
+|---------|--------|
+| postMessage origin validation | **RESOLVED** — `event.source === window.opener` guard added |
+| Window lifecycle cleanup | **RESOLVED** — periodic 2s sweep + cleanup on roster update |
+| OSC activation processor fields | **RESOLVED** — `relaunchFromOsc()` uses VideoCompanion's stored params |
+| Privacy-gate state | **RESOLVED** — `hasLaunchedThisSession_` flag enforces "OSC may relaunch, never first-launch" |
+| "Switch display modes" ambiguity | **RESOLVED** — grid=default, popout=additive, no mode-switch address |
+
+### Summary
+
+The revisions address the original high-severity review points substantially better. Plan 01 now closes the two browser-side gaps with explicit origin/source validation and deterministic popout lifecycle cleanup. Plan 02 corrects the earlier flawed OSC activation assumption by moving relaunch state into VideoCompanion, making the privacy rule enforceable in code, and clarifying the intended OSC semantics. Overall, the revised plans are much closer to implementation-ready than the prior round.
+
+### Remaining Concerns
+
+- **MEDIUM**: postMessage sender uses `'*'` targetOrigin — should use `window.location.origin` since pages are same-origin
+- **MEDIUM**: `storedPassword_` retained in memory for OSC relaunch — tradeoff not explicitly called out
+- **MEDIUM**: deactivate→OSC reactivate→reconnect correctness needs explicit verification
+- **LOW**: popout.ts reads `push` from query string but iframe URL intentionally omits `&push=`
+- **LOW**: Build verification target name may differ from `JamWide_VST3`
+
+### Risk Assessment
+
+**MEDIUM** (down from HIGH). Prior high-risk issues are well addressed. Remaining risk is implementation/integration: state management in VideoCompanion, relaunch correctness, sender-side postMessage targeting.

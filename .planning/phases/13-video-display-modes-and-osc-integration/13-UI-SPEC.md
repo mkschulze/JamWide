@@ -1,7 +1,8 @@
 ---
 phase: 13
 slug: video-display-modes-and-osc-integration
-status: draft
+status: approved
+reviewed_at: 2026-04-07
 shadcn_initialized: false
 preset: none
 created: 2026-04-07

@@ -23,7 +23,11 @@ import type { BgEffect, BandwidthProfile } from './ui';
 
 // ── Parse URL query params ──
 const params = new URLSearchParams(window.location.search);
-const port = parseInt(params.get('wsPort') || '7170', 10);
+// WR-02 fix: Validate parseInt result to avoid NaN port (e.g. ?wsPort=abc)
+const rawPort = parseInt(params.get('wsPort') || '7170', 10);
+const port = Number.isFinite(rawPort) && rawPort > 0 && rawPort < 65536
+  ? rawPort
+  : 7170;
 
 // -- Parse hash fragment for room security (D-05) --
 // Parsed once on page load and stored in module-level variable.

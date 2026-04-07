@@ -60,6 +60,21 @@ body {
   color: var(--text-secondary);
 }
 
+#bg-effect {
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  outline: none;
+}
+
+#bg-effect:hover {
+  border-color: var(--text-secondary);
+}
+
 #status-badge {
   margin-left: auto;
   border-radius: 12px;

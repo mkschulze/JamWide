@@ -67,10 +67,35 @@ export function setSessionInfo(roomId: string): void {
   info.textContent = `Room: ${roomId}`;
 }
 
+// ── Background Effects ──
+
+export type BgEffect = 'none' | 'blur' | 'greenscreen' | 'image';
+
+const EFFECT_STORAGE_KEY = 'jamwide-bg-effect';
+
+export function getSavedEffect(): BgEffect {
+  return (localStorage.getItem(EFFECT_STORAGE_KEY) as BgEffect) || 'none';
+}
+
+export function saveEffect(effect: BgEffect): void {
+  localStorage.setItem(EFFECT_STORAGE_KEY, effect);
+}
+
+function effectToParam(effect: BgEffect): string {
+  switch (effect) {
+    case 'blur': return '&effects=3';
+    case 'greenscreen': return '&effects=5';
+    case 'image': return '&effects=4';
+    default: return '';
+  }
+}
+
 // ── VDO.Ninja URL Builder ──
 
-export function buildVdoNinjaUrl(room: string, push: string): string {
-  return `https://vdo.ninja/?room=${encodeURIComponent(room)}&push=${encodeURIComponent(push)}&noaudio&cleanoutput&webcam`;
+export function buildVdoNinjaUrl(room: string, push: string, effect?: BgEffect): string {
+  const base = `https://vdo.ninja/?room=${encodeURIComponent(room)}&push=${encodeURIComponent(push)}&noaudio&cleanoutput&webcam`;
+  const fx = effectToParam(effect ?? getSavedEffect());
+  return base + fx;
 }
 
 // ── VDO.Ninja Iframe ──

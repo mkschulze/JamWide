@@ -4,7 +4,7 @@
 VideoPrivacyDialog::VideoPrivacyDialog()
 {
     // Title: "Video -- Privacy Notice" (em dash per UI-SPEC copywriting)
-    titleLabel_.setText("Video \xe2\x80\x94 Privacy Notice", juce::dontSendNotification);
+    titleLabel_.setText("Video - Privacy Notice", juce::dontSendNotification);
     titleLabel_.setFont(juce::FontOptions(16.0f).withStyle("Bold"));
     titleLabel_.setColour(juce::Label::textColourId,
         juce::Colour(JamWideLookAndFeel::kTextHeading));
@@ -23,7 +23,7 @@ VideoPrivacyDialog::VideoPrivacyDialog()
     addAndMakeVisible(bodyTextEditor_);
 
     // Accept button: "I Understand -- Open Video"
-    acceptButton_.setButtonText("I Understand \xe2\x80\x94 Open Video");
+    acceptButton_.setButtonText("I Understand - Open Video");
     acceptButton_.setColour(juce::TextButton::buttonColourId,
         juce::Colour(JamWideLookAndFeel::kAccentConnect).withAlpha(0.2f));
     acceptButton_.setColour(juce::TextButton::textColourOnId,

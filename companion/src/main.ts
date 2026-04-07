@@ -12,7 +12,10 @@ import {
   loadVdoNinjaIframe,
   showConnectionLost,
   showEmptyRoom,
+  getSavedEffect,
+  saveEffect,
 } from './ui';
+import type { BgEffect } from './ui';
 
 // ── Parse URL query params ──
 const params = new URLSearchParams(window.location.search);
@@ -20,6 +23,8 @@ const port = parseInt(params.get('wsPort') || '7170', 10);
 
 // ── State tracking ──
 let configReceived = false;
+let currentRoom = '';
+let currentPush = '';
 
 // ── Show initial pre-connection state (review concern #9: first-load timing) ──
 showPreConnectionState();
@@ -28,6 +33,8 @@ showPreConnectionState();
 const callbacks: WsCallbacks = {
   onConfig(msg) {
     configReceived = true;
+    currentRoom = msg.room;
+    currentPush = msg.push;
     setSessionInfo(msg.room);
     loadVdoNinjaIframe(msg.room, msg.push);
     updateHeaderBadge(true);
@@ -70,5 +77,18 @@ const reconnectBtn = document.getElementById('reconnect-btn');
 if (reconnectBtn) {
   reconnectBtn.addEventListener('click', () => {
     connectToPlugin(port, callbacks);
+  });
+}
+
+// ── Wire background effect dropdown ──
+const bgSelect = document.getElementById('bg-effect') as HTMLSelectElement | null;
+if (bgSelect) {
+  bgSelect.value = getSavedEffect();
+  bgSelect.addEventListener('change', () => {
+    const effect = bgSelect.value as BgEffect;
+    saveEffect(effect);
+    if (configReceived && currentRoom) {
+      loadVdoNinjaIframe(currentRoom, currentPush);
+    }
   });
 }

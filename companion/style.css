@@ -147,6 +147,10 @@ body {
   z-index: 10;
 }
 
+/* NOTE: Changing <span> to <button> in renderRosterStrip means the button
+   inherits browser default styles (border, padding, background).
+   These rules reset those defaults. Addresses review MEDIUM concern about
+   span-to-button styling/accessibility impact. */
 .roster-pill {
   font-size: 12px;
   color: var(--text-primary);
@@ -156,6 +160,17 @@ body {
   border-radius: 4px;
   padding: 2px 8px;
   white-space: nowrap;
+  cursor: pointer;
+  font: inherit;
+  transition: background 0.15s ease;
+}
+
+.roster-pill:hover {
+  background: #2A2D48;
+}
+
+.roster-pill.popout-active {
+  border-left: 2px solid #40E070;
 }
 
 /* ── Footer ── */
@@ -215,6 +230,24 @@ body {
 
 .pulse {
   animation: pulse 2s ease-in-out infinite;
+}
+
+/* ── Responsive ── */
+
+/* -- Popup Blocked Banner (Phase 13) -- */
+
+#popup-blocked-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  padding: 8px 16px;
+  background: rgba(204, 184, 51, 0.15);
+  border: 1px solid rgba(204, 184, 51, 0.4);
+  color: #CCB833;
+  font-size: 14px;
+  cursor: pointer;
 }
 
 /* ── Responsive ── */

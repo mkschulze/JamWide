@@ -19,7 +19,12 @@ export interface RosterMessage {
   users: RosterUser[];
 }
 
-export type PluginMessage = ConfigMessage | RosterMessage;
+export interface BufferDelayMessage {
+  type: 'bufferDelay';
+  delayMs: number;
+}
+
+export type PluginMessage = ConfigMessage | RosterMessage | BufferDelayMessage;
 
 // ── Runtime validation (addresses review: protocol resilience) ──
 
@@ -50,4 +55,11 @@ export function isRosterMessage(msg: unknown): msg is RosterMessage {
       typeof (u as Record<string, unknown>).name === 'string' &&
       typeof (u as Record<string, unknown>).streamId === 'string'
   );
+}
+
+/** Validate that a parsed object is a valid BufferDelayMessage */
+export function isBufferDelayMessage(msg: unknown): msg is BufferDelayMessage {
+  if (typeof msg !== 'object' || msg === null) return false;
+  const m = msg as Record<string, unknown>;
+  return m.type === 'bufferDelay' && typeof m.delayMs === 'number';
 }

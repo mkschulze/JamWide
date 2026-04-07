@@ -2,6 +2,8 @@
 // Matches the UI-SPEC layout: header badge, footer status, VDO.Ninja iframe,
 // empty state, pre-connection state.
 
+import type { RosterUser } from './types';
+
 // ── Helper: safe element query ──
 
 function el<T extends HTMLElement>(id: string): T {
@@ -85,6 +87,39 @@ export function saveEffect(effect: BgEffect): void {
   localStorage.setItem(EFFECT_STORAGE_KEY, effect);
 }
 
+// -- Bandwidth Profiles (D-12, D-14) --
+// CRITICAL: VDO.Ninja quality numbering is INVERTED (Research Pitfall 1)
+//   quality=0 = 1080p60 (highest)
+//   quality=1 = 720p60  (middle)
+//   quality=2 = 360p30  (lowest)
+
+export type BandwidthProfile = 'low' | 'balanced' | 'high';
+
+const VALID_BANDWIDTH_PROFILES: ReadonlySet<string> = new Set(['low', 'balanced', 'high']);
+
+export const BANDWIDTH_PROFILES = {
+  low:      { quality: 2, maxvideobitrate: 500  },  // 360p30, 500kbps
+  balanced: { quality: 1, maxvideobitrate: 1500 },  // 720p60, 1.5Mbps
+  high:     { quality: 0, maxvideobitrate: 3000 },  // 1080p60, 3Mbps
+} as const;
+
+const BANDWIDTH_STORAGE_KEY = 'jamwide-bandwidth-profile';
+
+/** Read saved bandwidth profile from localStorage.
+ *  Addresses review concern R-MEDIUM-07: defensive handling for invalid stored values.
+ *  Falls back to 'balanced' if stored value is missing, empty, or not a valid profile name. */
+export function getSavedBandwidthProfile(): BandwidthProfile {
+  const stored = localStorage.getItem(BANDWIDTH_STORAGE_KEY);
+  if (stored && VALID_BANDWIDTH_PROFILES.has(stored)) {
+    return stored as BandwidthProfile;
+  }
+  return 'balanced';
+}
+
+export function saveBandwidthProfile(profile: BandwidthProfile): void {
+  localStorage.setItem(BANDWIDTH_STORAGE_KEY, profile);
+}
+
 function effectToParams(effect: BgEffect): string {
   if (effect === 'blur') return '&effects=3';
   if (effect === 'virtual-bg') return '&effects=5';
@@ -93,19 +128,142 @@ function effectToParams(effect: BgEffect): string {
 
 // ── VDO.Ninja URL Builder ──
 
-export function buildVdoNinjaUrl(room: string, push: string, effect?: BgEffect): string {
-  const base = `https://vdo.ninja/?room=${encodeURIComponent(room)}&push=${encodeURIComponent(push)}&noaudio&cleanoutput`;
+export function buildVdoNinjaUrl(
+  room: string,
+  push: string,
+  effect?: BgEffect,
+  bandwidthProfile?: BandwidthProfile,
+  hashFragment?: string
+): string {
+  const profile = bandwidthProfile ?? getSavedBandwidthProfile();
+  const bw = BANDWIDTH_PROFILES[profile];
   const fx = effectToParams(effect ?? getSavedEffect());
-  return base + fx;
+
+  // Base URL with chunked mode (Pitfall 2: required for setBufferDelay > 4s)
+  let url = `https://vdo.ninja/?room=${encodeURIComponent(room)}`
+    + `&push=${encodeURIComponent(push)}`
+    + '&noaudio&cleanoutput'
+    + '&chunked'
+    + '&chunkbufferadaptive=0'
+    + '&chunkbufferceil=180000'
+    + `&quality=${bw.quality}`
+    + `&maxvideobitrate=${bw.maxvideobitrate}`
+    + fx;
+
+  // D-05: Room derived password forwarded as VDO.Ninja password param in iframe URL
+  // (Addresses review concern R-MEDIUM-08: uses "password" terminology consistently)
+  if (hashFragment)
+    url += `&password=${encodeURIComponent(hashFragment)}`;
+
+  return url;
+}
+
+// -- Buffer Delay Relay (D-01, D-04) --
+
+let cachedBufferDelay: number | null = null;
+
+/** Apply buffer delay by caching it and forwarding to iframe via postMessage.
+ *  Addresses review concern R-MEDIUM-06: postMessage is only sent if iframe exists
+ *  and has a contentWindow. If iframe is not yet loaded, the value is cached and
+ *  re-applied when the iframe fires its load event (see reapplyCachedBufferDelay). */
+export function applyBufferDelay(delayMs: number): void {
+  cachedBufferDelay = delayMs;
+  sendBufferDelayToIframe(delayMs);
+}
+
+function sendBufferDelayToIframe(delayMs: number): void {
+  const iframe = document.querySelector('#main-area iframe') as HTMLIFrameElement | null;
+  if (!iframe?.contentWindow) return;
+  iframe.contentWindow.postMessage({ setBufferDelay: delayMs }, '*');
+}
+
+/** Call after iframe load event to re-apply cached buffer delay (Pitfall 4).
+ *  Addresses review concern R-HIGH-03: state preservation across iframe reloads.
+ *  After bandwidth profile change triggers iframe reload, the cached delay value
+ *  is re-sent to the new iframe once its load event fires. */
+export function reapplyCachedBufferDelay(): void {
+  if (cachedBufferDelay !== null) {
+    sendBufferDelayToIframe(cachedBufferDelay);
+  }
+}
+
+/** Exported for testing */
+export function getCachedBufferDelay(): number | null {
+  return cachedBufferDelay;
+}
+
+/** Reset cached delay (for testing) */
+export function resetCachedBufferDelay(): void {
+  cachedBufferDelay = null;
+}
+
+// -- Roster Label Strip (D-09, D-10) --
+// Addresses review concern R-HIGH-02: roster lifecycle.
+// Each call to renderRosterStrip is a FULL STATE REPLACEMENT per the protocol contract.
+// The function clears all existing pills and rebuilds from the new users array.
+// This handles: users joining, users leaving, username changes, and reordering.
+
+// Known bot username prefixes that should be hidden from the roster strip.
+// These are server-side bots on public NINJAM servers that don't have video streams.
+// Prefix match handles variants like "ninbot_", "ninbot2", "Jambot_server".
+const BOT_PREFIXES = ['ninbot', 'jambot', 'ninjam'];
+
+/** Returns true if the username starts with a known bot prefix (case-insensitive). */
+export function isBotUser(name: string): boolean {
+  const lower = name.toLowerCase();
+  return BOT_PREFIXES.some(prefix => lower.startsWith(prefix));
+}
+
+export function renderRosterStrip(users: RosterUser[]): void {
+  const strip = document.getElementById('roster-strip');
+  if (!strip) return;
+
+  // Filter out known bot users before rendering
+  const visibleUsers = users.filter(u => !isBotUser(u.name));
+
+  // Clear ALL existing pills -- full state replacement, not incremental update
+  while (strip.firstChild) {
+    strip.removeChild(strip.firstChild);
+  }
+
+  if (visibleUsers.length === 0) {
+    strip.style.display = 'none';
+    return;
+  }
+
+  strip.style.display = 'flex';
+
+  visibleUsers.forEach(user => {
+    const pill = document.createElement('span');
+    pill.className = 'roster-pill';
+    // T-12-02 mitigation: textContent is XSS-safe (never use innerHTML for user names)
+    pill.textContent = user.name;
+    pill.dataset.streamId = user.streamId;
+    strip.appendChild(pill);
+  });
 }
 
 // ── VDO.Ninja Iframe ──
 
-export function loadVdoNinjaIframe(room: string, push: string): void {
+/** Load VDO.Ninja iframe with current settings.
+ *  Addresses review concern R-HIGH-03: state preservation across reloads.
+ *  - hashFragment is parsed once from URL on page load and passed to every call
+ *  - bandwidth profile is read from localStorage by buildVdoNinjaUrl
+ *  - cached buffer delay is re-applied via reapplyCachedBufferDelay on iframe load event
+ *  - roster strip DOM node is preserved across iframe reloads */
+export function loadVdoNinjaIframe(
+  room: string,
+  push: string,
+  hashFragment?: string
+): void {
   const main = el('main-area');
+
+  // Preserve roster strip if it exists
+  const existingStrip = document.getElementById('roster-strip');
+
   clearChildren(main);
 
-  const url = buildVdoNinjaUrl(room, push);
+  const url = buildVdoNinjaUrl(room, push, undefined, undefined, hashFragment);
   const iframe = document.createElement('iframe');
   iframe.src = url;
   iframe.title = 'VDO.Ninja video grid';
@@ -113,7 +271,26 @@ export function loadVdoNinjaIframe(room: string, push: string): void {
   iframe.style.width = '100%';
   iframe.style.height = '100%';
   iframe.style.border = 'none';
+
+  // Pitfall 4 + review concern R-MEDIUM-06: Re-apply cached buffer delay after iframe loads.
+  // The load event fires after VDO.Ninja's JS has initialized, so postMessage will be received.
+  iframe.addEventListener('load', () => {
+    reapplyCachedBufferDelay();
+  });
+
   main.appendChild(iframe);
+
+  // Re-add roster strip (it was removed by clearChildren)
+  if (existingStrip) {
+    main.appendChild(existingStrip);
+  } else {
+    const strip = document.createElement('div');
+    strip.id = 'roster-strip';
+    strip.setAttribute('role', 'status');
+    strip.setAttribute('aria-label', 'Connected participants');
+    strip.style.display = 'none';
+    main.appendChild(strip);
+  }
 }
 
 // ── Pre-Connection State (review concern #9: first-load timing) ──

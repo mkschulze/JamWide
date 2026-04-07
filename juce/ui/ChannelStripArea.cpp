@@ -386,8 +386,15 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
         // Strip @IP suffix from username (e.g. "user@1.2.3.4" -> "user")
         juce::String userName(user.name);
         int atIdx = userName.lastIndexOfChar('@');
-        if (atIdx > 0)
-            userName = userName.substring(0, atIdx);
+        juce::String cleanName = (atIdx > 0) ? userName.substring(0, atIdx) : userName;
+
+        // Hide known bot users from the mixer (shared list with companion page)
+        if (cleanName.compareIgnoreCase("ninbot") == 0
+            || cleanName.compareIgnoreCase("jambot") == 0
+            || cleanName.compareIgnoreCase("ninjam") == 0)
+            continue;
+        // Apply the cleaned name (with @IP stripped)
+        userName = cleanName;
 
         if (user.channels.size() <= 1)
         {

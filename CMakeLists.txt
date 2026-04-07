@@ -102,6 +102,7 @@ endif()
 
 # ── IXWebSocket (WebSocket server for video companion, per D-12) ──
 set(USE_TLS OFF CACHE BOOL "" FORCE)
+set(USE_ZLIB OFF CACHE BOOL "" FORCE)
 set(USE_WS OFF CACHE BOOL "" FORCE)
 set(IXWEBSOCKET_INSTALL OFF CACHE BOOL "" FORCE)
 add_subdirectory(libs/ixwebsocket EXCLUDE_FROM_ALL)

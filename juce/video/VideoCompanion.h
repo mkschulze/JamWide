@@ -7,6 +7,7 @@
 #include <vector>
 #include <set>
 #include <mutex>
+#include <future>
 
 class JamWideJuceProcessor;
 
@@ -127,6 +128,7 @@ private:
 
     std::unique_ptr<ix::WebSocketServer> wsServer_;
     std::mutex wsMutex_;  // Guards wsServer_ start/stop and broadcast
+    std::future<void> stopFuture_;  // WR-01 fix: joinable handle for async server teardown
 
     // Current session config (set on launch, sent to each connecting WS client)
     juce::String currentRoom_;

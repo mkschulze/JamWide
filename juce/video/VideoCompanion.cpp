@@ -29,6 +29,11 @@ VideoCompanion::~VideoCompanion()
     // (same UAF safety pattern as OscServer)
     alive_->store(false, std::memory_order_release);
 
+    // WR-01 fix: Join any pending async teardown from a prior deactivate() call
+    // before proceeding, so the detached task does not outlive this object / DLL.
+    if (stopFuture_.valid())
+        stopFuture_.wait();
+
     // Destructor must block until server is fully stopped (unlike deactivate()
     // which defers to a background thread to avoid DAW state-save timeout).
     {
@@ -272,13 +277,15 @@ void VideoCompanion::stopWebSocketServer()
     }
 
     // Wait + destroy off the message thread to avoid DAW state-save timeout.
-    // The destructor (~VideoCompanion) also calls this, so blocking is fine there.
+    // WR-01 fix: Use std::async instead of detached thread so the destructor can
+    // join the teardown task, preventing crashes from threads outliving the DLL.
     if (serverToStop)
     {
-        std::thread([s = std::move(serverToStop)]() mutable {
-            s->wait();
-            s.reset();
-        }).detach();
+        stopFuture_ = std::async(std::launch::async,
+            [s = std::move(serverToStop)]() mutable {
+                s->wait();
+                s.reset();
+            });
     }
 }
 

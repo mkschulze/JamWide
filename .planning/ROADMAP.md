@@ -30,7 +30,7 @@
 - [ ] **Phase 9: OSC Server Core** -- Bidirectional OSC with parameter mapping, config persistence, and session telemetry
 - [x] **Phase 10: OSC Remote Users and Template** -- Index-based remote user control, roster broadcasts, connect/disconnect, shipped TouchOSC template (completed 2026-04-07)
 - [x] **Phase 11: Video Companion Foundation** -- One-click VDO.Ninja launch with auto room ID, companion page, local WebSocket server, safety notices (completed 2026-04-07)
-- [ ] **Phase 12: Video Sync and Roster Discovery** -- Interval-synced buffering, VDO.Ninja API roster mapping, room security, bandwidth profiles
+- [x] **Phase 12: Video Sync and Roster Discovery** -- Interval-synced buffering, VDO.Ninja API roster mapping, room security, bandwidth profiles (completed 2026-04-07)
 - [ ] **Phase 13: Video Display Modes and OSC Integration** -- Per-user popout windows, OSC video control, grid/popout mode switching
 - [ ] **Phase 14: MIDI Remote Control** -- MIDI CC mapping for mixer parameters including remote channels, bidirectional feedback where possible
 
@@ -93,8 +93,8 @@ Plans:
   4. User can select a bandwidth-aware video profile (mobile/balanced/desktop) and see the quality change accordingly
 **Plans**: 2 plans
 Plans:
-- [ ] 12-01-PLAN.md — C++ plugin: juce_cryptography linkage, buffer delay calculation+broadcast, SHA-256 room hash derivation, companion URL hash fragment, BPM/BPI event wiring
-- [ ] 12-02-PLAN.md — Companion page: Vitest setup, BufferDelayMessage type, URL builder (chunked/quality/hash), bandwidth dropdown, roster name label strip, buffer delay relay, all tests
+- [x] 12-01-PLAN.md — C++ plugin: juce_cryptography linkage, buffer delay calculation+broadcast, SHA-256 room hash derivation, companion URL hash fragment, BPM/BPI event wiring
+- [x] 12-02-PLAN.md — Companion page: Vitest setup, BufferDelayMessage type, URL builder (chunked/quality/hash), bandwidth dropdown, roster name label strip, buffer delay relay, all tests
 
 ### Phase 13: Video Display Modes and OSC Integration
 **Goal**: Users can pop out individual participant video into separate windows and control all video features from their OSC surface
@@ -103,7 +103,10 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. User can pop out an individual participant's video into a separate browser window (multi-monitor support)
   2. User can open video, close video, switch display modes, and trigger popouts via OSC commands from their control surface
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 13-01-PLAN.md — Companion popout windows: popout.html page, popout.ts entry point, URL builder &view= extension, roster pill click-to-popout, window tracking Map, postMessage roster relay, deactivate handler, Vite multi-page build, tests
+- [ ] 13-02-PLAN.md — C++ OSC video control + TouchOSC: VideoCompanion requestPopout + deactivate broadcast + cached roster, OscServer /video/active + /video/popout/{idx} dispatch + feedback, TouchOSC VIDEO section, docs/osc.md update
 **UI hint**: yes
 
 ### Phase 14: MIDI Remote Control
@@ -115,7 +118,7 @@ Plans:
   2. User can control remote participant volume/pan/mute via MIDI controller
   3. Parameter changes in JamWide send MIDI CC feedback to the controller
   4. MIDI mappings persist across DAW sessions
-**Plans**: TBD
+**Plans**: 2 plans
 
 ### v1.2 Security & Quality (Planned)
 
@@ -137,7 +140,7 @@ Plans:
   2. User's audio stream is encrypted end-to-end when a session password is set
   3. User can still connect to legacy NINJAM servers without encryption (graceful fallback)
   4. Encryption is transparent — no extra configuration required beyond the existing password field
-**Plans**: TBD
+**Plans**: 2 plans
 **Reference**: AES-256-CBC with OpenSSL EVP, SHA-256 key derivation from password, random IV per message
 
 ### Phase 16: Opus Codec Integration
@@ -149,7 +152,7 @@ Plans:
   2. User experiences smooth audio despite occasional packet loss (Opus PLC fills gaps)
   3. User in a mixed session (some peers on Opus, others on Vorbis/FLAC) hears all participants correctly
   4. Opus bitrate adapts automatically based on connection quality
-**Plans**: TBD
+**Plans**: 2 plans
 **Reference**: libopus v1.5.2 at 48kHz, OPUS_APPLICATION_AUDIO mode, per-peer decoder instances
 
 ### Phase 17: Network Resilience
@@ -161,7 +164,7 @@ Plans:
   2. User hears smooth audio from each remote peer despite network jitter (per-peer adaptive buffer)
   3. User sees reconnection status in the UI during retry attempts
   4. Reconnection preserves session state (codec selection, mixer settings) when possible
-**Plans**: TBD
+**Plans**: 2 plans
 **Reference**: 1s–30s exponential backoff with idle cadence; 20ms pre-fill jitter buffer per peer
 
 ### Phase 18: Testing Infrastructure
@@ -173,7 +176,7 @@ Plans:
   2. 10 concurrent plugin instances in one DAW operate without interference
   3. Thread shutdown sequence is documented and follows multi-phase pattern (no DAW state-save timeouts)
   4. CI pipeline runs full test suite and blocks release on failure
-**Plans**: TBD
+**Plans**: 2 plans
 **Reference**: Integration tests (load/unload, activate, process audio), stress tests (rapid create/destroy, concurrent instances, memory leak), fuzz tests; CI-gated with binary scanning
 
 ## Future Milestones
@@ -202,8 +205,8 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 9. OSC Server Core | v1.1 | 0/2 | In Progress | - |
 | 10. OSC Remote Users and Template | v1.1 | 2/2 | Complete    | 2026-04-07 |
 | 11. Video Companion Foundation | v1.1 | 3/3 | Complete    | 2026-04-07 |
-| 12. Video Sync and Roster Discovery | v1.1 | 0/2 | In Progress | - |
-| 13. Video Display Modes and OSC Integration | v1.1 | 0/0 | Not started | - |
+| 12. Video Sync and Roster Discovery | v1.1 | 2/2 | Complete   | 2026-04-07 |
+| 13. Video Display Modes and OSC Integration | v1.1 | 0/2 | Not started | - |
 | 14. MIDI Remote Control | v1.1 | 0/0 | Not started | - |
 | 15. Connection Encryption | v1.2 | 0/0 | Not started | - |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |

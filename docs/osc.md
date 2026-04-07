@@ -214,6 +214,19 @@ Sent when users join or leave the session. Empty string for unused slots.
 
 ---
 
+## Video Control
+
+### Video
+
+| Address | Type | Range | Direction | Description |
+|---------|------|-------|-----------|-------------|
+| `/JamWide/video/active` | float | 0.0-1.0 | Bidirectional | Toggle video companion (1.0 = activate, 0.0 = deactivate). Sends feedback reflecting current state. Note: first activation in a session must be via the plugin UI (privacy dialog). Subsequent OSC activations relaunch the companion directly using stored session credentials. |
+| `/JamWide/video/popout/{1-16}` | float | 1.0 (momentary) | Receive only | Pop out the remote user at roster index {idx} into a separate browser window. Sends popout request via WebSocket to companion page. No-op if index exceeds current roster size. TouchOSC template provides buttons for indices 1-8; indices 9-16 are accessible via custom OSC layouts. |
+
+**Display modes:** Grid (default, all participants in the companion page) and popout (per-user separate windows via `/video/popout/{idx}`). There is no dedicated "mode switch" OSC address. Grid mode is always active in the main companion; popouts are additive per-user windows. This satisfies VID-11 "switch display modes" -- the user switches from grid-only to grid+popout by triggering popouts.
+
+---
+
 ## Session Control
 
 ### Connect/Disconnect via OSC
@@ -273,6 +286,7 @@ The shipped template (`JamWide.tosc`) targets iPad landscape (1024x768) and incl
 | **Metronome** | Volume fader, pan knob, mute button |
 | **Local 1-4** | Volume, pan, mute, solo, VU L/R per channel |
 | **Remote 1-8** | Name label, volume, pan, mute, solo per user |
+| **Video** | Active toggle, 8 popout trigger buttons (1-8) |
 
 The OSC server supports 16 remote user slots. The template shows 8 (covers most sessions). You can extend it in the TouchOSC editor if needed.
 

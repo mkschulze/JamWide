@@ -15,6 +15,7 @@
 #include "JamWideJuceProcessor.h"
 #include "threading/ui_command.h"
 #include "core/njclient.h"
+#include "video/VideoCompanion.h"  // Phase 13: video OSC control
 
 // Local fourcc definitions (matches pattern used in ui_local.cpp, ui_remote.cpp)
 #define MAKE_NJ_FOURCC(A,B,C,D) ((A) | ((B)<<8) | ((C)<<16) | ((D)<<24))
@@ -81,6 +82,9 @@ bool OscServer::start(int receivePort, const juce::String& sendIP, int sendPort)
     lastSentUsers = -1;
     lastSentSampleRate = -1.0f;
     lastSentCodec.clear();
+
+    // Phase 13: Reset video dirty tracking
+    lastSentVideoActive = -1.0f;
 
     // Phase 10: Reset remote user dirty tracking
     for (auto& u : lastSentRemoteUsers) u = RemoteUserLastSent{};
@@ -184,6 +188,13 @@ void OscServer::handleOscOnMessageThread(const juce::String& address, float valu
     if (address.startsWith("/JamWide/remote/"))
     {
         handleRemoteUserOsc(address, value);
+        return;
+    }
+
+    // Phase 13: video prefix dispatch
+    if (address.startsWith("/JamWide/video/"))
+    {
+        handleVideoOsc(address, value);
         return;
     }
 
@@ -305,6 +316,7 @@ void OscServer::timerCallback()
     sendRemoteRoster(bundle, hasContent);     // BEFORE dirty params (roster change resets cache)
     sendDirtyRemoteUsers(bundle, hasContent);
     sendRemoteVuMeters(bundle, hasContent);
+    sendVideoState(bundle, hasContent);    // Phase 13: video active feedback
 
     if (hasContent)
         sender.send(bundle);
@@ -842,6 +854,82 @@ void OscServer::sendRemoteVuMeters(juce::OSCBundle& bundle, bool& hasContent)
             bundle.addElement(juce::OSCMessage(
                 juce::OSCAddressPattern(chPrefix + "/vu/right"), user.channels[static_cast<size_t>(c)].vu_right));
         }
+        hasContent = true;
+    }
+}
+
+// ── Phase 13: Video OSC methods ──
+
+void OscServer::handleVideoOsc(const juce::String& address, float value)
+{
+    // D-14: /JamWide/video/active toggle
+    if (address == "/JamWide/video/active")
+    {
+        if (value >= 0.5f)
+        {
+            // Activate video via OSC.
+            // Addresses Codex review HIGH concern #1: "OSC activation depends on
+            // processor.lastServer/lastUsername/lastPassword -- verify these exist."
+            // SOLUTION: Do NOT use processor fields. Use VideoCompanion::relaunchFromOsc()
+            // which uses its own stored session config from the previous launchCompanion().
+            //
+            // Addresses Codex review HIGH concern #2: "Privacy-gate state must be backed
+            // by explicit state/API."
+            // SOLUTION: relaunchFromOsc() checks hasLaunchedThisSession_ flag. If video
+            // was never launched via the plugin UI this session, relaunchFromOsc() returns
+            // false (no-op). The privacy modal is an editor-only concept; OSC can only
+            // relaunch, never first-launch. The hasLaunchedThisSession_ flag IS the
+            // explicit privacy-gate state.
+            if (processor.videoCompanion && !processor.videoCompanion->isActive())
+            {
+                processor.videoCompanion->relaunchFromOsc();
+            }
+        }
+        else
+        {
+            // Deactivate video
+            if (processor.videoCompanion && processor.videoCompanion->isActive())
+                processor.videoCompanion->deactivate();
+        }
+        return;
+    }
+
+    // D-15: /JamWide/video/popout/{idx} trigger
+    // Addresses Codex review MEDIUM concern: "Popout address bounds inconsistency
+    // ({1-8} in docs vs 1-16 in handler)." RESOLUTION: Handler accepts 1-16 to
+    // support sessions with more than 8 remote users. TouchOSC template has 8 buttons
+    // (matching remote user slot count), but the OSC address space supports up to 16.
+    // docs/osc.md documents {1-16} as the valid range.
+    if (address.startsWith("/JamWide/video/popout/"))
+    {
+        if (value < 0.5f) return;  // Only trigger on press (1.0)
+
+        juce::String idxStr = address.fromLastOccurrenceOf("/", false, false);
+        int oscIdx = idxStr.getIntValue();
+        if (oscIdx < 1 || oscIdx > 16) return;  // Bounds check (1-based, up to 16)
+
+        int userIndex = oscIdx - 1;  // 1-based to 0-based
+
+        if (!processor.videoCompanion || !processor.videoCompanion->isActive())
+            return;
+
+        juce::String streamId = processor.videoCompanion->getStreamIdForUserIndex(userIndex);
+        if (streamId.isEmpty()) return;  // Index out of roster range
+
+        processor.videoCompanion->requestPopout(streamId);
+    }
+}
+
+void OscServer::sendVideoState(juce::OSCBundle& bundle, bool& hasContent)
+{
+    if (!processor.videoCompanion) return;
+
+    float videoActive = processor.videoCompanion->isActive() ? 1.0f : 0.0f;
+    if (videoActive != lastSentVideoActive)
+    {
+        lastSentVideoActive = videoActive;
+        bundle.addElement(juce::OSCMessage(
+            juce::OSCAddressPattern("/JamWide/video/active"), videoActive));
         hasContent = true;
     }
 }

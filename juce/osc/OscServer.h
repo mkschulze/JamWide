@@ -53,6 +53,10 @@ private:
     // Phase 10: Remote user receive dispatch (D-18)
     void handleRemoteUserOsc(const juce::String& address, float value);
 
+    // Phase 13: Video OSC dispatch
+    void handleVideoOsc(const juce::String& address, float value);
+    void sendVideoState(juce::OSCBundle& bundle, bool& hasContent);
+
     // Phase 10: String-argument OSC handler (D-09, D-10)
     void handleOscStringOnMessageThread(const juce::String& address, const juce::String& value);
 
@@ -119,6 +123,9 @@ private:
     // Roster change detection (per D-07 -- do NOT broadcast every tick)
     int lastSentRosterCount = -1;
     int lastSentRosterHash = -1;
+
+    // Phase 13: Video state dirty tracking
+    float lastSentVideoActive = -1.0f;
 
     // Connection state
     std::atomic<bool> enabled{false};

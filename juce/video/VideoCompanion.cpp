@@ -208,6 +208,12 @@ bool VideoCompanion::launchCompanion(const juce::String& serverAddr,
     juce::URL(currentCompanionUrl_).launchInDefaultBrowser();
     active_.store(true, std::memory_order_relaxed);
 
+    // Store launch parameters for OSC relaunch (Phase 13)
+    storedServerAddr_ = serverAddr;
+    storedUsername_ = username;
+    storedPassword_ = password;
+    hasLaunchedThisSession_ = true;
+
     return true;
 }
 
@@ -347,6 +353,10 @@ void VideoCompanion::broadcastRoster(const std::vector<NJClient::RemoteUserInfo>
     // Build roster JSON
     juce::String json = "{\"type\":\"roster\",\"users\":[";
 
+    // Cache resolved roster for OSC popout lookup (Phase 13)
+    cachedRoster_.clear();
+    cachedRoster_.reserve(users.size());
+
     std::set<juce::String> assigned;
     for (size_t i = 0; i < users.size(); ++i)
     {
@@ -356,6 +366,8 @@ void VideoCompanion::broadcastRoster(const std::vector<NJClient::RemoteUserInfo>
         juce::String rawName(users[i].name);
         auto sanitized = sanitizeUsername(rawName);
         auto streamId = resolveCollision(sanitized, static_cast<int>(i), assigned);
+
+        cachedRoster_.push_back({rawName, streamId});
 
         json += "{\"idx\":" + juce::String(static_cast<int>(i))
               + ",\"name\":\"" + escapeJsonString(rawName) + "\""
@@ -403,10 +415,61 @@ void VideoCompanion::broadcastBufferDelay(float bpm, int bpi)
         client->send(json.toStdString());
 }
 
+// ── Popout / Roster Lookup (Phase 13) ─────────────────────────────────────
+
+void VideoCompanion::requestPopout(const juce::String& streamId)
+{
+    if (!isActive()) return;
+
+    juce::String json = "{\"type\":\"popout\",\"streamId\":\""
+                        + escapeJsonString(streamId) + "\"}";
+
+    std::lock_guard<std::mutex> lock(wsMutex_);
+    if (!wsServer_) return;
+    auto clients = wsServer_->getClients();
+    for (auto& client : clients)
+        client->send(json.toStdString());
+}
+
+juce::String VideoCompanion::getStreamIdForUserIndex(int index) const
+{
+    if (index < 0 || index >= static_cast<int>(cachedRoster_.size()))
+        return {};
+    return cachedRoster_[static_cast<size_t>(index)].streamId;
+}
+
+// ── OSC Relaunch (Phase 13) ───────────────────────────────────────────────
+
+bool VideoCompanion::relaunchFromOsc()
+{
+    // Addresses Codex review HIGH concern: privacy-gate state.
+    // OSC cannot show a privacy modal (no editor context).
+    // First activation MUST be via plugin UI (editor shows VideoPrivacyDialog).
+    // OSC can only relaunch if video was previously launched this session.
+    if (!hasLaunchedThisSession_) return false;
+    if (isActive()) return false;  // Already active, nothing to do
+
+    // Relaunch using stored session parameters
+    return launchCompanion(storedServerAddr_, storedUsername_, storedPassword_);
+}
+
 // ── Deactivate ─────────────────────────────────────────────────────────────
 
 void VideoCompanion::deactivate()
 {
+    // D-13: Broadcast deactivate BEFORE stopping server.
+    // Addresses Pitfall 5 from research: send must complete before server teardown.
+    {
+        std::lock_guard<std::mutex> lock(wsMutex_);
+        if (wsServer_)
+        {
+            juce::String json = "{\"type\":\"deactivate\"}";
+            auto clients = wsServer_->getClients();
+            for (auto& client : clients)
+                client->send(json.toStdString());
+        }
+    }
+
     active_.store(false, std::memory_order_relaxed);
     stopWebSocketServer();
     currentRoom_.clear();
@@ -415,6 +478,10 @@ void VideoCompanion::deactivate()
     currentPassword_.clear();
     currentDerivedPassword_.clear();
     cachedDelayMs_ = 0;
+    cachedRoster_.clear();
+    // NOTE: storedServerAddr_, storedUsername_, storedPassword_, hasLaunchedThisSession_
+    // are intentionally NOT cleared here. They persist across deactivate/reactivate
+    // so that OSC /video/active 1.0 can relaunch without the editor.
 }
 
 }  // namespace jamwide

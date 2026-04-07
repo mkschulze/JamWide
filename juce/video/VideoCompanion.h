@@ -85,6 +85,28 @@ public:
     /// Guard: no-op if !isActive() or no wsServer_, or if bpm/bpi are invalid (<=0 or NaN).
     void broadcastBufferDelay(float bpm, int bpi);
 
+    /// Send a popout request for the given stream ID to all connected WebSocket clients.
+    /// Called from OscServer when /JamWide/video/popout/{idx} is received.
+    /// Message thread only. No-op if !isActive().
+    void requestPopout(const juce::String& streamId);
+
+    /// Look up the resolved stream ID for a remote user at the given 0-based index.
+    /// Returns empty string if index is out of range.
+    /// Uses the cached roster from the most recent broadcastRoster() call.
+    /// Thread safety: message thread only (cachedRoster_ is written by broadcastRoster
+    /// which marshals via callAsync, and read by OSC handlers which dispatch via callAsync).
+    /// Addresses Codex review MEDIUM concern: "cachedRoster_ thread safety".
+    juce::String getStreamIdForUserIndex(int index) const;
+
+    /// Attempt to relaunch video from OSC context (no editor, no privacy modal).
+    /// Only succeeds if video was previously launched this session (currentRoom_ is set).
+    /// Returns true if relaunch was performed, false if no stored session config exists.
+    /// Addresses Codex review HIGH concern: "OSC activation depends on processor fields
+    /// that may not exist". Solution: use VideoCompanion's own stored session config
+    /// (currentRoom_, currentPush_, currentPassword_) instead of processor fields.
+    /// The privacy modal is an editor-only concept; OSC can only relaunch, never first-launch.
+    bool relaunchFromOsc();
+
     static constexpr int kDefaultWsPort = 7170;
 
 private:
@@ -137,6 +159,35 @@ private:
     juce::String currentPassword_;       // Stored for password derivation, never sent over WebSocket
     juce::String currentDerivedPassword_; // SHA-256 derived VDO.Ninja password, used in URL fragment
     int cachedDelayMs_ = 0;              // Last computed buffer delay, sent to new WS clients
+
+    // Cached roster with resolved stream IDs (for OSC popout lookup).
+    // Thread safety: written by broadcastRoster (message thread via callAsync),
+    // read by getStreamIdForUserIndex (message thread via callAsync from OSC).
+    // Both paths run on the message thread, so no mutex needed.
+    // Addresses Codex review MEDIUM concern about thread ownership.
+    struct CachedRosterEntry {
+        juce::String name;
+        juce::String streamId;
+    };
+    std::vector<CachedRosterEntry> cachedRoster_;
+
+    // Stored launch parameters for OSC relaunch.
+    // Set during launchCompanion(), cleared during deactivate().
+    // These are the credentials used to relaunch via OSC without the editor/privacy modal.
+    juce::String storedServerAddr_;
+    juce::String storedUsername_;
+    // SECURITY RATIONALE (Codex Round 2 MEDIUM): storedPassword_ retains the raw
+    // NINJAM password in memory for the session lifetime so OSC can relaunch the
+    // companion after deactivate. This is acceptable because:
+    // 1. NJClient already holds the same raw password in memory (it must, to
+    //    reconnect after network drops). storedPassword_ adds no new exposure.
+    // 2. The companion page never sees storedPassword_ -- it receives only the
+    //    SHA-256 derived password (currentDerivedPassword_) via the companion URL.
+    // 3. storedPassword_ lives in the plugin process only, never serialized to
+    //    disk or sent over any network channel.
+    // 4. It is cleared when the plugin is destroyed (~VideoCompanion).
+    juce::String storedPassword_;
+    bool hasLaunchedThisSession_ = false;  // True after first successful launchCompanion
 
     // callAsync UAF safety -- same pattern as OscServer
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);

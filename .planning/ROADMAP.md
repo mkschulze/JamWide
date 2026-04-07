@@ -4,7 +4,6 @@
 
 - ✅ **v1.0 MVP** -- Phases 1-8 (shipped 2026-04-05) -- see `milestones/v1.0-ROADMAP.md`
 - 🚧 **v1.1 OSC + Video** -- Phases 9-13 (in progress)
-- 📋 **v1.2 Security & Quality** -- Phases 15-18 (planned)
 - 📋 **v2.0 Codec & Transport Redesign** -- (planned)
 
 ## Phases
@@ -28,8 +27,8 @@
 **Milestone Goal:** Add remote control via OSC and video collaboration via VDO.Ninja companion, expanding JamWide from audio-only to a full visual jam experience.
 
 - [ ] **Phase 9: OSC Server Core** -- Bidirectional OSC with parameter mapping, config persistence, and session telemetry
-- [x] **Phase 10: OSC Remote Users and Template** -- Index-based remote user control, roster broadcasts, connect/disconnect, shipped TouchOSC template (completed 2026-04-07)
-- [x] **Phase 11: Video Companion Foundation** -- One-click VDO.Ninja launch with auto room ID, companion page, local WebSocket server, safety notices (completed 2026-04-07)
+- [ ] **Phase 10: OSC Remote Users and Template** -- Index-based remote user control, roster broadcasts, connect/disconnect, shipped TouchOSC template
+- [ ] **Phase 11: Video Companion Foundation** -- One-click VDO.Ninja launch with auto room ID, companion page, local WebSocket server, safety notices
 - [ ] **Phase 12: Video Sync and Roster Discovery** -- Interval-synced buffering, VDO.Ninja API roster mapping, room security, bandwidth profiles
 - [ ] **Phase 13: Video Display Modes and OSC Integration** -- Per-user popout windows, OSC video control, grid/popout mode switching
 - [ ] **Phase 14: MIDI Remote Control** -- MIDI CC mapping for mixer parameters including remote channels, bidirectional feedback where possible
@@ -63,8 +62,8 @@ Plans:
   4. User can import the shipped `.tosc` template into TouchOSC and immediately control JamWide without manual layout creation
 **Plans**: 2 plans
 Plans:
-- [x] 10-01-PLAN.md — Remote user OSC send/receive: extend RemoteUserInfo snapshot, dynamic address generation, prefix-based dispatch, roster broadcast, connect/disconnect triggers, docs/osc.md update
-- [x] 10-02-PLAN.md — TouchOSC template: generate and ship JamWide.tosc with 8 remote slots, local channels, master, metronome, session info, verification checkpoint
+- [ ] 10-01-PLAN.md — Remote user OSC send/receive: extend RemoteUserInfo snapshot, dynamic address generation, prefix-based dispatch, roster broadcast, connect/disconnect triggers, docs/osc.md update
+- [ ] 10-02-PLAN.md — TouchOSC template: generate and ship JamWide.tosc with 8 remote slots, local channels, master, metronome, session info, verification checkpoint
 
 ### Phase 11: Video Companion Foundation
 **Goal**: Users can launch video collaboration with one click and see all session participants in a browser-based grid
@@ -77,9 +76,9 @@ Plans:
   4. User sees a privacy notice about IP exposure before their first video use, and a warning if their default browser is not Chromium-based
 **Plans**: 3 plans
 Plans:
-- [x] 11-01-PLAN.md -- VideoCompanion core: IXWebSocket dependency, WebSocket server, room ID derivation (SHA-1), username sanitization, config/roster JSON protocol
-- [x] 11-02-PLAN.md -- Web companion page: Vite/TypeScript project in docs/video/, VDO.Ninja iframe with &noaudio, branded UI, WebSocket client, connection status
-- [x] 11-03-PLAN.md -- Video button + privacy modal: ConnectionBar integration, VideoPrivacyDialog, BrowserDetect, processor/editor wiring, human verification checkpoint
+- [ ] 11-01-PLAN.md -- VideoCompanion core: IXWebSocket dependency, WebSocket server, room ID derivation (SHA-1), username sanitization, config/roster JSON protocol
+- [ ] 11-02-PLAN.md -- Web companion page: Vite/TypeScript project in docs/video/, VDO.Ninja iframe with &noaudio, branded UI, WebSocket client, connection status
+- [ ] 11-03-PLAN.md -- Video button + privacy modal: ConnectionBar integration, VideoPrivacyDialog, BrowserDetect, processor/editor wiring, human verification checkpoint
 **UI hint**: yes
 
 ### Phase 12: Video Sync and Roster Discovery
@@ -91,10 +90,7 @@ Plans:
   2. User can see which VDO.Ninja video streams correspond to which NINJAM usernames in the companion page
   3. User's video room is automatically secured with a password derived from the NINJAM session (unauthorized viewers cannot join)
   4. User can select a bandwidth-aware video profile (mobile/balanced/desktop) and see the quality change accordingly
-**Plans**: 2 plans
-Plans:
-- [ ] 12-01-PLAN.md — C++ plugin: juce_cryptography linkage, buffer delay calculation+broadcast, SHA-256 room hash derivation, companion URL hash fragment, BPM/BPI event wiring
-- [ ] 12-02-PLAN.md — Companion page: Vitest setup, BufferDelayMessage type, URL builder (chunked/quality/hash), bandwidth dropdown, roster name label strip, buffer delay relay, all tests
+**Plans**: TBD
 
 ### Phase 13: Video Display Modes and OSC Integration
 **Goal**: Users can pop out individual participant video into separate windows and control all video features from their OSC surface
@@ -116,65 +112,6 @@ Plans:
   3. Parameter changes in JamWide send MIDI CC feedback to the controller
   4. MIDI mappings persist across DAW sessions
 **Plans**: TBD
-
-### v1.2 Security & Quality (Planned)
-
-**Milestone Goal:** Harden JamWide with connection encryption, modern Opus codec, resilient networking, and production-grade testing infrastructure.
-
-- [ ] **Phase 15: Connection Encryption** -- AES-256-CBC end-to-end encryption for credentials and audio, backward-compatible with unencrypted NINJAM servers
-- [ ] **Phase 16: Opus Codec Integration** -- Native libopus with automatic bitrate adaptation, packet loss concealment, and mixed-codec capability negotiation
-- [ ] **Phase 17: Network Resilience** -- Exponential backoff reconnection (1s–30s), per-peer adaptive jitter buffer, graceful degradation on network loss
-- [ ] **Phase 18: Testing Infrastructure** -- Stress tests (1000x create/destroy, 10 concurrent instances), documented shutdown sequence, CI-gated test pipeline
-
-## Phase Details (v1.2)
-
-### Phase 15: Connection Encryption
-**Goal**: Users' credentials and audio are encrypted in transit when connecting with a session password, while maintaining backward compatibility with legacy NINJAM servers
-**Depends on**: Phase 8 (v1.0 complete)
-**Requirements**: SEC-01, SEC-02, SEC-03
-**Success Criteria** (what must be TRUE):
-  1. User connecting with a password has their credentials encrypted via AES-256-CBC (SHA-256 key derivation from password)
-  2. User's audio stream is encrypted end-to-end when a session password is set
-  3. User can still connect to legacy NINJAM servers without encryption (graceful fallback)
-  4. Encryption is transparent — no extra configuration required beyond the existing password field
-**Plans**: TBD
-**Reference**: AES-256-CBC with OpenSSL EVP, SHA-256 key derivation from password, random IV per message
-
-### Phase 16: Opus Codec Integration
-**Goal**: Users get low-latency, high-quality audio with automatic bitrate adaptation and packet loss resilience
-**Depends on**: Phase 1 (FLAC codec pattern)
-**Requirements**: COD-01, COD-02, COD-03
-**Success Criteria** (what must be TRUE):
-  1. User can select Opus as codec, achieving lower latency than Vorbis with comparable quality
-  2. User experiences smooth audio despite occasional packet loss (Opus PLC fills gaps)
-  3. User in a mixed session (some peers on Opus, others on Vorbis/FLAC) hears all participants correctly
-  4. Opus bitrate adapts automatically based on connection quality
-**Plans**: TBD
-**Reference**: libopus v1.5.2 at 48kHz, OPUS_APPLICATION_AUDIO mode, per-peer decoder instances
-
-### Phase 17: Network Resilience
-**Goal**: Users maintain stable sessions through transient network interruptions with minimal audio disruption
-**Depends on**: Phase 3 (NJClient audio bridge)
-**Requirements**: NET-01, NET-02
-**Success Criteria** (what must be TRUE):
-  1. User's connection automatically retries with exponential backoff (1s, 2s, 4s... up to 30s) after disconnection
-  2. User hears smooth audio from each remote peer despite network jitter (per-peer adaptive buffer)
-  3. User sees reconnection status in the UI during retry attempts
-  4. Reconnection preserves session state (codec selection, mixer settings) when possible
-**Plans**: TBD
-**Reference**: 1s–30s exponential backoff with idle cadence; 20ms pre-fill jitter buffer per peer
-
-### Phase 18: Testing Infrastructure
-**Goal**: Plugin reliability is validated by automated stress and integration tests before every release
-**Depends on**: All prior phases (runs against full codebase)
-**Requirements**: QA-01, QA-02, QA-03
-**Success Criteria** (what must be TRUE):
-  1. Plugin survives 1000x rapid create/destroy cycles without crash or memory leak
-  2. 10 concurrent plugin instances in one DAW operate without interference
-  3. Thread shutdown sequence is documented and follows multi-phase pattern (no DAW state-save timeouts)
-  4. CI pipeline runs full test suite and blocks release on failure
-**Plans**: TBD
-**Reference**: Integration tests (load/unload, activate, process audio), stress tests (rapid create/destroy, concurrent instances, memory leak), fuzz tests; CI-gated with binary scanning
 
 ## Future Milestones
 
@@ -200,22 +137,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 7. DAW Sync and Session Polish | v1.0 | 3/3 | Complete | 2026-04-05 |
 | 8. JUCE Integration Polish | v1.0 | 1/1 | Complete | 2026-04-05 |
 | 9. OSC Server Core | v1.1 | 0/2 | In Progress | - |
-| 10. OSC Remote Users and Template | v1.1 | 2/2 | Complete    | 2026-04-07 |
-| 11. Video Companion Foundation | v1.1 | 3/3 | Complete    | 2026-04-07 |
-| 12. Video Sync and Roster Discovery | v1.1 | 0/2 | In Progress | - |
+| 10. OSC Remote Users and Template | v1.1 | 0/2 | Planned    |  |
+| 11. Video Companion Foundation | v1.1 | 0/3 | Planned | - |
+| 12. Video Sync and Roster Discovery | v1.1 | 0/0 | Not started | - |
 | 13. Video Display Modes and OSC Integration | v1.1 | 0/0 | Not started | - |
-| 14. MIDI Remote Control | v1.1 | 0/0 | Not started | - |
-| 15. Connection Encryption | v1.2 | 0/0 | Not started | - |
-| 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
-| 17. Network Resilience | v1.2 | 0/0 | Not started | - |
-| 18. Testing Infrastructure | v1.2 | 0/0 | Not started | - |
-
-## Backlog
-
-### Phase 999.1: Hide Bot Users from NINJAM Mixer Channels (BACKLOG)
-**Goal**: Filter known bot usernames (ninbot, jambot, etc.) from the mixer channel strip UI so they don't appear as audio channels. Shared bot detection utility reuses the same bot-name list as Phase 12 roster strip filtering.
-**Requirements**: TBD
-**Plans**: 0 plans
-
-Plans:
-- [ ] TBD (promote with /gsd-review-backlog when ready)

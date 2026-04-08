@@ -151,7 +151,7 @@ export function buildVdoNinjaUrl(
     url += `&push=${encodeURIComponent(push)}`;
   }
 
-  url += '&noaudio&cleanoutput'
+  url += '&noaudio&cleanoutput&ad=0'
     + '&chunked'
     + '&chunkbufferadaptive=0'
     + '&chunkbufferceil=180000'

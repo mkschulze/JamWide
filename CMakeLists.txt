@@ -29,19 +29,19 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(JAMWIDE_BUILD_TESTS "Build tests" OFF)
 option(JAMWIDE_DEV_BUILD "Enable development build with verbose logging" ON)
 option(JAMWIDE_BUILD_JUCE "Build JUCE plugin targets" ON)
-option(JAMWIDE_BUILD_CLAP "Build CLAP/ImGui plugin targets" ON)
+# Auto-increment build number on every build
+add_custom_target(jamwide-build-number ALL
+    COMMAND ${CMAKE_COMMAND}
+        -DBUILD_NUMBER_FILE=${CMAKE_SOURCE_DIR}/src/build_number.h
+        -P ${CMAKE_SOURCE_DIR}/cmake/increment-build-revision.cmake
+    COMMENT "Incrementing build number"
+)
 
 # Plugin identity (single source of truth for JUCE targets)
 set(JAMWIDE_JUCE_BUNDLE_ID "com.jamwide.juce-client")
 set(JAMWIDE_JUCE_MANUFACTURER_CODE "JmWd")
 set(JAMWIDE_JUCE_PLUGIN_CODE "JwJc")
 
-# CLAP submodules (only when building CLAP/ImGui targets)
-if(JAMWIDE_BUILD_CLAP)
-    add_subdirectory(libs/clap EXCLUDE_FROM_ALL)
-    add_subdirectory(libs/clap-helpers EXCLUDE_FROM_ALL)
-    add_subdirectory(libs/clap-wrapper EXCLUDE_FROM_ALL)
-endif()
 
 # libogg
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -106,137 +106,6 @@ set(USE_ZLIB OFF CACHE BOOL "" FORCE)
 set(USE_WS OFF CACHE BOOL "" FORCE)
 set(IXWEBSOCKET_INSTALL OFF CACHE BOOL "" FORCE)
 add_subdirectory(libs/ixwebsocket EXCLUDE_FROM_ALL)
-
-# ── CLAP/ImGui Plugin Targets ──
-if(JAMWIDE_BUILD_CLAP)
-
-# Dear ImGui (manual setup - no CMakeLists in repo)
-set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/imgui)
-add_library(imgui STATIC
-    ${IMGUI_DIR}/imgui.cpp
-    ${IMGUI_DIR}/imgui_draw.cpp
-    ${IMGUI_DIR}/imgui_tables.cpp
-    ${IMGUI_DIR}/imgui_widgets.cpp
-)
-target_include_directories(imgui PUBLIC ${IMGUI_DIR})
-
-# Platform-specific ImGui backends
-if(WIN32)
-    target_sources(imgui PRIVATE
-        ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
-        ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
-    )
-    target_include_directories(imgui PUBLIC ${IMGUI_DIR}/backends)
-    target_link_libraries(imgui PUBLIC
-        d3d11
-        dxgi
-        d3dcompiler
-    )
-elseif(APPLE)
-    target_sources(imgui PRIVATE
-        ${IMGUI_DIR}/backends/imgui_impl_osx.mm
-        ${IMGUI_DIR}/backends/imgui_impl_metal.mm
-    )
-    target_include_directories(imgui PUBLIC ${IMGUI_DIR}/backends)
-    target_link_libraries(imgui PUBLIC
-        "-framework Metal"
-        "-framework MetalKit"
-        "-framework Cocoa"
-        "-framework QuartzCore"
-        "-framework GameController"
-    )
-endif()
-
-# Threading library
-add_library(jamwide-threading STATIC
-    src/threading/run_thread.cpp
-    src/net/server_list.cpp
-)
-target_include_directories(jamwide-threading PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
-target_link_libraries(jamwide-threading PUBLIC clap)
-if(JAMWIDE_DEV_BUILD)
-    target_compile_definitions(jamwide-threading PRIVATE JAMWIDE_DEV_BUILD=1)
-endif()
-
-# UI library
-add_library(jamwide-ui STATIC
-    src/ui/ui_main.cpp
-    src/ui/ui_status.cpp
-    src/ui/ui_connection.cpp
-    src/ui/ui_server_browser.cpp
-    src/ui/ui_chat.cpp
-    src/ui/ui_local.cpp
-    src/ui/ui_master.cpp
-    src/ui/ui_remote.cpp
-    src/ui/ui_meters.cpp
-    src/ui/ui_util.cpp
-)
-target_include_directories(jamwide-ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(jamwide-ui PUBLIC imgui clap)
-if(JAMWIDE_DEV_BUILD)
-    target_compile_definitions(jamwide-ui PRIVATE JAMWIDE_DEV_BUILD=1)
-endif()
-
-# Plugin implementation (static)
-add_library(jamwide-impl STATIC
-    src/plugin/clap_entry.cpp
-)
-target_include_directories(jamwide-impl PRIVATE
-    src
-    src/third_party
-)
-
-# Platform-specific GUI sources
-if(APPLE)
-    target_sources(jamwide-impl PRIVATE 
-        src/platform/gui_macos.mm
-    )
-elseif(WIN32)
-    target_sources(jamwide-impl PRIVATE src/platform/gui_win32.cpp)
-endif()
-
-target_link_libraries(jamwide-impl PUBLIC
-    clap
-    clap-helpers
-    njclient
-    jamwide-threading
-    jamwide-ui
-    imgui
-)
-if(JAMWIDE_DEV_BUILD)
-    target_compile_definitions(jamwide-impl PRIVATE JAMWIDE_DEV_BUILD=1)
-endif()
-
-make_clapfirst_plugins(
-    TARGET_NAME jamwide
-    IMPL_TARGET jamwide-impl
-    OUTPUT_NAME "JamWide Legacy"
-    ENTRY_SOURCE "src/plugin/clap_entry_export.cpp"
-    BUNDLE_IDENTIFIER "com.jamwide.client"
-    BUNDLE_VERSION "1.0.0"
-    PLUGIN_FORMATS CLAP VST3 AUV2
-    AUV2_MANUFACTURER_NAME "JamWide"
-    AUV2_MANUFACTURER_CODE "JMWD"
-    AUV2_SUBTYPE_CODE "JWAU"
-    AUV2_INSTRUMENT_TYPE "aufx"
-)
-
-if(APPLE)
-    add_custom_command(TARGET jamwide_clap POST_BUILD
-        COMMAND SetFile -a B "$<TARGET_BUNDLE_DIR:jamwide_clap>"
-        COMMENT "Setting bundle bit on JamWide.clap"
-    )
-endif()
-
-install(TARGETS jamwide_clap
-    LIBRARY DESTINATION lib/clap
-    BUNDLE DESTINATION lib/clap
-)
-
-endif() # JAMWIDE_BUILD_CLAP
 
 # ── JUCE Plugin Targets ──
 if(JAMWIDE_BUILD_JUCE)
@@ -304,6 +173,8 @@ if(JAMWIDE_BUILD_JUCE)
     target_include_directories(JamWideJuce PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/juce
     )
+
+    add_dependencies(JamWideJuce jamwide-build-number)
 
     target_link_libraries(JamWideJuce
         PRIVATE

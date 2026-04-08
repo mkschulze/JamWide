@@ -100,9 +100,14 @@ public:
                 FLAC__stream_encoder_delete(m_encoder);
                 m_encoder = nullptr;
             }
-            // Note: do NOT clear outqueue here -- finish() above flushed the
-            // final FLAC frames into outqueue. The caller reads this data
-            // before calling reinit() again.
+
+            // Clear outqueue before creating new encoder, matching VorbisEncoder
+            // behavior. Without this, leftover bytes from finish() remain in the
+            // queue and get sent as part of the NEXT interval. The receiving
+            // FlacDecoder expects the stream to start with a "fLaC" STREAMINFO
+            // header; the stale tail bytes cause immediate decode failure → silence.
+            outqueue.Advance(outqueue.Available());
+            outqueue.Compact();
 
             // Create fresh encoder (STREAMINFO header written via write_cb)
             m_err = 0;

@@ -31,8 +31,15 @@ VideoCompanion::~VideoCompanion()
 
     // WR-01 fix: Join any pending async teardown from a prior deactivate() call
     // before proceeding, so the detached task does not outlive this object / DLL.
+    // Use a timeout to prevent indefinite blocking if the async teardown is stuck
+    // (e.g., IXWebSocket wait() hung on a socket). If timeout expires, proceed to
+    // synchronous cleanup below which force-stops the server.
     if (stopFuture_.valid())
-        stopFuture_.wait();
+    {
+        auto status = stopFuture_.wait_for(std::chrono::seconds(3));
+        if (status != std::future_status::ready)
+            DBG("VideoCompanion: async teardown timeout, proceeding with synchronous cleanup");
+    }
 
     // Destructor must block until server is fully stopped (unlike deactivate()
     // which defers to a background thread to avoid DAW state-save timeout).
@@ -40,6 +47,7 @@ VideoCompanion::~VideoCompanion()
         std::lock_guard<std::mutex> lock(wsMutex_);
         if (wsServer_)
         {
+            wsServer_->setOnClientMessageCallback(nullptr);
             wsServer_->stop();
             wsServer_->wait();
             wsServer_.reset();
@@ -164,7 +172,8 @@ juce::String VideoCompanion::buildCompanionUrl(const juce::String& roomId,
          + "&push="
          + juce::URL::addEscapeChars(pushId, true)
          + "&wsPort="
-         + juce::String(wsPort);
+         + juce::String(wsPort)
+         + "&ad=0&autostart";
 
     // D-05: Append derived room password as URL fragment (# not ?) -- never sent to server
     // Uses #password= so VDO.Ninja handles its own internal hashing from this value
@@ -239,14 +248,27 @@ bool VideoCompanion::startWebSocketServer(const SessionSnapshot& snap)
     // CRITICAL: Bind to 127.0.0.1 only (T-11-01 mitigation, Research pitfall 1 & 7)
     wsServer_ = std::make_unique<ix::WebSocketServer>(wsPort_, "127.0.0.1");
 
+    // Disable per-message deflate: localhost-only traffic with small JSON payloads
+    // does not benefit from compression, and zlib's deflate context on the IXWebSocket
+    // thread is a known source of heap corruption that can cascade into Windows BSOD
+    // (KERNEL_SECURITY_CHECK_FAILURE 0x139) via network driver pool corruption.
+    wsServer_->disablePerMessageDeflate();
+
     // CR-01 fix: Capture snapshot by value so the callback reads a thread-safe copy
     // instead of unsynchronized shared members. IXWebSocket fires this callback on
     // its own internal thread.
+    // Poison-pill pattern (adopted from Ninja-VST3): capture alive_ flag and check it
+    // at the top of the callback to prevent use-after-free during shutdown. Without this,
+    // the callback can fire between alive_->store(false) and wsServer_->stop() in the
+    // destructor, accessing a partially-destroyed VideoCompanion via `this`.
+    auto aliveFlag = alive_;
     wsServer_->setOnClientMessageCallback(
-        [this, snap](std::shared_ptr<ix::ConnectionState> /*connectionState*/,
+        [this, aliveFlag, snap](std::shared_ptr<ix::ConnectionState> /*connectionState*/,
                ix::WebSocket& webSocket,
                const ix::WebSocketMessagePtr& msg)
         {
+            if (!aliveFlag->load(std::memory_order_acquire))
+                return;
             if (msg->type == ix::WebSocketMessageType::Open)
             {
                 sendConfigToClient(webSocket, snap);
@@ -277,6 +299,9 @@ void VideoCompanion::stopWebSocketServer()
         if (!wsServer_)
             return;
 
+        // Clear callback before stopping to prevent late callbacks from accessing
+        // `this` during teardown (adopted from Ninja-VST3's callback-clear pattern).
+        wsServer_->setOnClientMessageCallback(nullptr);
         wsServer_->stop();
         serverToStop = std::move(wsServer_);
         // wsServer_ is now null — broadcastRoster/sendConfig will bail early
@@ -299,7 +324,26 @@ void VideoCompanion::stopWebSocketServer()
 
 static juce::String escapeJsonString(const juce::String& s)
 {
-    return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    juce::String result;
+    for (int i = 0; i < s.length(); ++i)
+    {
+        auto c = s[i];
+        switch (c)
+        {
+            case '\\': result += "\\\\"; break;
+            case '"':  result += "\\\""; break;
+            case '\n': result += "\\n";  break;
+            case '\r': result += "\\r";  break;
+            case '\t': result += "\\t";  break;
+            default:
+                if (c < 0x20)
+                    result += juce::String::formatted("\\u%04x", static_cast<int>(c));
+                else
+                    result += c;
+                break;
+        }
+    }
+    return result;
 }
 
 void VideoCompanion::sendConfigToClient(ix::WebSocket& client, const SessionSnapshot& snap)
@@ -402,14 +446,14 @@ void VideoCompanion::broadcastBufferDelay(float bpm, int bpi)
     // Extreme BPM values can truncate to 0; sending delayMs:0 would disable VDO.Ninja buffering.
     int computed = static_cast<int>((60.0 / static_cast<double>(bpm)) * bpi * 1000.0);
     if (computed <= 0) return;
-    cachedDelayMs_ = computed;
 
     // D-04: {"type":"bufferDelay","delayMs":N}
     juce::String json = "{\"type\":\"bufferDelay\",\"delayMs\":"
-                        + juce::String(cachedDelayMs_) + "}";
+                        + juce::String(computed) + "}";
 
     std::lock_guard<std::mutex> lock(wsMutex_);
     if (!wsServer_) return;
+    cachedDelayMs_ = computed;
     auto clients = wsServer_->getClients();
     for (auto& client : clients)
         client->send(json.toStdString());

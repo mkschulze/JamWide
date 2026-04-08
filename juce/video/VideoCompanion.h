@@ -145,6 +145,13 @@ private:
     void broadcastRoster(const std::vector<NJClient::RemoteUserInfo>& users);
 
     JamWideJuceProcessor& processor_;
+
+    // DESTRUCTION ORDER: alive_ is declared FIRST among video state so it is destroyed
+    // LAST (C++ destroys members in reverse declaration order). This ensures IXWebSocket
+    // callbacks that captured alive_ can safely read the flag during wsServer_ teardown.
+    // Adopted from Ninja-VST3's member-ordering pattern (receiveBuffer_ before session_).
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
+
     std::atomic<bool> active_{false};
     int wsPort_ = kDefaultWsPort;
 
@@ -188,9 +195,6 @@ private:
     // 4. It is cleared when the plugin is destroyed (~VideoCompanion).
     juce::String storedPassword_;
     bool hasLaunchedThisSession_ = false;  // True after first successful launchCompanion
-
-    // callAsync UAF safety -- same pattern as OscServer
-    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VideoCompanion)
 };

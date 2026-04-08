@@ -49,7 +49,6 @@ VideoCompanion::~VideoCompanion()
         {
             wsServer_->setOnClientMessageCallback(nullptr);
             wsServer_->stop();
-            wsServer_->wait();
             wsServer_.reset();
         }
     }
@@ -307,14 +306,15 @@ void VideoCompanion::stopWebSocketServer()
         // wsServer_ is now null — broadcastRoster/sendConfig will bail early
     }
 
-    // Wait + destroy off the message thread to avoid DAW state-save timeout.
-    // WR-01 fix: Use std::async instead of detached thread so the destructor can
-    // join the teardown task, preventing crashes from threads outliving the DLL.
+    // Destroy the server object off the message thread to avoid DAW state-save timeout.
+    // stop() above already joined all IXWebSocket threads and closed the socket.
+    // DO NOT call s->wait() here — stop() already fired the condition variable notification,
+    // so wait() would block forever (classic CV race: notify before wait = lost signal).
+    // The async lambda only needs to destroy the unique_ptr, which is safe on any thread.
     if (serverToStop)
     {
         stopFuture_ = std::async(std::launch::async,
             [s = std::move(serverToStop)]() mutable {
-                s->wait();
                 s.reset();
             });
     }

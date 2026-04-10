@@ -341,10 +341,20 @@ void ChannelStripArea::updateVuLevels()
     // Remote VU from cachedUsers, accounting for parent strips in multi-channel users.
     // remoteStrips layout: [parent?, child0, child1, ...] per user.
     // Single-channel user: one Remote strip. Multi-channel: one Remote parent + N RemoteChild strips.
+    // Must skip hidden bots (same filter as refreshFromUsers) to keep stripIdx aligned.
     const auto& users = processorRef.cachedUsers;
     int stripIdx = 0;
     for (const auto& user : users)
     {
+        // Skip bots — must mirror the filter in refreshFromUsers
+        juce::String uName(user.name);
+        int atIdx = uName.lastIndexOfChar('@');
+        juce::String cleanName = (atIdx > 0) ? uName.substring(0, atIdx) : uName;
+        if (cleanName.startsWithIgnoreCase("ninbot")
+            || cleanName.startsWithIgnoreCase("jambot")
+            || cleanName.startsWithIgnoreCase("ninjam"))
+            continue;
+
         bool isMultiChannel = user.channels.size() > 1;
 
         if (isMultiChannel && stripIdx < static_cast<int>(remoteStrips.size()))
@@ -562,6 +572,23 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
                         cmd.set_mute = true;
                         cmd.mute = mute;
                         processorRef.cmd_queue.try_push(std::move(cmd));
+                        return;
+                    }
+                }
+            };
+            parentStrip->onSoloToggled = [this, parentUserName](bool solo) {
+                const auto& users = processorRef.cachedUsers;
+                for (int u = 0; u < static_cast<int>(users.size()); ++u) {
+                    if (juce::String(users[u].name) == parentUserName) {
+                        // Solo is per-channel in NINJAM — toggle all channels
+                        for (size_t c = 0; c < users[u].channels.size(); ++c) {
+                            jamwide::SetUserChannelStateCommand cmd;
+                            cmd.user_index = u;
+                            cmd.channel_index = users[u].channels[c].channel_index;
+                            cmd.set_solo = true;
+                            cmd.solo = solo;
+                            processorRef.cmd_queue.try_push(std::move(cmd));
+                        }
                         return;
                     }
                 }

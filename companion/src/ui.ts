@@ -43,6 +43,14 @@ export function updateHeaderBadge(connected: boolean): void {
 }
 
 // ── Footer Status ──
+// Tracks whether the plugin explicitly said goodbye (deactivate message)
+// vs. a transient WebSocket drop. After deactivate the plugin's WS server
+// is gone, so the Reconnect button is useless and we hide it.
+let deactivated = false;
+
+export function markDeactivated(): void {
+  deactivated = true;
+}
 
 export function updateFooterStatus(connected: boolean): void {
   const dot = el('ws-dot');
@@ -50,6 +58,8 @@ export function updateFooterStatus(connected: boolean): void {
   const btn = el<HTMLButtonElement>('reconnect-btn');
 
   if (connected) {
+    // Reset deactivated flag on successful reconnect
+    deactivated = false;
     dot.classList.add('dot-connected');
     dot.classList.remove('dot-disconnected');
     text.textContent = 'Connected to plugin';
@@ -57,8 +67,13 @@ export function updateFooterStatus(connected: boolean): void {
   } else {
     dot.classList.add('dot-disconnected');
     dot.classList.remove('dot-connected');
-    text.textContent = 'Disconnected';
-    btn.style.display = 'inline-block';
+    if (deactivated) {
+      text.textContent = 'Video deactivated — click Video in JamWide to reopen';
+      btn.style.display = 'none';
+    } else {
+      text.textContent = 'Disconnected';
+      btn.style.display = 'inline-block';
+    }
   }
 }
 
@@ -321,9 +336,10 @@ export function showConnectionLost(): void {
     return;
   }
   clearChildren(main);
-  main.appendChild(
-    makeCenterText('Connection lost. Click Reconnect to Plugin or re-click Video in JamWide.')
-  );
+  const msg = deactivated
+    ? 'Video deactivated. Click Video in JamWide to reopen.'
+    : 'Connection lost. Click Reconnect to Plugin or re-click Video in JamWide.';
+  main.appendChild(makeCenterText(msg));
 }
 
 // ── Waiting for Video ──

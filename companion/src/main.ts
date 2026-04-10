@@ -12,6 +12,7 @@ import {
   setSessionInfo,
   loadVdoNinjaIframe,
   showConnectionLost,
+  markDeactivated,
   showEmptyRoom,
   getSavedEffect,
   saveEffect,
@@ -171,6 +172,11 @@ function handleDeactivate(): void {
   }
   popoutWindows.clear();
   updatePillIndicators();
+  // Mark as explicitly deactivated BEFORE the WS onclose fires.
+  // updateFooterStatus() checks this flag to hide the useless Reconnect
+  // button — the plugin's WS server is gone after deactivate() and the
+  // only way back is to re-click Video in JamWide.
+  markDeactivated();
   showConnectionLost();
 }
 

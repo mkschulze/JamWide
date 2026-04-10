@@ -47,7 +47,12 @@ VideoCompanion::~VideoCompanion()
         std::lock_guard<std::mutex> lock(wsMutex_);
         if (wsServer_)
         {
-            wsServer_->setOnClientMessageCallback(nullptr);
+            // See stopWebSocketServer() — IXWebSocket invokes this callback
+            // during teardown; a null std::function would throw and terminate.
+            wsServer_->setOnClientMessageCallback(
+                [](std::shared_ptr<ix::ConnectionState>,
+                   ix::WebSocket&,
+                   const ix::WebSocketMessagePtr&) { /* no-op */ });
             wsServer_->stop();
             wsServer_.reset();
         }
@@ -298,9 +303,19 @@ void VideoCompanion::stopWebSocketServer()
         if (!wsServer_)
             return;
 
-        // Clear callback before stopping to prevent late callbacks from accessing
-        // `this` during teardown (adopted from Ninja-VST3's callback-clear pattern).
-        wsServer_->setOnClientMessageCallback(nullptr);
+        // Replace callback with an empty no-op BEFORE stopping. IXWebSocket
+        // calls this callback unconditionally from its per-client worker thread
+        // (notably from WebSocketTransport::closeSocketAndSwitchToClosedState()
+        // during WebSocketServer::handleUpgrade/handleConnection teardown),
+        // and calling a null std::function throws std::bad_function_call,
+        // which propagates to std::terminate() on that worker thread.
+        // Setting a valid (but do-nothing) std::function avoids the throw and
+        // still breaks the capture of `this`, so pending callbacks cannot
+        // reach VideoCompanion state during teardown.
+        wsServer_->setOnClientMessageCallback(
+            [](std::shared_ptr<ix::ConnectionState>,
+               ix::WebSocket&,
+               const ix::WebSocketMessagePtr&) { /* no-op */ });
         wsServer_->stop();
         serverToStop = std::move(wsServer_);
         // wsServer_ is now null — broadcastRoster/sendConfig will bail early
@@ -383,7 +398,22 @@ void VideoCompanion::onRosterChanged(const std::vector<NJClient::RemoteUserInfo>
     juce::MessageManager::callAsync([this, aliveFlag, usersCopy = std::move(usersCopy)]() {
         if (!aliveFlag->load(std::memory_order_acquire))
             return;
-        broadcastRoster(usersCopy);
+        // Also gate on active_ — deactivate() may have torn down the WS server
+        // between scheduling and dispatch. broadcastRoster handles the null
+        // wsServer_ case, but checking active_ first avoids acquiring wsMutex_
+        // during teardown and keeps the message pump responsive.
+        if (!active_.load(std::memory_order_acquire))
+            return;
+        // Catch any exception from broadcastRoster (JSON building, string
+        // operations) so it cannot propagate into the JUCE message pump and
+        // trigger std::terminate() / FAST_FAIL_FATAL_APP_EXIT.
+        try {
+            broadcastRoster(usersCopy);
+        } catch (const std::exception& e) {
+            DBG("VideoCompanion::broadcastRoster threw: " << e.what());
+        } catch (...) {
+            DBG("VideoCompanion::broadcastRoster threw unknown exception");
+        }
     });
 }
 

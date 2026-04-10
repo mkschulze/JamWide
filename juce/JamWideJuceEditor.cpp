@@ -141,8 +141,17 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
         {
             channelStripArea.setConnectedState();
             chatPanel.setConnectedState();
-            if (!processorRef.cachedUsers.empty())
-                channelStripArea.refreshFromUsers(processorRef.cachedUsers);
+            {
+                // Snapshot cachedUsers under the lock so refreshFromUsers
+                // iterates a stable copy, not the live shared vector.
+                std::vector<NJClient::RemoteUserInfo> usersCopy;
+                {
+                    std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
+                    usersCopy = processorRef.cachedUsers;
+                }
+                if (!usersCopy.empty())
+                    channelStripArea.refreshFromUsers(usersCopy);
+            }
             prevPollStatus_ = NJClient::NJC_STATUS_OK;
 
             // Restore video button state if videoCompanion is active (editor recreated mid-session)
@@ -422,7 +431,13 @@ void JamWideJuceEditor::handleServerDoubleClicked(const juce::String& address)
 
 void JamWideJuceEditor::refreshChannelStrips()
 {
-    channelStripArea.refreshFromUsers(processorRef.cachedUsers);
+    // Snapshot under the lock so refreshFromUsers iterates a stable copy.
+    std::vector<NJClient::RemoteUserInfo> usersCopy;
+    {
+        std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
+        usersCopy = processorRef.cachedUsers;
+    }
+    channelStripArea.refreshFromUsers(usersCopy);
 
     // Highlight Fit button red when strips overflow the viewport
     int chatW = chatSidebarVisible ? kChatPanelWidth : 0;

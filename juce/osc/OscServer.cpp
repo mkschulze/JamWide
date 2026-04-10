@@ -506,8 +506,13 @@ void OscServer::handleRemoteUserOsc(const juce::String& address, float value)
     int oscIdx = remainder.substring(0, slashPos).getIntValue();
     if (oscIdx < 1 || oscIdx > kMaxRemoteSlots) return;  // T-10-01: bounds check
 
-    // Resolve against CURRENT roster (message thread -- same thread that updates cachedUsers)
-    const auto& users = processor.cachedUsers;
+    // Resolve against CURRENT roster. Snapshot under lock — run thread may be
+    // replacing cachedUsers concurrently via std::move.
+    std::vector<NJClient::RemoteUserInfo> users;
+    {
+        std::lock_guard<std::mutex> lk(processor.cachedUsersMutex);
+        users = processor.cachedUsers;
+    }
     int userIndex = oscIdx - 1;  // 1-based OSC -> 0-based NJClient (Pitfall 1)
     if (userIndex >= static_cast<int>(users.size())) return;  // slot empty
 
@@ -718,7 +723,11 @@ void OscServer::handleOscStringOnMessageThread(const juce::String& address, cons
 
 void OscServer::sendDirtyRemoteUsers(juce::OSCBundle& bundle, bool& hasContent)
 {
-    const auto& users = processor.cachedUsers;
+    std::vector<NJClient::RemoteUserInfo> users;
+    {
+        std::lock_guard<std::mutex> lk(processor.cachedUsersMutex);
+        users = processor.cachedUsers;
+    }
     const int count = juce::jmin(static_cast<int>(users.size()), kMaxRemoteSlots);
 
     for (int i = 0; i < count; ++i)
@@ -826,7 +835,11 @@ void OscServer::sendDirtyRemoteUsers(juce::OSCBundle& bundle, bool& hasContent)
 
 void OscServer::sendRemoteVuMeters(juce::OSCBundle& bundle, bool& hasContent)
 {
-    const auto& users = processor.cachedUsers;
+    std::vector<NJClient::RemoteUserInfo> users;
+    {
+        std::lock_guard<std::mutex> lk(processor.cachedUsersMutex);
+        users = processor.cachedUsers;
+    }
     const int count = juce::jmin(static_cast<int>(users.size()), kMaxRemoteSlots);
 
     for (int i = 0; i < count; ++i)
@@ -936,7 +949,11 @@ void OscServer::sendVideoState(juce::OSCBundle& bundle, bool& hasContent)
 
 void OscServer::sendRemoteRoster(juce::OSCBundle& bundle, bool& hasContent)
 {
-    const auto& users = processor.cachedUsers;
+    std::vector<NJClient::RemoteUserInfo> users;
+    {
+        std::lock_guard<std::mutex> lk(processor.cachedUsersMutex);
+        users = processor.cachedUsers;
+    }
     const int count = juce::jmin(static_cast<int>(users.size()), kMaxRemoteSlots);
 
     // Compute hash: size + sum of name lengths (simple, sufficient for change detection)

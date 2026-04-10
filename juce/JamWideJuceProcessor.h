@@ -109,8 +109,13 @@ public:
     std::vector<ServerListEntry> cachedServerList;
 
     // REVIEW FIX #3: cachedUsers on Processor (not late in Plan 04).
-    // Written by run thread under clientLock via GetRemoteUsersSnapshot(),
-    // read by message thread after UserInfoChangedEvent arrives.
+    // Written by run thread via GetRemoteUsersSnapshot(), read by message thread.
+    // ALL access (read or write) must hold cachedUsersMutex. The run thread
+    // replaces the vector via std::move on structural changes and also updates
+    // per-channel VU levels in place; iterating without the lock from the
+    // message thread can race with the structural replacement and access
+    // freed memory.
+    mutable std::mutex cachedUsersMutex;
     std::vector<NJClient::RemoteUserInfo> cachedUsers;
 
     // User count (atomic for lock-free UI read)
@@ -122,7 +127,7 @@ public:
     // Persistent UI state (survives editor destruction)
     juce::String lastServerAddress{"ninbot.com"};
     juce::String lastUsername{"anonymous"};
-    float scaleFactor{1.5f};
+    float scaleFactor{1.0f};
 
     // Routing mode (0=manual, 1=by-channel, 2=by-user) -- persisted per D-12
     // REVIEW FIX: std::atomic<int> to prevent data race between message thread (write)

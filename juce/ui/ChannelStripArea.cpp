@@ -282,6 +282,7 @@ ChannelStripArea::~ChannelStripArea()
 std::pair<int, int> ChannelStripArea::findRemoteIndex(
     const juce::String& userName, const juce::String& channelName) const
 {
+    std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
     const auto& users = processorRef.cachedUsers;
     for (int u = 0; u < static_cast<int>(users.size()); ++u)
     {
@@ -342,6 +343,8 @@ void ChannelStripArea::updateVuLevels()
     // remoteStrips layout: [parent?, child0, child1, ...] per user.
     // Single-channel user: one Remote strip. Multi-channel: one Remote parent + N RemoteChild strips.
     // Must skip hidden bots (same filter as refreshFromUsers) to keep stripIdx aligned.
+    // Hold cachedUsersMutex to prevent use-after-free when run thread replaces cachedUsers.
+    std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
     const auto& users = processorRef.cachedUsers;
     int stripIdx = 0;
     for (const auto& user : users)
@@ -538,6 +541,7 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
             juce::String parentUserName(user.name);
 
             parentStrip->onVolumeChanged = [this, parentUserName](float vol) {
+                std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
                 const auto& users = processorRef.cachedUsers;
                 for (int u = 0; u < static_cast<int>(users.size()); ++u) {
                     if (juce::String(users[u].name) == parentUserName) {
@@ -551,6 +555,7 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
                 }
             };
             parentStrip->onPanChanged = [this, parentUserName](float pan) {
+                std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
                 const auto& users = processorRef.cachedUsers;
                 for (int u = 0; u < static_cast<int>(users.size()); ++u) {
                     if (juce::String(users[u].name) == parentUserName) {
@@ -564,6 +569,7 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
                 }
             };
             parentStrip->onMuteToggled = [this, parentUserName](bool mute) {
+                std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
                 const auto& users = processorRef.cachedUsers;
                 for (int u = 0; u < static_cast<int>(users.size()); ++u) {
                     if (juce::String(users[u].name) == parentUserName) {
@@ -577,6 +583,7 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
                 }
             };
             parentStrip->onSoloToggled = [this, parentUserName](bool solo) {
+                std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
                 const auto& users = processorRef.cachedUsers;
                 for (int u = 0; u < static_cast<int>(users.size()); ++u) {
                     if (juce::String(users[u].name) == parentUserName) {

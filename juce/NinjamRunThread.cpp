@@ -327,23 +327,34 @@ void NinjamRunThread::run()
                 std::vector<NJClient::RemoteUserInfo> snapshot;
                 client->GetRemoteUsersSnapshot(snapshot);
 
-                processor.cachedUsers = std::move(snapshot);
-                processor.userCount.store(static_cast<int>(processor.cachedUsers.size()),
-                                          std::memory_order_relaxed);
+                // Hold cachedUsersMutex during the structural replacement so the
+                // message thread cannot be mid-iteration when std::move invalidates
+                // the old vector's buffer (crash vector: FAST_FAIL_FATAL_APP_EXIT).
+                std::vector<NJClient::RemoteUserInfo> rosterCopyForCompanion;
+                {
+                    std::lock_guard<std::mutex> lk(processor.cachedUsersMutex);
+                    processor.cachedUsers = std::move(snapshot);
+                    processor.userCount.store(static_cast<int>(processor.cachedUsers.size()),
+                                              std::memory_order_relaxed);
+                    // Copy out for the video companion while still under the lock
+                    if (processor.videoCompanion && processor.videoCompanion->isActive())
+                        rosterCopyForCompanion = processor.cachedUsers;
+                }
                 processor.evt_queue.try_push(jamwide::UserInfoChangedEvent{});
 
-                // Bridge roster to VideoCompanion WebSocket clients (per D-14: roster message on user change).
-                // onRosterChanged is thread-safe: it marshals to message thread via callAsync internally
-                // (same pattern as OscServer). Does NOT touch SPSC cmd_queue single-producer invariant.
+                // Bridge roster to VideoCompanion WebSocket clients. onRosterChanged
+                // marshals to the message thread internally — call it without the lock.
                 if (processor.videoCompanion && processor.videoCompanion->isActive()) {
-                    processor.videoCompanion->onRosterChanged(processor.cachedUsers);
+                    processor.videoCompanion->onRosterChanged(rosterCopyForCompanion);
                 }
             }
 
             // Update remote VU levels every iteration (not just on user info change).
             // VU levels change continuously with audio; the structural snapshot above
-            // only fires on join/leave/config changes.
+            // only fires on join/leave/config changes. Must hold cachedUsersMutex so
+            // the message thread's updateVuLevels() can iterate safely.
             {
+                std::lock_guard<std::mutex> lk(processor.cachedUsersMutex);
                 auto& users = processor.cachedUsers;
                 for (size_t ui = 0; ui < users.size(); ++ui)
                 {

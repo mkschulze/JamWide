@@ -56,6 +56,7 @@ VideoCompanion::~VideoCompanion()
             wsServer_->stop();
             wsServer_.reset();
         }
+        validatedClients_.clear();
     }
 }
 
@@ -273,11 +274,61 @@ bool VideoCompanion::startWebSocketServer(const SessionSnapshot& snap)
         {
             if (!aliveFlag->load(std::memory_order_acquire))
                 return;
+
             if (msg->type == ix::WebSocketMessageType::Open)
             {
+                // SECURITY: validate Origin and Host headers before emitting
+                // any state. Browsers do NOT apply SOP/CORS to raw WebSocket
+                // upgrades, so without this check any webpage the user visits
+                // in another tab could connect to ws://127.0.0.1:7170 and
+                // receive the room ID + roster on Open, then join VDO.Ninja
+                // directly to lurk. Also guards against DNS rebinding — only
+                // loopback Host values are accepted.
+                //
+                // The legit companion is loaded from https://jamwide.audio/
+                // and its JS opens ws://127.0.0.1:<port>, so Origin will be
+                // exactly "https://jamwide.audio" and Host will be
+                // "127.0.0.1:<port>" (or "localhost:<port>" with some browsers).
+                const auto& headers = msg->openInfo.headers;
+                auto originIt = headers.find("Origin");
+                auto hostIt   = headers.find("Host");
+                const std::string expectedHost1 = "127.0.0.1:" + std::to_string(snap.wsPort);
+                const std::string expectedHost2 = "localhost:" + std::to_string(snap.wsPort);
+                const bool originOk = (originIt != headers.end()
+                                       && originIt->second == "https://jamwide.audio");
+                const bool hostOk = (hostIt != headers.end()
+                                     && (hostIt->second == expectedHost1
+                                         || hostIt->second == expectedHost2));
+                if (!originOk || !hostOk)
+                {
+                    DBG("VideoCompanion: rejecting WS client — Origin='"
+                        << (originIt != headers.end() ? originIt->second : std::string("<missing>"))
+                        << "' Host='"
+                        << (hostIt   != headers.end() ? hostIt->second   : std::string("<missing>"))
+                        << "'");
+                    // 1008 = policy violation. Not in WebSocketCloseConstants
+                    // but RFC 6455 defines it; ix::WebSocket::close accepts any
+                    // uint16_t.
+                    webSocket.close(1008, "origin not allowed");
+                    return;  // do NOT add to validatedClients_ and do NOT send config
+                }
+
+                // Validation passed — register and send initial state.
+                {
+                    std::lock_guard<std::mutex> lock(wsMutex_);
+                    validatedClients_.insert(&webSocket);
+                }
                 sendConfigToClient(webSocket, snap);
             }
-            // Close: no-op (client disconnected)
+            else if (msg->type == ix::WebSocketMessageType::Close
+                  || msg->type == ix::WebSocketMessageType::Error)
+            {
+                // Remove before the underlying ix::WebSocket is destroyed so
+                // broadcasts never dereference a stale pointer. Error also
+                // triggers cleanup — ixwebsocket tears the connection down.
+                std::lock_guard<std::mutex> lock(wsMutex_);
+                validatedClients_.erase(&webSocket);
+            }
         }
     );
 
@@ -319,6 +370,11 @@ void VideoCompanion::stopWebSocketServer()
         wsServer_->stop();
         serverToStop = std::move(wsServer_);
         // wsServer_ is now null — broadcastRoster/sendConfig will bail early
+        // Clear the validated-clients set: the ix::WebSocket objects behind
+        // those pointers are about to be destroyed with the server. Any stale
+        // pointer lookup in broadcastRoster/broadcastBufferDelay is guarded
+        // by the wsServer_ null check that fires first under the same lock.
+        validatedClients_.clear();
     }
 
     // Destroy the server object off the message thread to avoid DAW state-save timeout.
@@ -451,11 +507,17 @@ void VideoCompanion::broadcastRoster(const std::vector<NJClient::RemoteUserInfo>
 
     json += "]}";
 
-    // Broadcast to all connected clients
+    // Broadcast to validated clients only. Iterate the set copy of raw
+    // pointers captured under the lock — then cross-reference each against
+    // getClients() (which owns shared_ptrs) so we never dereference a stale
+    // pointer. This prevents unvalidated clients from receiving roster state
+    // even if ixwebsocket briefly keeps them around during close.
     auto clients = wsServer_->getClients();
+    const auto payload = json.toStdString();
     for (auto& client : clients)
     {
-        client->send(json.toStdString());
+        if (validatedClients_.count(client.get()) > 0)
+            client->send(payload);
     }
 }
 
@@ -485,8 +547,10 @@ void VideoCompanion::broadcastBufferDelay(float bpm, int bpi)
     if (!wsServer_) return;
     cachedDelayMs_ = computed;
     auto clients = wsServer_->getClients();
+    const auto payload = json.toStdString();
     for (auto& client : clients)
-        client->send(json.toStdString());
+        if (validatedClients_.count(client.get()) > 0)
+            client->send(payload);
 }
 
 // ── Popout / Roster Lookup (Phase 13) ─────────────────────────────────────
@@ -501,8 +565,10 @@ void VideoCompanion::requestPopout(const juce::String& streamId)
     std::lock_guard<std::mutex> lock(wsMutex_);
     if (!wsServer_) return;
     auto clients = wsServer_->getClients();
+    const auto payload = json.toStdString();
     for (auto& client : clients)
-        client->send(json.toStdString());
+        if (validatedClients_.count(client.get()) > 0)
+            client->send(payload);
 }
 
 juce::String VideoCompanion::getStreamIdForUserIndex(int index) const
@@ -539,8 +605,10 @@ void VideoCompanion::deactivate()
         {
             juce::String json = "{\"type\":\"deactivate\"}";
             auto clients = wsServer_->getClients();
+            const auto payload = json.toStdString();
             for (auto& client : clients)
-                client->send(json.toStdString());
+                if (validatedClients_.count(client.get()) > 0)
+                    client->send(payload);
         }
     }
 

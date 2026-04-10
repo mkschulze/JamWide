@@ -156,8 +156,16 @@ private:
     int wsPort_ = kDefaultWsPort;
 
     std::unique_ptr<ix::WebSocketServer> wsServer_;
-    std::mutex wsMutex_;  // Guards wsServer_ start/stop and broadcast
+    std::mutex wsMutex_;  // Guards wsServer_ start/stop, broadcast, and validatedClients_
     std::future<void> stopFuture_;  // WR-01 fix: joinable handle for async server teardown
+
+    // Security: only clients whose Origin and Host headers matched the companion
+    // URL are added here on Open. Broadcasts iterate this set instead of
+    // wsServer_->getClients() so a rogue webpage cannot receive config/roster
+    // even briefly. Pointers are the address of the ix::WebSocket& passed to the
+    // onClientMessage callback — valid from Open until Close, and Close removes
+    // the entry. Guarded by wsMutex_.
+    std::set<ix::WebSocket*> validatedClients_;
 
     // Current session config (set on launch, sent to each connecting WS client)
     juce::String currentRoom_;

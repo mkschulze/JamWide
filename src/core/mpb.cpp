@@ -868,14 +868,24 @@ int mpb_chat_message::parse(Net_Message *msg) // return 0 on success
 
   const char *endp=(char*)msg->get_data()+msg->get_size();
 
+  // Security fix: only record parms[x] AFTER confirming a NUL terminator
+  // was seen strictly before endp. The original loop assigned parms[x]=p
+  // before walking, then tested the end-of-buffer condition only after an
+  // unconditional p++, which left the last parms[] pointing into an
+  // unterminated region whenever the wire payload ran off the end without
+  // a trailing NUL. Downstream consumers (snprintf %s, ChatMessage_Callback)
+  // would then C-string-walk past the message buffer, leaking adjacent heap
+  // contents to the chat UI and log. A malicious server could use this as a
+  // reliable read primitive.
   int x;
   memset(parms,0,sizeof(parms));
   for (x = 0; x < (int) (sizeof(parms)/sizeof(parms[0])); x ++)
   {
-    parms[x]=p;
+    const char *start = p;
     while (p < endp && *p) p++;
-    p++;
-    if (p >= endp) break;
+    if (p >= endp) break;   // unterminated: do NOT record this pointer
+    parms[x] = start;
+    p++;                    // skip the NUL we just confirmed
   }
   return x?0:3;
 }

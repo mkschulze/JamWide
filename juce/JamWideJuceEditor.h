@@ -99,7 +99,11 @@ private:
     bool infoStripVisible = true;
     int prevPollStatus_ = -1;  // REVIEW FIX: member, not static
 
-    static constexpr int kBaseWidth = 1000;
+    // 1030 accommodates the widened Connect/Disconnect button (105px) and
+    // Video button (54px) so "Disconnect" and "Video" both fit at the default
+    // plugin size without the right-side Fit/Video/Sync/Route/Vorbis cluster
+    // crowding the status label.
+    static constexpr int kBaseWidth = 1030;
     static constexpr int kBaseHeight = 700;
     static constexpr int kConnectionBarHeight = 44;
     static constexpr int kBeatBarHeight = 22;

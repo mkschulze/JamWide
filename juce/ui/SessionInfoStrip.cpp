@@ -9,7 +9,7 @@ SessionInfoStrip::SessionInfoStrip()
 void SessionInfoStrip::update(int intervalCount, unsigned int elapsedMs,
                                int currentBeat, int totalBeats,
                                int syncState, bool isStandalone,
-                               int userCount)
+                               int userCount, int maxUsers)
 {
     intervalCount_ = intervalCount;
     elapsedMs_ = elapsedMs;
@@ -18,6 +18,7 @@ void SessionInfoStrip::update(int intervalCount, unsigned int elapsedMs,
     syncState_ = syncState;
     isStandalone_ = isStandalone;
     userCount_ = userCount;
+    maxUsers_ = maxUsers;
     repaint();
 }
 
@@ -77,15 +78,26 @@ void SessionInfoStrip::paint(juce::Graphics& g)
     else
         g.drawText("--/--", area.removeFromLeft(40), juce::Justification::centredLeft, false);
 
-    // Users section
+    // Users section — renders "N/M" when the server's max slot count is known
+    // (populated from the public server list cache by the editor), "N"
+    // otherwise. maxUsers_ == 0 means "unknown" — the NINJAM protocol itself
+    // doesn't expose max-slots, we only know it when the user has browsed the
+    // public list and the connected server appears there.
     area.removeFromLeft(16);  // gap
     g.setFont(labelFont);
     g.setColour(labelCol);
     g.drawText("Users: ", area.removeFromLeft(35), juce::Justification::centredRight, false);
     g.setFont(valueFont);
     g.setColour(valueCol);
-    g.drawText(connected ? juce::String(userCount_) : "--",
-               area.removeFromLeft(25), juce::Justification::centredLeft, false);
+    juce::String usersStr;
+    if (!connected)
+        usersStr = "--";
+    else if (maxUsers_ > 0)
+        usersStr = juce::String(userCount_) + "/" + juce::String(maxUsers_);
+    else
+        usersStr = juce::String(userCount_);
+    // 50px fits "NN/NN" comfortably at the 11pt value font.
+    g.drawText(usersStr, area.removeFromLeft(50), juce::Justification::centredLeft, false);
 
     // Sync section (hidden in standalone per D-07)
     if (!isStandalone_)

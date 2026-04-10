@@ -191,7 +191,12 @@ void JamWideJuceEditor::mouseDown(const juce::MouseEvent& e)
         menu.addItem(3, "2x",   true, juce::approximatelyEqual(processorRef.scaleFactor, 2.0f));
         menu.addSeparator();
         menu.addItem(4, "Show Session Info", true, infoStripVisible);
-        menu.showMenuAsync(juce::PopupMenu::Options(),
+        // withParentComponent(this) — NOT withTargetComponent — so the menu
+        // (a) inherits JamWideLookAndFeel from the editor for consistent
+        // typography/colours, and (b) still opens at the mouse position
+        // (withTargetComponent would anchor the menu to the editor's bounds,
+        // which is wrong for a right-click context menu).
+        menu.showMenuAsync(juce::PopupMenu::Options().withParentComponent(this),
             [this](int result) {
                 if (result >= 1 && result <= 3)
                 {
@@ -274,7 +279,33 @@ void JamWideJuceEditor::timerCallback()
         int syncState = processorRef.syncState_.load(std::memory_order_relaxed);
 
         int userCount = processorRef.userCount.load(std::memory_order_relaxed);
-        sessionInfoStrip.update(intervalCount, elapsedMs, beat, bpi, syncState, isStandalone, userCount);
+
+        // Look up max user slots from the cached public server list. The
+        // NINJAM protocol itself does not expose max-slots, so this is only
+        // populated when the user has refreshed the server browser and the
+        // connected server appears in the list. maxUsers=0 => unknown; the
+        // strip falls back to rendering just the current count.
+        int maxUsers = 0;
+        const juce::String& addr = processorRef.lastServerAddress;
+        if (addr.isNotEmpty() && !processorRef.cachedServerList.empty())
+        {
+            // Parse "host:port" out of the editor's last-used address string.
+            // Port is optional — match on host alone if it's missing.
+            int colon = addr.lastIndexOfChar(':');
+            juce::String host = colon >= 0 ? addr.substring(0, colon) : addr;
+            int port = colon >= 0 ? addr.substring(colon + 1).getIntValue() : 0;
+            for (const auto& entry : processorRef.cachedServerList)
+            {
+                if (juce::String(entry.host).equalsIgnoreCase(host)
+                    && (port == 0 || entry.port == port))
+                {
+                    maxUsers = entry.max_users;
+                    break;
+                }
+            }
+        }
+
+        sessionInfoStrip.update(intervalCount, elapsedMs, beat, bpi, syncState, isStandalone, userCount, maxUsers);
     }
 
     // Note: VU updates are driven by ChannelStripArea's own 30Hz timer (REVIEW FIX #7)

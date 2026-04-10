@@ -28,9 +28,10 @@ void OscStatusDot::paint(juce::Graphics& g)
     g.drawText("OSC", juce::Rectangle<float>(labelX, labelY, labelWidth, 9.0f),
                juce::Justification::centredLeft, false);
 
-    // Dot: 10px diameter, 4px gap after "OSC" text, centered vertically
+    // Dot: 8px diameter to match the server-connection dot drawn in
+    // ConnectionBar::paint. 4px gap after "OSC" text, centered vertically.
     const float dotX = labelX + labelWidth + 4.0f;
-    const float dotY = (bounds.getHeight() - 10.0f) * 0.5f;
+    const float dotY = (bounds.getHeight() - 8.0f) * 0.5f;
 
     // Color based on OscServer state (per D-09: 3-state indicator)
     juce::Colour dotColour;
@@ -42,7 +43,7 @@ void OscStatusDot::paint(juce::Graphics& g)
         dotColour = juce::Colour(JamWideLookAndFeel::kAccentConnect);     // Green: active
 
     g.setColour(dotColour);
-    g.fillEllipse(dotX, dotY, 10.0f, 10.0f);
+    g.fillEllipse(dotX, dotY, 8.0f, 8.0f);
 }
 
 void OscStatusDot::mouseUp(const juce::MouseEvent& e)

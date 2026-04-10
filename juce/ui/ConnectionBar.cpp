@@ -93,9 +93,19 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
     browseButton.onClick = [this]() { if (onBrowseClicked) onBrowseClicked(); };
     addAndMakeVisible(browseButton);
 
-    // Status label
-    statusLabel.setFont(juce::FontOptions(13.0f).withStyle("Bold"));
-    statusLabel.setText("Disconnected", juce::dontSendNotification);
+    // Status label — match TextButton font (LookAndFeel_V4 uses 15pt plain for
+    // h=28 buttons via jmin(15, h-6)). Avoid .withStyle("Bold") because, with
+    // no typeface name specified, JUCE on Windows falls back to a serif face
+    // for the bold variant, which makes this label look mismatched against
+    // the sans-serif button text around it.
+    //
+    // For the normal Connected/Disconnected states the label is intentionally
+    // empty — the colored status dot painted to its left is the sole indicator
+    // (green = connected, grey = disconnected). Transient states and errors
+    // still get text: "Connecting..." in yellow, and the server's auth/connect
+    // error message in red.
+    statusLabel.setFont(juce::FontOptions(15.0f));
+    statusLabel.setText({}, juce::dontSendNotification);
     statusLabel.setColour(juce::Label::textColourId, juce::Colour(JamWideLookAndFeel::kTextSecondary));
     addAndMakeVisible(statusLabel);
 
@@ -225,8 +235,10 @@ void ConnectionBar::resized()
         x += 120 + gap;
     }
 
-    connectButton.setBounds(x, y, 90, h);
-    x += 90 + gap;
+    // 105px fits "Disconnect" at the 15pt button font without clipping.
+    // "Connect" also fits; the extra slack is visually balanced.
+    connectButton.setBounds(x, y, 105, h);
+    x += 105 + gap;
 
     browseButton.setBounds(x, y, 70, h);
     x += 70 + 16;  // 16px gap before status section
@@ -254,9 +266,11 @@ void ConnectionBar::resized()
         oscStatusDot->setBounds(rightX - 44, 0, 44, getHeight());
         rightX -= 44 + gap;
     }
-    // Video button (D-01: between OSC dot and Fit, UI-SPEC: 44x28)
-    videoButton.setBounds(rightX - 44, y, 44, h);
-    rightX -= 44 + gap;
+    // Video button — 54px so "Video" fits at the 15pt button font without
+    // JUCE drawFittedText horizontally squashing it. The original 44px spec
+    // was calibrated against a different font and clipped on Windows.
+    videoButton.setBounds(rightX - 54, y, 54, h);
+    rightX -= 54 + gap;
     fitButton.setBounds(rightX - 36, y, 36, h);
 }
 
@@ -328,7 +342,10 @@ void ConnectionBar::mouseDown(const juce::MouseEvent& e)
         menu.addItem(1, "1x",   true, juce::approximatelyEqual(processorRef.scaleFactor, 1.0f));
         menu.addItem(2, "1.5x", true, juce::approximatelyEqual(processorRef.scaleFactor, 1.5f));
         menu.addItem(3, "2x",   true, juce::approximatelyEqual(processorRef.scaleFactor, 2.0f));
-        menu.showMenuAsync(juce::PopupMenu::Options(),
+        // withParentComponent(this) inherits JamWideLookAndFeel AND lets the
+        // menu open at the mouse position (withTargetComponent would anchor
+        // it to the component's bounds — wrong for a right-click context).
+        menu.showMenuAsync(juce::PopupMenu::Options().withParentComponent(this),
             [this](int result) {
                 float newScale = 1.0f;
                 if (result == 2) newScale = 1.5f;
@@ -425,11 +442,14 @@ void ConnectionBar::updateStatus(int njcStatus, int /*numUsers*/)
 {
     currentStatus = njcStatus;
 
-    // Update status text
+    // Update status text. Normal Connected/Disconnected states render as an
+    // empty label — the colored dot to the left is the indicator. Transient
+    // "Connecting..." and error messages still get text so the user gets
+    // feedback that matters.
     switch (njcStatus)
     {
         case NJClient::NJC_STATUS_OK:
-            statusLabel.setText("Connected", juce::dontSendNotification);
+            statusLabel.setText({}, juce::dontSendNotification);
             statusLabel.setColour(juce::Label::textColourId, juce::Colour(JamWideLookAndFeel::kAccentConnect));
             processorRef.lastErrorMsg = {};  // Clear previous error on successful connect
             break;
@@ -454,7 +474,7 @@ void ConnectionBar::updateStatus(int njcStatus, int /*numUsers*/)
             break;
         }
         default:
-            statusLabel.setText("Disconnected", juce::dontSendNotification);
+            statusLabel.setText({}, juce::dontSendNotification);
             statusLabel.setColour(juce::Label::textColourId, juce::Colour(JamWideLookAndFeel::kTextSecondary));
             break;
     }

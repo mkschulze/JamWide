@@ -278,11 +278,14 @@ void NinjamRunThread::run()
 
                 lastStatus_ = currentStatus;
 
-                // On connect: grace period to suppress false BPM/BPI "changed" messages.
-                // Server sends actual config AFTER status becomes OK, so the first
-                // few iterations see default→real transitions that aren't real changes.
+                // BPM/BPI suppression window: after a fresh OK transition,
+                // silently track values for 2.5s so the NJClient defaults
+                // (120/32) can be replaced by the real server config
+                // without emitting a bogus "changed" chat message.
                 if (currentStatus == NJClient::NJC_STATUS_OK)
-                    connectGrace_ = 5;
+                    suppressBpmBpiUntilMs_ = juce::Time::currentTimeMillis() + 2500;
+                else
+                    suppressBpmBpiUntilMs_ = 0;
 
                 // On connect: set up all 4 local channels per D-12
                 if (currentStatus == NJClient::NJC_STATUS_OK)
@@ -380,11 +383,15 @@ void NinjamRunThread::run()
             int bpi = client->GetBPI();
             processor.uiSnapshot.bpi.store(bpi, std::memory_order_relaxed);
 
-            // Detect BPM/BPI changes (skip during connect grace period —
-            // server sends actual config AFTER status becomes OK)
-            if (connectGrace_ > 0)
+            // Detect BPM/BPI changes, but only AFTER the post-connect
+            // suppression window has expired. During the window the NJClient
+            // defaults (120/32) transition to the server's real config, and
+            // that transition must not be reported as a "changed" message.
+            if (suppressBpmBpiUntilMs_ > 0
+                && juce::Time::currentTimeMillis() < suppressBpmBpiUntilMs_)
             {
-                --connectGrace_;
+                // Still in the post-connect suppression window — silently
+                // track values via the uiSnapshot store above.
             }
             else
             {

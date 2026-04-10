@@ -48,10 +48,16 @@ void BeatBar::paint(juce::Graphics& g)
             }
         }
 
+        // BPM/BPI: use a plain 13pt font. .withStyle("Bold") without a typeface
+        // name falls back to a serif face on Windows (same JUCE quirk as the
+        // status label), which makes the numbers look mismatched against the
+        // sans-serif "Intervals:" / "Elapsed:" labels in the strip below.
+        const auto numberFont = juce::FontOptions(13.0f);
+
         // BPM value (right-aligned in first 36px)
         auto bpmArea = labelArea.removeFromLeft(36);
         g.setColour(textCol);
-        g.setFont(juce::FontOptions(13.0f).withStyle("Bold"));
+        g.setFont(numberFont);
         g.drawText(juce::String(static_cast<int>(currentBpm_)), bpmArea,
                    juce::Justification::centredRight, false);
 
@@ -63,7 +69,7 @@ void BeatBar::paint(juce::Graphics& g)
 
         // BPI value (left-aligned in remaining ~28px)
         g.setColour(textCol);
-        g.setFont(juce::FontOptions(13.0f).withStyle("Bold"));
+        g.setFont(numberFont);
         g.drawText(juce::String(bpi_), labelArea, juce::Justification::centredLeft, false);
     }
 

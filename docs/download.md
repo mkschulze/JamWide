@@ -14,13 +14,24 @@ The new JUCE-based version of JamWide is available as a beta. This is a complete
 **This is beta software** — it may contain bugs. Please report issues on [GitHub](https://github.com/mkschulze/JamWide/issues).
 
 <div class="download-section">
-  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.8" class="btn btn-primary btn-large">
-    Download v1.1-beta.8
+  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.9" class="btn btn-primary btn-large">
+    Download v1.1-beta.9
   </a>
   <p class="version-info">macOS (Universal) / Windows (x64) / Linux (x64)</p>
 </div>
 
-> **Looking for the stable v1.0 release?** The previous CLAP/ImGui version is still available on the [releases page](https://github.com/mkschulze/JamWide/releases/tag/v1.0.0).
+---
+
+## v1.0 Stable (Legacy)
+
+The previous CLAP/ImGui version. Recommended if you need a version that has been field-tested for longer, or if the beta has an issue on your system. No new features, but stable on all its supported platforms.
+
+<div class="download-section">
+  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.0.0" class="btn btn-large">
+    Download v1.0 (Legacy)
+  </a>
+  <p class="version-info">macOS (Universal) / Windows (x64)</p>
+</div>
 
 ---
 

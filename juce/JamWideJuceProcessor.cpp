@@ -451,20 +451,22 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         float masterPeakR = outputScratch.getMagnitude(1, 0, numSamples);
         uiSnapshot.master_vu_left.store(masterPeakL, std::memory_order_relaxed);
         uiSnapshot.master_vu_right.store(masterPeakR, std::memory_order_relaxed);
-
-        // MIDI CC processing: input FIRST, then feedback (per research Pitfall 4/5)
-        if (midiMapper)
-        {
-            midiMapper->processIncomingMidi(midiMessages);
-            midiMapper->appendFeedbackMidi(midiMessages);
-        }
-
-        return;
+    }
+    else
+    {
+        // Not connected: silence all outputs
+        for (int ch = 0; ch < totalChannels; ++ch)
+            buffer.clear(ch, 0, numSamples);
     }
 
-    // Not connected: silence all outputs
-    for (int ch = 0; ch < totalChannels; ++ch)
-        buffer.clear(ch, 0, numSamples);
+    // MIDI CC processing runs unconditionally (not just when connected)
+    // so MIDI Learn and CC control work even without a NINJAM session.
+    // Order: processIncomingMidi FIRST, appendFeedbackMidi SECOND (per research Pitfall 4/5)
+    if (midiMapper)
+    {
+        midiMapper->processIncomingMidi(midiMessages);
+        midiMapper->appendFeedbackMidi(midiMessages);
+    }
 }
 
 //==============================================================================

@@ -418,22 +418,19 @@ target_link_libraries(njclient PUBLIC wdl vorbis vorbisenc ogg FLAC OpenSSL::Cry
 | A3 | Windows CI runner has OpenSSL available via `choco install openssl` or vcpkg | Environment Availability | Could block Windows CI builds; fallback is vcpkg or bundling OpenSSL |
 | A4 | macOS CI runner (macos-14) can install OpenSSL via Homebrew for ARM64 architecture | Environment Availability | Could fail for universal builds; fallback is separate arch build passes |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Universal macOS build + OpenSSL static linking**
+1. **Universal macOS build + OpenSSL static linking** (RESOLVED)
    - What we know: Homebrew OpenSSL is single-architecture. macOS CI builds universal (arm64+x86_64).
-   - What's unclear: Whether to link dynamically (simpler, but requires OpenSSL at runtime), build separate architectures and lipo, or accept single-architecture for now.
-   - Recommendation: Link dynamically in development. For CI, either drop universal requirement or use two separate build passes with lipo merge. The njclient library itself is header-only for the EVP calls -- the linking happens at the final plugin target level.
+   - **Decision:** Link dynamically in development via Homebrew. For CI, pass `-DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)` explicitly in the CMake configure step. The CMakeLists.txt also includes a `brew --prefix` fallback for local builds. If universal builds fail due to single-arch OpenSSL, CI can be split into two separate architecture passes with lipo merge as a follow-up.
 
-2. **HMAC for tamper detection (encrypt-then-MAC)**
+2. **HMAC for tamper detection (encrypt-then-MAC)** (RESOLVED)
    - What we know: AES-CBC without MAC is vulnerable to padding oracle attacks and bit-flipping. The user explicitly deferred HMAC.
-   - What's unclear: Whether the TCP transport provides sufficient integrity guarantees (TCP checksum is weak).
-   - Recommendation: Defer per user decision. Note in code comments that encrypt-then-MAC (HMAC-SHA256) should be added in a future phase for production-grade security.
+   - **Decision:** Deferred per user decision (see CONTEXT.md Deferred Ideas). Code comments will note that encrypt-then-MAC (HMAC-SHA256) should be added in a future phase for production-grade security. Current mitigation: disconnect on any decryption failure without revealing error details (prevents padding oracle exploitation).
 
-3. **Size field semantics with encryption**
+3. **Size field semantics with encryption** (RESOLVED)
    - What we know: Currently, `size` = plaintext payload length. With encryption, `size` must reflect what's on the wire.
-   - What's unclear: Whether `size` should include IV length or just ciphertext length.
-   - Recommendation: `size` = IV (16) + ciphertext length. This is what the receiver needs to read from the socket. The decrypted plaintext length is recovered after decryption (PKCS#7 unpadding). This matches D-08's description: "The 'size' field reflects the encrypted payload size."
+   - **Decision:** `size` = IV (16 bytes) + ciphertext length. This is what the receiver needs to read from the socket. The decrypted plaintext length is recovered after decryption via PKCS#7 unpadding. This matches D-07 ("The 'size' field reflects the encrypted payload size") and D-08 ("IV prepended to payload").
 
 ## Environment Availability
 

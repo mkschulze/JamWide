@@ -32,9 +32,17 @@ MIDI CC mapping for all mixer parameters (local channels, remote channels, maste
 ### Feedback Behavior
 - **D-11:** Echo suppression mirrors OSC pattern (Phase 9 D-14). When a value changes from MIDI input, mark it 'MIDI-sourced' and skip sending CC feedback for one tick. Prevents motorized fader oscillation.
 
+### APVTS Parameter Expansion
+- **D-14:** Create fixed APVTS parameters for Remote users 1-16 group-level: `remoteVol_0..15`, `remotePan_0..15`, `remoteMute_0..15`, `remoteSolo_0..15`. 64 new parameters. Makes remote user controls host-automatable and MIDI-learnable through standard DAW parameter lists.
+- **D-15:** Promote local channel solo to APVTS: `localSolo_0..3` (4 new parameters). Currently cmd_queue dispatch only.
+- **D-16:** Promote metronome pan to APVTS: `metroPan` (1 new parameter). Currently NJClient atomic only.
+- **D-17:** When a remote slot is empty (no user connected), reset its APVTS parameters to defaults: volume 1.0, pan center, unmuted, unsoloed. Clean state for next user.
+- **D-18:** Remote sub-channel controls remain cmd_queue dispatch only (not APVTS). Controllable via MIDI Learn within JamWide but not host-automatable. Avoids 512+ parameter bloat.
+- **D-19:** Total new APVTS parameter count: 69 (64 remote group + 4 local solo + 1 metro pan). Combined with existing 16 = 85 total APVTS parameters.
+
 ### State Persistence
-- **D-12:** MIDI mappings persist across DAW sessions via getStateInformation/setStateInformation. Bump state version (from current version). Store array of mapping entries: each entry has paramId (string), ccNumber (int), midiChannel (int).
-- **D-13:** Standalone MIDI device selection persists separately (device name string in state).
+- **D-20:** MIDI mappings persist across DAW sessions via getStateInformation/setStateInformation. Bump state version (from current version). Store array of mapping entries: each entry has paramId (string), ccNumber (int), midiChannel (int).
+- **D-21:** Standalone MIDI device selection persists separately (device name string in state).
 
 ### Claude's Discretion
 - Feedback sending mechanism (timer-based dirty-flag, immediate, or processBlock output) — user deferred this decision
@@ -93,11 +101,13 @@ MIDI CC mapping for all mixer parameters (local channels, remote channels, maste
 
 ### Integration Points
 - `JamWideJuceProcessor` — MidiMapper/MidiServer component lives here as member (same as OscServer)
+- `JamWideJuceProcessor::createParameterLayout()` — Add 69 new APVTS parameters (remote 1-16 vol/pan/mute/solo, local solo 0-3, metro pan)
 - `JamWideJuceProcessor::processBlock()` — Parse incoming MidiBuffer for CC messages, route to mapper
 - `JamWideJuceProcessor::acceptsMidi()` — Change from false to true
 - `JamWideJuceEditor` — Footer bar gets MIDI status dot, right-click handlers on faders/knobs for MIDI Learn
 - `CMakeLists.txt` — May need `juce::juce_audio_devices` for standalone MIDI device enumeration
 - `getStateInformation` / `setStateInformation` — Add MIDI mapping entries, bump state version
+- `OscServer` — Must sync with new APVTS parameters for remote users (currently uses cmd_queue for remote; may need to read from APVTS instead)
 
 </code_context>
 
@@ -108,6 +118,8 @@ MIDI CC mapping for all mixer parameters (local channels, remote channels, maste
 - Right-click MIDI Learn is the primary mapping workflow — should feel instant and familiar to DAW users
 - Mapping table provides visibility into all assignments but is secondary to the Learn workflow
 - 7-bit CC is intentional — the original concern about resolution was acknowledged and accepted as sufficient for mixing
+- Remote user controls must be host-automatable — exposed as fixed APVTS slots (Remote 1-16) so DAW automation and MIDI Learn both work
+- Local solo and metro pan promoted to APVTS for full parameter parity — everything visible in the mixer should be automatable
 
 </specifics>
 
@@ -116,7 +128,7 @@ MIDI CC mapping for all mixer parameters (local channels, remote channels, maste
 
 - 14-bit CC pairs / NRPN support — could be a future enhancement if high-end controller users request it
 - Note On/Off for toggle parameters — CC toggle is sufficient, but Note messages could be added later
-- MIDI Learn for remote sub-channels — main remote user controls first, per-sub-channel can be added if needed
+- Remote sub-channel APVTS exposure — group-level is exposed (D-18), sub-channel APVTS could be added if users need host automation of individual sub-channels
 - Phone-optimized TouchOSC template variant with MIDI fallback — future template work
 
 None — discussion stayed within phase scope

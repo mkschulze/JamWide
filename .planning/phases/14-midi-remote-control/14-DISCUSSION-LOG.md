@@ -161,9 +161,73 @@
 - CC-to-volume power curve
 - juce_audio_devices linkage scope
 
+---
+
+## Remote Parameter APVTS Exposure (Update Session)
+
+**Date:** 2026-04-11 (follow-up session)
+
+### Q1: Should remote user faders be exposed as host-automatable APVTS parameters?
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| MIDI Learn only | Remote faders learnable via MIDI CC inside JamWide, but not exposed as DAW automation parameters. | |
+| Also expose as APVTS | Create fixed APVTS parameters for Remote 1-16. Makes them automatable in the DAW's parameter list. | ✓ |
+| Expose limited set | Only Remote 1-8 group-level as APVTS. Compromise between discoverability and parameter bloat. | |
+
+**User's choice:** Also expose as APVTS
+**Notes:** User wants remote faders exposed to the host DAW and learnable.
+
+---
+
+### Q2: How many remote user slots should get APVTS parameters?
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| 16 slots (Recommended) | Matches NINJAM's max user count. 64 new parameters (16 × 4). | ✓ |
+| 8 slots | 32 new parameters. Users beyond 8 not host-automatable. | |
+
+**User's choice:** 16 slots (Recommended)
+
+---
+
+### Q3: Should remote sub-channels also get APVTS parameters?
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Group-level only (Recommended) | Sub-channels remain MIDI-learnable only. Keeps parameter count manageable. | ✓ |
+| Group + sub-channels | 512 additional parameters. Major parameter bloat. | |
+
+**User's choice:** Group-level only (Recommended)
+
+---
+
+### Q4: Should local channel solo and metronome pan be promoted to APVTS?
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Yes, promote both | Add localSolo_0..3 and metroPan to APVTS. 5 extra parameters. | ✓ |
+| No, leave as-is | Keep as cmd_queue dispatch only. | |
+
+**User's choice:** Yes, promote both
+
+---
+
+### Q5: When a remote slot is empty, what happens to its APVTS parameter?
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Reset to defaults | Volume 1.0, pan center, unmuted, unsoloed. Clean state. | ✓ |
+| Retain last values | Preserve levels for reconnection. | |
+| You decide | Claude picks based on NJClient behavior. | |
+
+**User's choice:** Reset to defaults
+
+---
+
 ## Deferred Ideas
 
 - 14-bit CC pairs / NRPN support
 - Note On/Off for toggles
-- Per sub-channel MIDI Learn for remote users
+- Remote sub-channel APVTS exposure (group-level covered, sub-channels deferred)
 - Phone-optimized template with MIDI fallback

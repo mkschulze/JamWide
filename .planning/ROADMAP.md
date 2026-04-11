@@ -120,9 +120,9 @@ Plans:
   4. MIDI mappings persist across DAW sessions
 **Plans**: 3 plans
 Plans:
-- [ ] 14-01-PLAN.md -- MIDI mapper core: 69 new APVTS parameters, MidiMapper CC dispatch + feedback + echo suppression, MidiLearnManager, state version 3, unit tests
-- [ ] 14-02-PLAN.md -- MIDI Learn UX: right-click context menus, visual feedback, MidiConfigDialog (mapping table + standalone device selector), MidiStatusDot footer indicator
-- [ ] 14-03-PLAN.md -- OSC/UI remote APVTS integration: wire OscServer and ChannelStripArea to update remote APVTS params, cross-system echo suppression
+- [ ] 14-01-PLAN.md -- MIDI mapper core: 69 APVTS params, MidiMapper CC dispatch + per-mapping echo suppression + 20ms centralized APVTS-to-NJClient bridge, MidiLearnManager, state version 3, 15 unit tests
+- [ ] 14-02-PLAN.md -- MIDI Learn UX: right-click menus + config dialog Learn button (host fallback), visual feedback, MidiConfigDialog (slot-labeled mapping table + Range column + standalone device selector), MidiStatusDot 4-state footer indicator
+- [ ] 14-03-PLAN.md -- Centralized remote state: refactor OscServer + ChannelStripArea to APVTS-only for remote group controls (no direct cmd_queue), eliminating double dispatch
 **UI hint**: yes
 
 ### v1.2 Security & Quality (Planned)

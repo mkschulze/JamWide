@@ -118,10 +118,11 @@ Plans:
   2. User can control remote participant volume/pan/mute via MIDI controller
   3. Parameter changes in JamWide send MIDI CC feedback to the controller
   4. MIDI mappings persist across DAW sessions
-**Plans**: 2 plans
+**Plans**: 3 plans
 Plans:
 - [ ] 14-01-PLAN.md -- MIDI mapper core: 69 new APVTS parameters, MidiMapper CC dispatch + feedback + echo suppression, MidiLearnManager, state version 3, unit tests
 - [ ] 14-02-PLAN.md -- MIDI Learn UX: right-click context menus, visual feedback, MidiConfigDialog (mapping table + standalone device selector), MidiStatusDot footer indicator
+- [ ] 14-03-PLAN.md -- OSC/UI remote APVTS integration: wire OscServer and ChannelStripArea to update remote APVTS params, cross-system echo suppression
 **UI hint**: yes
 
 ### v1.2 Security & Quality (Planned)
@@ -130,7 +131,7 @@ Plans:
 
 - [ ] **Phase 15: Connection Encryption** -- AES-256-CBC end-to-end encryption for credentials and audio, backward-compatible with unencrypted NINJAM servers
 - [ ] **Phase 16: Opus Codec Integration** -- Native libopus with automatic bitrate adaptation, packet loss concealment, and mixed-codec capability negotiation
-- [ ] **Phase 17: Network Resilience** -- Exponential backoff reconnection (1s–30s), per-peer adaptive jitter buffer, graceful degradation on network loss
+- [ ] **Phase 17: Network Resilience** -- Exponential backoff reconnection (1s-30s), per-peer adaptive jitter buffer, graceful degradation on network loss
 - [ ] **Phase 18: Testing Infrastructure** -- Stress tests (1000x create/destroy, 10 concurrent instances), documented shutdown sequence, CI-gated test pipeline
 
 ## Phase Details (v1.2)
@@ -169,7 +170,7 @@ Plans:
   3. User sees reconnection status in the UI during retry attempts
   4. Reconnection preserves session state (codec selection, mixer settings) when possible
 **Plans**: 2 plans
-**Reference**: 1s–30s exponential backoff with idle cadence; 20ms pre-fill jitter buffer per peer
+**Reference**: 1s-30s exponential backoff with idle cadence; 20ms pre-fill jitter buffer per peer
 
 ### Phase 18: Testing Infrastructure
 **Goal**: Plugin reliability is validated by automated stress and integration tests before every release
@@ -211,7 +212,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 11. Video Companion Foundation | v1.1 | 3/3 | Complete    | 2026-04-07 |
 | 12. Video Sync and Roster Discovery | v1.1 | 2/2 | Complete   | 2026-04-07 |
 | 13. Video Display Modes and OSC Integration | v1.1 | 2/2 | Complete    | 2026-04-07 |
-| 14. MIDI Remote Control | v1.1 | 0/2 | In Progress | - |
+| 14. MIDI Remote Control | v1.1 | 0/3 | In Progress | - |
 | 15. Connection Encryption | v1.2 | 0/0 | Not started | - |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |

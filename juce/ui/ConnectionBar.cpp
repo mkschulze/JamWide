@@ -6,6 +6,8 @@
 #include "build_number.h"
 #include "osc/OscServer.h"
 #include "video/VideoCompanion.h"
+#include "midi/MidiMapper.h"
+#include "midi/MidiLearnManager.h"
 
 // MAKE_NJ_FOURCC is private to njclient.cpp -- define locally (per Plan 03-01 decision)
 #ifndef MAKE_NJ_FOURCC
@@ -193,6 +195,14 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
         addAndMakeVisible(*oscStatusDot);
     }
 
+    // MIDI status dot (per D-06: 4-state footer indicator)
+    if (processorRef.midiMapper)
+    {
+        midiStatusDot = std::make_unique<MidiStatusDot>(
+            *processorRef.midiMapper, &processorRef.midiLearnManager);
+        addAndMakeVisible(*midiStatusDot);
+    }
+
     // Video button (D-01: in ConnectionBar, D-02: toggle with color states)
     videoButton.setButtonText("Video");
     videoButton.setColour(juce::TextButton::buttonColourId,
@@ -264,6 +274,12 @@ void ConnectionBar::resized()
     if (oscStatusDot)
     {
         oscStatusDot->setBounds(rightX - 44, 0, 44, getHeight());
+        rightX -= 44 + gap;
+    }
+    // MIDI status dot: 44px wide, positioned next to OSC dot
+    if (midiStatusDot)
+    {
+        midiStatusDot->setBounds(rightX - 44, 0, 44, getHeight());
         rightX -= 44 + gap;
     }
     // Video button — 54px so "Video" fits at the 15pt button font without

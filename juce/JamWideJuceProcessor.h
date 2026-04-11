@@ -152,6 +152,10 @@ public:
     // Last known host BPM (for UI sync validation)
     std::atomic<float> cachedHostBpm_{0.0f};
 
+    // MIDI standalone device persistence (stable identifiers per review feedback)
+    juce::String midiInputDeviceId;
+    juce::String midiOutputDeviceId;
+
     // OSC config (persisted via ValueTree, per D-21)
     bool oscEnabled{false};
     int oscReceivePort{9000};               // per D-17

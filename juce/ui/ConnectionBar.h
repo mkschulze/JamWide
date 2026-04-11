@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include "osc/OscStatusDot.h"
+#include "midi/MidiStatusDot.h"
 
 class JamWideJuceProcessor;
 
@@ -71,6 +72,9 @@ private:
 
     // OSC status dot (between Sync button and right-aligned controls)
     std::unique_ptr<OscStatusDot> oscStatusDot;
+
+    // MIDI status dot (next to OSC status dot)
+    std::unique_ptr<MidiStatusDot> midiStatusDot;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ConnectionBar)
 };

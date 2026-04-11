@@ -561,6 +561,10 @@ void JamWideJuceProcessor::getStateInformation(juce::MemoryBlock& destData)
     if (midiMapper)
         midiMapper->saveToState(state);
 
+    // MIDI standalone device persistence (stable identifiers per review feedback)
+    state.setProperty("midiInputDeviceId", midiInputDeviceId, nullptr);
+    state.setProperty("midiOutputDeviceId", midiOutputDeviceId, nullptr);
+
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -635,6 +639,14 @@ void JamWideJuceProcessor::setStateInformation(const void* data, int sizeInBytes
     // Must happen after replaceState so APVTS parameters exist for validation
     if (midiMapper)
         midiMapper->loadFromState(tree);
+
+    // STEP 4: Restore MIDI standalone device selection (stable identifiers)
+    midiInputDeviceId = tree.getProperty("midiInputDeviceId", "").toString();
+    midiOutputDeviceId = tree.getProperty("midiOutputDeviceId", "").toString();
+    if (midiMapper && midiInputDeviceId.isNotEmpty())
+        midiMapper->openMidiInput(midiInputDeviceId);
+    if (midiMapper && midiOutputDeviceId.isNotEmpty())
+        midiMapper->openMidiOutput(midiOutputDeviceId);
 }
 
 //==============================================================================

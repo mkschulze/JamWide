@@ -168,6 +168,8 @@ if(JAMWIDE_BUILD_JUCE)
         juce/osc/OscConfigDialog.cpp
         juce/midi/MidiMapper.cpp
         juce/midi/MidiLearnManager.cpp
+        juce/midi/MidiStatusDot.cpp
+        juce/midi/MidiConfigDialog.cpp
         juce/video/VideoCompanion.cpp
         juce/video/VideoPrivacyDialog.cpp
         src/net/server_list.cpp

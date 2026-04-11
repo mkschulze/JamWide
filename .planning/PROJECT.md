@@ -68,14 +68,14 @@ Full codebase analysis at `.planning/codebase/`:
 - **Protocol compatibility**: Must remain compatible with existing NINJAM servers and other clients
 - **Codec compatibility**: FLAC clients coexist with Vorbis-only clients
 - **Platform**: macOS, Windows, Linux
-- **Dependencies**: JUCE, libFLAC, libogg/libvorbis, juce_osc (for v1.1)
+- **Dependencies**: JUCE, libFLAC, libogg/libvorbis, juce_osc (for v1.1), OpenSSL (for v1.1 encryption)
 
 ## Milestones
 
 | Milestone | Focus | Status |
 |-----------|-------|--------|
 | v1.0: JUCE Migration | FLAC codec, JUCE rewrite, multichannel routing, DAW sync | ✅ Shipped 2026-04-05 |
-| v1.1: OSC + Video | OSC remote control, VDO.Ninja video companion | Planning |
+| v1.1: OSC + Video | OSC remote control, VDO.Ninja video companion, connection encryption | In Progress |
 | v2.0: Codec & Transport Redesign | Opus live codec, packetized transport, jitter handling | Future |
 
 ## Key Decisions
@@ -109,4 +109,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-05 after v1.1 milestone start*
+*Last updated: 2026-04-11 after Phase 15 (Connection Encryption) complete*

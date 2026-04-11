@@ -5,6 +5,32 @@
 #include "../midi/MidiMapper.h"
 #include "../midi/MidiLearnManager.h"
 
+namespace {
+
+bool isBot(const juce::String& name)
+{
+    int atIdx = name.lastIndexOfChar('@');
+    juce::String cleanName = (atIdx > 0) ? name.substring(0, atIdx) : name;
+    return cleanName.startsWithIgnoreCase("ninbot")
+        || cleanName.startsWithIgnoreCase("jambot")
+        || cleanName.startsWithIgnoreCase("ninjam");
+}
+
+juce::String codecFourccToString(unsigned int fourcc)
+{
+    if (fourcc == 0x43414C46) return "FLAC";       // 'FLAC'
+    if (fourcc == 0x7647474F) return "Vorbis";      // 'OGGv'
+    return {};
+}
+
+juce::String stripAtSuffix(const juce::String& name)
+{
+    int atIdx = name.lastIndexOfChar('@');
+    return (atIdx > 0) ? name.substring(0, atIdx) : name;
+}
+
+} // anonymous namespace
+
 ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
     : processorRef(processor)
 {
@@ -149,6 +175,10 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
         localAttachments_[0].mute = std::make_unique<juce::ButtonParameterAttachment>(
             *processorRef.apvts.getParameter("localMute_0"),
             localStrip.getMuteButton());
+
+        localAttachments_[0].solo = std::make_unique<juce::ButtonParameterAttachment>(
+            *processorRef.apvts.getParameter("localSolo_0"),
+            localStrip.getSoloButton());
     }
 
     // Wire MIDI Learn context to local channel 0
@@ -172,6 +202,10 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
         localAttachments_[ch].mute = std::make_unique<juce::ButtonParameterAttachment>(
             *processorRef.apvts.getParameter("localMute_" + suffix),
             child.getMuteButton());
+
+        localAttachments_[ch].solo = std::make_unique<juce::ButtonParameterAttachment>(
+            *processorRef.apvts.getParameter("localSolo_" + suffix),
+            child.getSoloButton());
 
         // Wire MIDI Learn context to local child channels
         child.setMidiLearnContext(processorRef.midiMapper.get(), &processorRef.midiLearnManager,
@@ -283,6 +317,7 @@ ChannelStripArea::~ChannelStripArea()
         att.vol.reset();
         att.pan.reset();
         att.mute.reset();
+        att.solo.reset();
     }
     metroSliderAttachment_.reset();
     metroMuteAttachment_.reset();
@@ -365,12 +400,7 @@ void ChannelStripArea::updateVuLevels()
     for (const auto& user : users)
     {
         // Skip bots — must mirror the filter in refreshFromUsers
-        juce::String uName(user.name);
-        int atIdx = uName.lastIndexOfChar('@');
-        juce::String cleanName = (atIdx > 0) ? uName.substring(0, atIdx) : uName;
-        if (cleanName.startsWithIgnoreCase("ninbot")
-            || cleanName.startsWithIgnoreCase("jambot")
-            || cleanName.startsWithIgnoreCase("ninjam"))
+        if (isBot(juce::String(user.name)))
             continue;
 
         bool isMultiChannel = user.channels.size() > 1;
@@ -400,30 +430,136 @@ void ChannelStripArea::updateVuLevels()
     }
 }
 
+void ChannelStripArea::attachRemoteStripParams(ChannelStrip& strip, int visibleSlot)
+{
+    juce::String slotIdx = juce::String(visibleSlot);
+
+    // Wire MIDI Learn context for remote user (visible slot index, skipping bots)
+    strip.setMidiLearnContext(processorRef.midiMapper.get(), &processorRef.midiLearnManager,
+                              "remoteVol_" + slotIdx, "remotePan_" + slotIdx,
+                              "remoteMute_" + slotIdx, "remoteSolo_" + slotIdx);
+
+    // Attach fader to APVTS remote volume param.
+    // When MIDI CC or host automation changes APVTS, the fader moves visually.
+    // When user drags fader, APVTS updates, and MidiMapper::timerCallback
+    // syncs to NJClient via SetUserStateCommand (sole path — no onVolumeChanged).
+    if (auto* volParam = processorRef.apvts.getParameter("remoteVol_" + slotIdx))
+        strip.getFader().attachToParameter(*volParam);
+
+    // APVTS attachments for remote pan, mute, solo.
+    // When MIDI CC or host automation changes APVTS, these controls move.
+    // MidiMapper::timerCallback is the sole APVTS→NJClient sync path.
+    RemoteStripAttachments att;
+    if (auto* panParam = processorRef.apvts.getParameter("remotePan_" + slotIdx))
+        att.pan = std::make_unique<juce::SliderParameterAttachment>(
+            *panParam, strip.getPanSlider());
+    if (auto* muteParam = processorRef.apvts.getParameter("remoteMute_" + slotIdx))
+        att.mute = std::make_unique<juce::ButtonParameterAttachment>(
+            *muteParam, strip.getMuteButton());
+    if (auto* soloParam = processorRef.apvts.getParameter("remoteSolo_" + slotIdx))
+        att.solo = std::make_unique<juce::ButtonParameterAttachment>(
+            *soloParam, strip.getSoloButton());
+    remoteAttachments_.push_back(std::move(att));
+}
+
+void ChannelStripArea::wireChannelCallbacks(ChannelStrip& strip,
+                                             const juce::String& userName,
+                                             const juce::String& channelName)
+{
+    strip.onSubscribeToggled = [this, userName, channelName](bool sub)
+    {
+        auto [uIdx, cIdx] = findRemoteIndex(userName, channelName);
+        if (uIdx < 0) return;
+        jamwide::SetUserChannelStateCommand cmd;
+        cmd.user_index = uIdx;
+        cmd.channel_index = cIdx;
+        cmd.set_sub = true;
+        cmd.subscribed = sub;
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
+
+    strip.onVolumeChanged = [this, userName, channelName](float vol) {
+        auto [uIdx, cIdx] = findRemoteIndex(userName, channelName);
+        if (uIdx < 0) return;
+        jamwide::SetUserChannelStateCommand cmd;
+        cmd.user_index = uIdx;
+        cmd.channel_index = cIdx;
+        cmd.set_vol = true;
+        cmd.volume = vol;
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
+
+    strip.onPanChanged = [this, userName, channelName](float pan) {
+        auto [uIdx, cIdx] = findRemoteIndex(userName, channelName);
+        if (uIdx < 0) return;
+        jamwide::SetUserChannelStateCommand cmd;
+        cmd.user_index = uIdx;
+        cmd.channel_index = cIdx;
+        cmd.set_pan = true;
+        cmd.pan = pan;
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
+
+    strip.onMuteToggled = [this, userName, channelName](bool mute) {
+        auto [uIdx, cIdx] = findRemoteIndex(userName, channelName);
+        if (uIdx < 0) return;
+        jamwide::SetUserChannelStateCommand cmd;
+        cmd.user_index = uIdx;
+        cmd.channel_index = cIdx;
+        cmd.set_mute = true;
+        cmd.mute = mute;
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
+
+    strip.onSoloToggled = [this, userName, channelName](bool solo) {
+        auto [uIdx, cIdx] = findRemoteIndex(userName, channelName);
+        if (uIdx < 0) return;
+        jamwide::SetUserChannelStateCommand cmd;
+        cmd.user_index = uIdx;
+        cmd.channel_index = cIdx;
+        cmd.set_solo = true;
+        cmd.solo = solo;
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
+
+    strip.onRoutingChanged = [this, userName, channelName](int busIndex) {
+        auto [uIdx, cIdx] = findRemoteIndex(userName, channelName);
+        if (uIdx < 0) return;
+        jamwide::SetUserChannelStateCommand cmd;
+        cmd.user_index = uIdx;
+        cmd.channel_index = cIdx;
+        cmd.set_outch = true;
+        cmd.outchannel = busIndex * 2;  // Convert bus index to channel pair offset
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
+}
+
 void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserInfo>& users)
 {
     // REVIEW CONCERN: Attachment lifetime during strip rebuilds.
-    // Detach any APVTS parameter attachments before destroying strips.
+    // Destroy APVTS attachments before the strips they reference.
+    remoteAttachments_.clear();
     for (auto& strip : remoteStrips)
         strip->getFader().detachFromParameter();  // Safe no-op if not attached
     remoteStrips.clear();
 
+    int visibleSlot = 0;  // APVTS slot index, skips bots
+    processorRef.remoteSlotToUserIndex.fill(-1);
+
     for (size_t userIdx = 0; userIdx < users.size(); ++userIdx)
     {
         const auto& user = users[userIdx];
-        // Strip @IP suffix from username (e.g. "user@1.2.3.4" -> "user")
-        juce::String userName(user.name);
-        int atIdx = userName.lastIndexOfChar('@');
-        juce::String cleanName = (atIdx > 0) ? userName.substring(0, atIdx) : userName;
+        juce::String rawName(user.name);
 
-        // Hide known bot users from the mixer (shared list with companion page).
-        // Prefix match handles variants like "ninbot_", "ninbot2", "Jambot_server".
-        if (cleanName.startsWithIgnoreCase("ninbot")
-            || cleanName.startsWithIgnoreCase("jambot")
-            || cleanName.startsWithIgnoreCase("ninjam"))
+        // Hide known bot users from the mixer
+        if (isBot(rawName))
             continue;
 
-        userName = cleanName;
+        juce::String userName = stripAtSuffix(rawName);
+
+        // Map visible APVTS slot to NJClient user_index (for MidiMapper::timerCallback)
+        if (visibleSlot < 16)
+            processorRef.remoteSlotToUserIndex[static_cast<size_t>(visibleSlot)] = static_cast<int>(userIdx);
 
         if (user.channels.size() <= 1)
         {
@@ -431,28 +567,15 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
             auto strip = std::make_unique<ChannelStrip>();
             juce::String codecStr;
             if (!user.channels.empty())
-            {
-                unsigned int fourcc = user.channels[0].codec_fourcc;
-                if (fourcc == 0x43414C46) codecStr = "FLAC";       // 'FLAC'
-                else if (fourcc == 0x7647474F) codecStr = "Vorbis"; // 'OGGv'
-            }
+                codecStr = codecFourccToString(user.channels[0].codec_fourcc);
             strip->configure(ChannelStrip::StripType::Remote, userName, codecStr);
 
-            // Wire MIDI Learn context for remote single-channel user (slot-based index)
-            juce::String slotIdx = juce::String(static_cast<int>(userIdx));
-            strip->setMidiLearnContext(processorRef.midiMapper.get(), &processorRef.midiLearnManager,
-                                       "remoteVol_" + slotIdx, "remotePan_" + slotIdx,
-                                       "remoteMute_" + slotIdx, "remoteSolo_" + slotIdx);
+            attachRemoteStripParams(*strip, visibleSlot);
 
             if (!user.channels.empty())
             {
                 const auto& ch = user.channels[0];
                 strip->setSubscribed(ch.subscribed);
-
-                // Set initial mixer state from cached data
-                strip->setVolume(ch.volume);
-                strip->setPan(ch.pan);
-                strip->setMuted(ch.mute);
                 strip->setSoloed(ch.solo);
 
                 // Capture stable identity, NOT indices (REVIEW CONCERN: stale user_index)
@@ -472,39 +595,8 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
                     processorRef.cmd_queue.try_push(std::move(cmd));
                 };
 
-                // Wire volume/pan/mute/solo callbacks with stable identity
-                strip->onVolumeChanged = [this, uName, cName](float vol) {
-                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
-                    if (uIdx < 0) return;
-                    jamwide::SetUserChannelStateCommand cmd;
-                    cmd.user_index = uIdx;
-                    cmd.channel_index = cIdx;
-                    cmd.set_vol = true;
-                    cmd.volume = vol;
-                    processorRef.cmd_queue.try_push(std::move(cmd));
-                };
-
-                strip->onPanChanged = [this, uName, cName](float pan) {
-                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
-                    if (uIdx < 0) return;
-                    jamwide::SetUserChannelStateCommand cmd;
-                    cmd.user_index = uIdx;
-                    cmd.channel_index = cIdx;
-                    cmd.set_pan = true;
-                    cmd.pan = pan;
-                    processorRef.cmd_queue.try_push(std::move(cmd));
-                };
-
-                strip->onMuteToggled = [this, uName, cName](bool mute) {
-                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
-                    if (uIdx < 0) return;
-                    jamwide::SetUserChannelStateCommand cmd;
-                    cmd.user_index = uIdx;
-                    cmd.channel_index = cIdx;
-                    cmd.set_mute = true;
-                    cmd.mute = mute;
-                    processorRef.cmd_queue.try_push(std::move(cmd));
-                };
+                // Volume/Pan/Mute: NOT wired via callbacks — APVTS-attached,
+                // MidiMapper::timerCallback is the sole APVTS→NJClient sync path.
 
                 strip->onSoloToggled = [this, uName, cName](bool solo) {
                     auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
@@ -534,27 +626,19 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
             }
 
             remoteStrips.push_back(std::move(strip));
+            ++visibleSlot;
         }
         else
         {
             // Multi-channel user: parent strip + child strips
             auto parentStrip = std::make_unique<ChannelStrip>();
-            // Use first channel's codec for parent badge
             juce::String parentCodec;
             if (!user.channels.empty())
-            {
-                unsigned int fourcc = user.channels[0].codec_fourcc;
-                if (fourcc == 0x43414C46) parentCodec = "FLAC";
-                else if (fourcc == 0x7647474F) parentCodec = "Vorbis";
-            }
+                parentCodec = codecFourccToString(user.channels[0].codec_fourcc);
             parentStrip->configure(ChannelStrip::StripType::Remote, userName, parentCodec,
                                    static_cast<int>(user.channels.size()), false);
 
-            // Wire MIDI Learn context for remote multi-channel parent (slot-based index)
-            juce::String slotIdx = juce::String(static_cast<int>(userIdx));
-            parentStrip->setMidiLearnContext(processorRef.midiMapper.get(), &processorRef.midiLearnManager,
-                                             "remoteVol_" + slotIdx, "remotePan_" + slotIdx,
-                                             "remoteMute_" + slotIdx, "remoteSolo_" + slotIdx);
+            attachRemoteStripParams(*parentStrip, visibleSlot);
 
             // Expand toggle rebuilds child visibility
             parentStrip->onExpandToggled = [this]()
@@ -562,63 +646,18 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
                 rebuildStrips();
             };
 
-            // Wire parent strip as group bus — controls user-level volume/pan/mute.
-            // Uses direct user search (not findRemoteIndex) to avoid ambiguity
-            // with channels that have empty names.
+            // Vol/Pan/Mute: APVTS-attached, MidiMapper::timerCallback is sole sync path.
+            // Solo: per-channel in NINJAM, needs callback to toggle all channels.
             juce::String parentUserName(user.name);
-
-            parentStrip->onVolumeChanged = [this, parentUserName](float vol) {
-                std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
-                const auto& users = processorRef.cachedUsers;
-                for (int u = 0; u < static_cast<int>(users.size()); ++u) {
-                    if (juce::String(users[u].name) == parentUserName) {
-                        jamwide::SetUserStateCommand cmd;
-                        cmd.user_index = u;
-                        cmd.set_vol = true;
-                        cmd.volume = vol;
-                        processorRef.cmd_queue.try_push(std::move(cmd));
-                        return;
-                    }
-                }
-            };
-            parentStrip->onPanChanged = [this, parentUserName](float pan) {
-                std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
-                const auto& users = processorRef.cachedUsers;
-                for (int u = 0; u < static_cast<int>(users.size()); ++u) {
-                    if (juce::String(users[u].name) == parentUserName) {
-                        jamwide::SetUserStateCommand cmd;
-                        cmd.user_index = u;
-                        cmd.set_pan = true;
-                        cmd.pan = pan;
-                        processorRef.cmd_queue.try_push(std::move(cmd));
-                        return;
-                    }
-                }
-            };
-            parentStrip->onMuteToggled = [this, parentUserName](bool mute) {
-                std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
-                const auto& users = processorRef.cachedUsers;
-                for (int u = 0; u < static_cast<int>(users.size()); ++u) {
-                    if (juce::String(users[u].name) == parentUserName) {
-                        jamwide::SetUserStateCommand cmd;
-                        cmd.user_index = u;
-                        cmd.set_mute = true;
-                        cmd.mute = mute;
-                        processorRef.cmd_queue.try_push(std::move(cmd));
-                        return;
-                    }
-                }
-            };
             parentStrip->onSoloToggled = [this, parentUserName](bool solo) {
                 std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
-                const auto& users = processorRef.cachedUsers;
-                for (int u = 0; u < static_cast<int>(users.size()); ++u) {
-                    if (juce::String(users[u].name) == parentUserName) {
-                        // Solo is per-channel in NINJAM — toggle all channels
-                        for (size_t c = 0; c < users[u].channels.size(); ++c) {
+                const auto& usrs = processorRef.cachedUsers;
+                for (int u = 0; u < static_cast<int>(usrs.size()); ++u) {
+                    if (juce::String(usrs[u].name) == parentUserName) {
+                        for (size_t c = 0; c < usrs[u].channels.size(); ++c) {
                             jamwide::SetUserChannelStateCommand cmd;
                             cmd.user_index = u;
-                            cmd.channel_index = users[u].channels[c].channel_index;
+                            cmd.channel_index = usrs[u].channels[c].channel_index;
                             cmd.set_solo = true;
                             cmd.solo = solo;
                             processorRef.cmd_queue.try_push(std::move(cmd));
@@ -635,93 +674,21 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
             {
                 const auto& ch = user.channels[chIdx];
                 auto childStrip = std::make_unique<ChannelStrip>();
-                juce::String childCodec;
-                if (ch.codec_fourcc == 0x43414C46) childCodec = "FLAC";
-                else if (ch.codec_fourcc == 0x7647474F) childCodec = "Vorbis";
                 childStrip->configure(ChannelStrip::StripType::RemoteChild,
-                                      juce::String(ch.name), childCodec);
+                                      juce::String(ch.name),
+                                      codecFourccToString(ch.codec_fourcc));
 
                 // RemoteChild strips: no MIDI Learn (sub-channels are not APVTS-backed per D-18)
                 childStrip->setMidiLearnContext(nullptr, nullptr, "", "", "", "");
 
                 childStrip->setSubscribed(ch.subscribed);
-
-                // Set initial mixer state from cached data
                 childStrip->setVolume(ch.volume);
                 childStrip->setPan(ch.pan);
                 childStrip->setMuted(ch.mute);
                 childStrip->setSoloed(ch.solo);
 
-                // Capture stable identity, NOT indices
-                juce::String uName(user.name);
-                juce::String cName(ch.name);
-
-                childStrip->onSubscribeToggled = [this, uName, cName](bool sub)
-                {
-                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
-                    if (uIdx < 0) return;
-                    jamwide::SetUserChannelStateCommand cmd;
-                    cmd.user_index = uIdx;
-                    cmd.channel_index = cIdx;
-                    cmd.set_sub = true;
-                    cmd.subscribed = sub;
-                    processorRef.cmd_queue.try_push(std::move(cmd));
-                };
-
-                childStrip->onVolumeChanged = [this, uName, cName](float vol) {
-                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
-                    if (uIdx < 0) return;
-                    jamwide::SetUserChannelStateCommand cmd;
-                    cmd.user_index = uIdx;
-                    cmd.channel_index = cIdx;
-                    cmd.set_vol = true;
-                    cmd.volume = vol;
-                    processorRef.cmd_queue.try_push(std::move(cmd));
-                };
-
-                childStrip->onPanChanged = [this, uName, cName](float pan) {
-                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
-                    if (uIdx < 0) return;
-                    jamwide::SetUserChannelStateCommand cmd;
-                    cmd.user_index = uIdx;
-                    cmd.channel_index = cIdx;
-                    cmd.set_pan = true;
-                    cmd.pan = pan;
-                    processorRef.cmd_queue.try_push(std::move(cmd));
-                };
-
-                childStrip->onMuteToggled = [this, uName, cName](bool mute) {
-                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
-                    if (uIdx < 0) return;
-                    jamwide::SetUserChannelStateCommand cmd;
-                    cmd.user_index = uIdx;
-                    cmd.channel_index = cIdx;
-                    cmd.set_mute = true;
-                    cmd.mute = mute;
-                    processorRef.cmd_queue.try_push(std::move(cmd));
-                };
-
-                childStrip->onSoloToggled = [this, uName, cName](bool solo) {
-                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
-                    if (uIdx < 0) return;
-                    jamwide::SetUserChannelStateCommand cmd;
-                    cmd.user_index = uIdx;
-                    cmd.channel_index = cIdx;
-                    cmd.set_solo = true;
-                    cmd.solo = solo;
-                    processorRef.cmd_queue.try_push(std::move(cmd));
-                };
-
-                childStrip->onRoutingChanged = [this, uName, cName](int busIndex) {
-                    auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
-                    if (uIdx < 0) return;
-                    jamwide::SetUserChannelStateCommand cmd;
-                    cmd.user_index = uIdx;
-                    cmd.channel_index = cIdx;
-                    cmd.set_outch = true;
-                    cmd.outchannel = busIndex * 2;  // Convert bus index to channel pair offset
-                    processorRef.cmd_queue.try_push(std::move(cmd));
-                };
+                wireChannelCallbacks(*childStrip, juce::String(user.name),
+                                     juce::String(ch.name));
 
                 // Refresh routing selector from snapshot out_chan_index
                 int busIndex = ch.out_chan_index / 2;
@@ -729,9 +696,11 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
 
                 remoteStrips.push_back(std::move(childStrip));
             }
+            ++visibleSlot;
         }
     }
 
+    processorRef.visibleRemoteUserCount.store(visibleSlot, std::memory_order_relaxed);
     rebuildStrips();
 }
 

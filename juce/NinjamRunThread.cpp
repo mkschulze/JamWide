@@ -212,6 +212,248 @@ NinjamRunThread::~NinjamRunThread()
 }
 
 //==============================================================================
+//==============================================================================
+// run() helpers
+//==============================================================================
+
+void NinjamRunThread::pollServerList()
+{
+    jamwide::ServerListResult result;
+    if (serverListFetcher.poll(result))
+    {
+        jamwide::ServerListEvent evt;
+        evt.servers = std::move(result.servers);
+        evt.error = std::move(result.error);
+        processor.evt_queue.try_push(std::move(evt));
+    }
+}
+
+void NinjamRunThread::handleStatusChange(NJClient* client, int currentStatus)
+{
+    if (currentStatus == lastStatus_)
+        return;
+
+    jamwide::StatusChangedEvent statusEvt;
+    statusEvt.status = currentStatus;
+    // Prefer server-provided error; fall back to generic text
+    const char* err = client->GetErrorStr();
+    if (err && err[0])
+        statusEvt.error_msg = err;
+    else if (currentStatus == NJClient::NJC_STATUS_CANTCONNECT)
+        statusEvt.error_msg = "Connection failed";
+    else if (currentStatus == NJClient::NJC_STATUS_INVALIDAUTH)
+        statusEvt.error_msg = "Invalid credentials";
+    processor.evt_queue.try_push(std::move(statusEvt));
+
+    lastStatus_ = currentStatus;
+
+    // BPM/BPI suppression window: after a fresh OK transition,
+    // silently track values for 2.5s so the NJClient defaults
+    // (120/32) can be replaced by the real server config
+    // without emitting a bogus "changed" chat message.
+    if (currentStatus == NJClient::NJC_STATUS_OK)
+        suppressBpmBpiUntilMs_ = juce::Time::currentTimeMillis() + 2500;
+    else
+        suppressBpmBpiUntilMs_ = 0;
+
+    // On connect: set up all 4 local channels per D-12
+    if (currentStatus == NJClient::NJC_STATUS_OK)
+    {
+        // Channel 0: stereo input, transmit=true (default)
+        client->SetLocalChannelInfo(0, "Ch1",
+            true, processor.localInputSelector[0] * 2 | (1 << 10),  // stereo pair: pair index → mono start ch
+            true, 256,               // 256 kbps
+            true, processor.localTransmit[0]);
+
+        // Channels 1-3: stereo input pairs, transmit from processor state
+        // Use input bus and transmit state from processor (persisted per D-14, D-21)
+        for (int ch = 1; ch < 4; ++ch)
+        {
+            juce::String name = "Ch" + juce::String(ch + 1);
+            int srcch = processor.localInputSelector[ch] * 2 | (1 << 10);  // stereo pair: pair index → mono start ch
+            client->SetLocalChannelInfo(ch, name.toRawUTF8(),
+                true, srcch,
+                true, 256,
+                true, processor.localTransmit[ch]);
+        }
+
+        // Apply persisted routing mode for future auto-assign (per D-12)
+        // REVIEW FIX: Use .load() since routingMode is std::atomic<int>
+        int rm = processor.routingMode.load(std::memory_order_relaxed);
+        client->config_remote_autochan = rm;
+        // REVIEW FIX: nch=32 excludes metronome bus from auto-assign search
+        client->config_remote_autochan_nch = (rm > 0) ? 32 : 0;
+        // Set metronome to last bus (per D-11)
+        client->SetMetronomeChannel(32);
+    }
+}
+
+void NinjamRunThread::handleUserInfoChange(NJClient* client)
+{
+    // REVIEW FIX: HasUserInfoChanged() is DESTRUCTIVE (clears flag on read).
+    // Call EXACTLY ONCE per loop iteration. Store result in a bool.
+    if (!client->HasUserInfoChanged())
+        return;
+
+    // REVIEW FIX #3 + GetRemoteUsersSnapshot: Use the thread-safe snapshot API
+    // instead of manual GetUserState/GetNumUsers enumeration.
+    // GetRemoteUsersSnapshot() locks internally and returns a complete copy.
+    std::vector<NJClient::RemoteUserInfo> snapshot;
+    client->GetRemoteUsersSnapshot(snapshot);
+
+    // Hold cachedUsersMutex during the structural replacement so the
+    // message thread cannot be mid-iteration when std::move invalidates
+    // the old vector's buffer (crash vector: FAST_FAIL_FATAL_APP_EXIT).
+    std::vector<NJClient::RemoteUserInfo> rosterCopyForCompanion;
+    {
+        std::lock_guard<std::mutex> lk(processor.cachedUsersMutex);
+        processor.cachedUsers = std::move(snapshot);
+        processor.userCount.store(static_cast<int>(processor.cachedUsers.size()),
+                                  std::memory_order_relaxed);
+        // Copy out for the video companion while still under the lock
+        if (processor.videoCompanion && processor.videoCompanion->isActive())
+            rosterCopyForCompanion = processor.cachedUsers;
+    }
+    processor.evt_queue.try_push(jamwide::UserInfoChangedEvent{});
+
+    // Bridge roster to VideoCompanion WebSocket clients. onRosterChanged
+    // marshals to the message thread internally — call it without the lock.
+    if (processor.videoCompanion && processor.videoCompanion->isActive()) {
+        processor.videoCompanion->onRosterChanged(rosterCopyForCompanion);
+    }
+}
+
+void NinjamRunThread::updateRemoteVuLevels(NJClient* client)
+{
+    // Update remote VU levels every iteration (not just on user info change).
+    // VU levels change continuously with audio; the structural snapshot above
+    // only fires on join/leave/config changes. Must hold cachedUsersMutex so
+    // the message thread's updateVuLevels() can iterate safely.
+    std::lock_guard<std::mutex> lk(processor.cachedUsersMutex);
+    auto& users = processor.cachedUsers;
+    for (size_t ui = 0; ui < users.size(); ++ui)
+    {
+        for (size_t ci = 0; ci < users[ui].channels.size(); ++ci)
+        {
+            auto& ch = users[ui].channels[ci];
+            // Use ch.channel_index (NINJAM bit index), not ci (vector index)
+            ch.vu_left = client->GetUserChannelPeak(
+                static_cast<int>(ui), ch.channel_index, 0);
+            ch.vu_right = client->GetUserChannelPeak(
+                static_cast<int>(ui), ch.channel_index, 1);
+        }
+    }
+}
+
+void NinjamRunThread::detectBpmBpiChanges(NJClient* client)
+{
+    // BPM/BPI change detection (D-10, D-11) -- read previous values before storing new
+    float prevBpm = processor.uiSnapshot.bpm.load(std::memory_order_relaxed);
+    int prevBpi = processor.uiSnapshot.bpi.load(std::memory_order_relaxed);
+
+    float newBpm = static_cast<float>(client->GetActualBPM());
+    processor.uiSnapshot.bpm.store(newBpm, std::memory_order_relaxed);
+    int bpi = client->GetBPI();
+    processor.uiSnapshot.bpi.store(bpi, std::memory_order_relaxed);
+
+    // Detect BPM/BPI changes, but only AFTER the post-connect
+    // suppression window has expired. During the window the NJClient
+    // defaults (120/32) transition to the server's real config, and
+    // that transition must not be reported as a "changed" message.
+    if (suppressBpmBpiUntilMs_ > 0
+        && juce::Time::currentTimeMillis() < suppressBpmBpiUntilMs_)
+    {
+        // Still in the post-connect suppression window — silently
+        // track values via the uiSnapshot store above.
+        return;
+    }
+
+    // Detect BPM change
+    if (prevBpm > 0.0f && static_cast<int>(prevBpm) != static_cast<int>(newBpm))
+    {
+        processor.evt_queue.try_push(jamwide::BpmChangedEvent{prevBpm, newBpm});
+
+        ChatMessage msg;
+        msg.type = ChatMessageType::System;
+        msg.content = "[Server] BPM changed from "
+                      + std::to_string(static_cast<int>(prevBpm))
+                      + " to " + std::to_string(static_cast<int>(newBpm));
+        msg.timestamp = currentTimeString();
+        processor.chat_queue.try_push(std::move(msg));
+
+        // Auto-disable sync if active (D-05)
+        int expected = JamWideJuceProcessor::kSyncActive;
+        if (processor.syncState_.compare_exchange_strong(expected,
+                JamWideJuceProcessor::kSyncIdle, std::memory_order_acq_rel))
+        {
+            processor.evt_queue.try_push(jamwide::SyncStateChangedEvent{
+                JamWideJuceProcessor::kSyncIdle,
+                jamwide::SyncReason::ServerBpmChanged});
+
+            ChatMessage syncMsg;
+            syncMsg.type = ChatMessageType::System;
+            syncMsg.content = "[Server] Sync disabled -- BPM changed";
+            syncMsg.timestamp = currentTimeString();
+            processor.chat_queue.try_push(std::move(syncMsg));
+        }
+    }
+
+    // Detect BPI change
+    if (prevBpi > 0 && prevBpi != bpi)
+    {
+        processor.evt_queue.try_push(jamwide::BpiChangedEvent{prevBpi, bpi});
+
+        ChatMessage msg;
+        msg.type = ChatMessageType::System;
+        msg.content = "[Server] BPI changed from "
+                      + std::to_string(prevBpi)
+                      + " to " + std::to_string(bpi);
+        msg.timestamp = currentTimeString();
+        processor.chat_queue.try_push(std::move(msg));
+    }
+}
+
+void NinjamRunThread::updateSessionAndVuSnapshot(NJClient* client)
+{
+    // Session tracking (SYNC-03) -- expose interval count and elapsed time
+    processor.uiSnapshot.interval_count.store(client->GetLoopCount(),
+                                               std::memory_order_relaxed);
+    processor.uiSnapshot.session_elapsed_ms.store(client->GetSessionPosition(),
+                                                   std::memory_order_relaxed);
+
+    int iPos = 0, iLen = 0;
+    client->GetPosition(&iPos, &iLen);
+    processor.uiSnapshot.interval_position.store(iPos, std::memory_order_relaxed);
+    processor.uiSnapshot.interval_length.store(iLen, std::memory_order_relaxed);
+
+    int bpi = processor.uiSnapshot.bpi.load(std::memory_order_relaxed);
+    int beat = (iLen > 0) ? (bpi * iPos / iLen) : 0;
+    processor.uiSnapshot.beat_position.store(beat, std::memory_order_relaxed);
+
+    // Local VU for all 4 channels
+    for (int ch = 0; ch < 4; ++ch)
+    {
+        processor.uiSnapshot.local_ch_vu_left[ch].store(
+            client->GetLocalChannelPeak(ch, 0), std::memory_order_relaxed);
+        processor.uiSnapshot.local_ch_vu_right[ch].store(
+            client->GetLocalChannelPeak(ch, 1), std::memory_order_relaxed);
+    }
+    // Keep backward compat: also write channel 0 to the original fields
+    processor.uiSnapshot.local_vu_left.store(
+        processor.uiSnapshot.local_ch_vu_left[0].load(std::memory_order_relaxed),
+        std::memory_order_relaxed);
+    processor.uiSnapshot.local_vu_right.store(
+        processor.uiSnapshot.local_ch_vu_right[0].load(std::memory_order_relaxed),
+        std::memory_order_relaxed);
+
+    // Master VU (output peak)
+    processor.uiSnapshot.master_vu_left.store(
+        client->GetOutputPeak(0), std::memory_order_relaxed);
+    processor.uiSnapshot.master_vu_right.store(
+        client->GetOutputPeak(1), std::memory_order_relaxed);
+}
+
+//==============================================================================
 void NinjamRunThread::run()
 {
     lastStatus_ = NJClient::NJC_STATUS_DISCONNECTED;
@@ -235,22 +477,9 @@ void NinjamRunThread::run()
             continue;
         }
 
-        // Process commands from UI/editor
         processCommands(client);
+        pollServerList();
 
-        // Poll server list fetcher (outside clientLock)
-        {
-            jamwide::ServerListResult result;
-            if (serverListFetcher.poll(result))
-            {
-                jamwide::ServerListEvent evt;
-                evt.servers = std::move(result.servers);
-                evt.error = std::move(result.error);
-                processor.evt_queue.try_push(std::move(evt));
-            }
-        }
-
-        // Run NJClient under lock
         {
             const juce::ScopedLock sl(processor.getClientLock());
             while (!client->Run())
@@ -261,220 +490,11 @@ void NinjamRunThread::run()
             int currentStatus = client->GetStatus();
             client->cached_status.store(currentStatus, std::memory_order_release);
 
-            // Push status change event
-            if (currentStatus != lastStatus_)
-            {
-                jamwide::StatusChangedEvent statusEvt;
-                statusEvt.status = currentStatus;
-                // Prefer server-provided error; fall back to generic text
-                const char* err = client->GetErrorStr();
-                if (err && err[0])
-                    statusEvt.error_msg = err;
-                else if (currentStatus == NJClient::NJC_STATUS_CANTCONNECT)
-                    statusEvt.error_msg = "Connection failed";
-                else if (currentStatus == NJClient::NJC_STATUS_INVALIDAUTH)
-                    statusEvt.error_msg = "Invalid credentials";
-                processor.evt_queue.try_push(std::move(statusEvt));
-
-                lastStatus_ = currentStatus;
-
-                // BPM/BPI suppression window: after a fresh OK transition,
-                // silently track values for 2.5s so the NJClient defaults
-                // (120/32) can be replaced by the real server config
-                // without emitting a bogus "changed" chat message.
-                if (currentStatus == NJClient::NJC_STATUS_OK)
-                    suppressBpmBpiUntilMs_ = juce::Time::currentTimeMillis() + 2500;
-                else
-                    suppressBpmBpiUntilMs_ = 0;
-
-                // On connect: set up all 4 local channels per D-12
-                if (currentStatus == NJClient::NJC_STATUS_OK)
-                {
-                    // Channel 0: stereo input, transmit=true (default)
-                    client->SetLocalChannelInfo(0, "Ch1",
-                        true, processor.localInputSelector[0] * 2 | (1 << 10),  // stereo pair: pair index → mono start ch
-                        true, 256,               // 256 kbps
-                        true, processor.localTransmit[0]);
-
-                    // Channels 1-3: stereo input pairs, transmit from processor state
-                    // Use input bus and transmit state from processor (persisted per D-14, D-21)
-                    for (int ch = 1; ch < 4; ++ch)
-                    {
-                        juce::String name = "Ch" + juce::String(ch + 1);
-                        int srcch = processor.localInputSelector[ch] * 2 | (1 << 10);  // stereo pair: pair index → mono start ch
-                        client->SetLocalChannelInfo(ch, name.toRawUTF8(),
-                            true, srcch,
-                            true, 256,
-                            true, processor.localTransmit[ch]);
-                    }
-
-                    // Apply persisted routing mode for future auto-assign (per D-12)
-                    // REVIEW FIX: Use .load() since routingMode is std::atomic<int>
-                    int rm = processor.routingMode.load(std::memory_order_relaxed);
-                    client->config_remote_autochan = rm;
-                    // REVIEW FIX: nch=32 excludes metronome bus from auto-assign search
-                    client->config_remote_autochan_nch = (rm > 0) ? 32 : 0;
-                    // Set metronome to last bus (per D-11)
-                    client->SetMetronomeChannel(32);
-                }
-            }
-
-            // REVIEW FIX: HasUserInfoChanged() is DESTRUCTIVE (clears flag on read).
-            // Call EXACTLY ONCE per loop iteration. Store result in a bool.
-            bool usersChanged = client->HasUserInfoChanged();
-            if (usersChanged)
-            {
-                // REVIEW FIX #3 + GetRemoteUsersSnapshot: Use the thread-safe snapshot API
-                // instead of manual GetUserState/GetNumUsers enumeration.
-                // GetRemoteUsersSnapshot() locks internally and returns a complete copy.
-                std::vector<NJClient::RemoteUserInfo> snapshot;
-                client->GetRemoteUsersSnapshot(snapshot);
-
-                // Hold cachedUsersMutex during the structural replacement so the
-                // message thread cannot be mid-iteration when std::move invalidates
-                // the old vector's buffer (crash vector: FAST_FAIL_FATAL_APP_EXIT).
-                std::vector<NJClient::RemoteUserInfo> rosterCopyForCompanion;
-                {
-                    std::lock_guard<std::mutex> lk(processor.cachedUsersMutex);
-                    processor.cachedUsers = std::move(snapshot);
-                    processor.userCount.store(static_cast<int>(processor.cachedUsers.size()),
-                                              std::memory_order_relaxed);
-                    // Copy out for the video companion while still under the lock
-                    if (processor.videoCompanion && processor.videoCompanion->isActive())
-                        rosterCopyForCompanion = processor.cachedUsers;
-                }
-                processor.evt_queue.try_push(jamwide::UserInfoChangedEvent{});
-
-                // Bridge roster to VideoCompanion WebSocket clients. onRosterChanged
-                // marshals to the message thread internally — call it without the lock.
-                if (processor.videoCompanion && processor.videoCompanion->isActive()) {
-                    processor.videoCompanion->onRosterChanged(rosterCopyForCompanion);
-                }
-            }
-
-            // Update remote VU levels every iteration (not just on user info change).
-            // VU levels change continuously with audio; the structural snapshot above
-            // only fires on join/leave/config changes. Must hold cachedUsersMutex so
-            // the message thread's updateVuLevels() can iterate safely.
-            {
-                std::lock_guard<std::mutex> lk(processor.cachedUsersMutex);
-                auto& users = processor.cachedUsers;
-                for (size_t ui = 0; ui < users.size(); ++ui)
-                {
-                    for (size_t ci = 0; ci < users[ui].channels.size(); ++ci)
-                    {
-                        auto& ch = users[ui].channels[ci];
-                        // Use ch.channel_index (NINJAM bit index), not ci (vector index)
-                        ch.vu_left = client->GetUserChannelPeak(
-                            static_cast<int>(ui), ch.channel_index, 0);
-                        ch.vu_right = client->GetUserChannelPeak(
-                            static_cast<int>(ui), ch.channel_index, 1);
-                    }
-                }
-            }
-
-            // Update atomic snapshot for UI polling
-            // BPM/BPI change detection (D-10, D-11) -- read previous values before storing new
-            float prevBpm = processor.uiSnapshot.bpm.load(std::memory_order_relaxed);
-            int prevBpi = processor.uiSnapshot.bpi.load(std::memory_order_relaxed);
-
-            float newBpm = static_cast<float>(client->GetActualBPM());
-            processor.uiSnapshot.bpm.store(newBpm, std::memory_order_relaxed);
-            int bpi = client->GetBPI();
-            processor.uiSnapshot.bpi.store(bpi, std::memory_order_relaxed);
-
-            // Detect BPM/BPI changes, but only AFTER the post-connect
-            // suppression window has expired. During the window the NJClient
-            // defaults (120/32) transition to the server's real config, and
-            // that transition must not be reported as a "changed" message.
-            if (suppressBpmBpiUntilMs_ > 0
-                && juce::Time::currentTimeMillis() < suppressBpmBpiUntilMs_)
-            {
-                // Still in the post-connect suppression window — silently
-                // track values via the uiSnapshot store above.
-            }
-            else
-            {
-                // Detect BPM change
-                if (prevBpm > 0.0f && static_cast<int>(prevBpm) != static_cast<int>(newBpm))
-                {
-                    processor.evt_queue.try_push(jamwide::BpmChangedEvent{prevBpm, newBpm});
-
-                    ChatMessage msg;
-                    msg.type = ChatMessageType::System;
-                    msg.content = "[Server] BPM changed from "
-                                  + std::to_string(static_cast<int>(prevBpm))
-                                  + " to " + std::to_string(static_cast<int>(newBpm));
-                    msg.timestamp = currentTimeString();
-                    processor.chat_queue.try_push(std::move(msg));
-
-                    // Auto-disable sync if active (D-05)
-                    int expected = JamWideJuceProcessor::kSyncActive;
-                    if (processor.syncState_.compare_exchange_strong(expected,
-                            JamWideJuceProcessor::kSyncIdle, std::memory_order_acq_rel))
-                    {
-                        processor.evt_queue.try_push(jamwide::SyncStateChangedEvent{
-                            JamWideJuceProcessor::kSyncIdle,
-                            jamwide::SyncReason::ServerBpmChanged});
-
-                        ChatMessage syncMsg;
-                        syncMsg.type = ChatMessageType::System;
-                        syncMsg.content = "[Server] Sync disabled -- BPM changed";
-                        syncMsg.timestamp = currentTimeString();
-                        processor.chat_queue.try_push(std::move(syncMsg));
-                    }
-                }
-
-                // Detect BPI change
-                if (prevBpi > 0 && prevBpi != bpi)
-                {
-                    processor.evt_queue.try_push(jamwide::BpiChangedEvent{prevBpi, bpi});
-
-                    ChatMessage msg;
-                    msg.type = ChatMessageType::System;
-                    msg.content = "[Server] BPI changed from "
-                                  + std::to_string(prevBpi)
-                                  + " to " + std::to_string(bpi);
-                    msg.timestamp = currentTimeString();
-                    processor.chat_queue.try_push(std::move(msg));
-                }
-            }
-
-            // Session tracking (SYNC-03) -- expose interval count and elapsed time
-            processor.uiSnapshot.interval_count.store(client->GetLoopCount(),
-                                                       std::memory_order_relaxed);
-            processor.uiSnapshot.session_elapsed_ms.store(client->GetSessionPosition(),
-                                                           std::memory_order_relaxed);
-
-            int iPos = 0, iLen = 0;
-            client->GetPosition(&iPos, &iLen);
-            processor.uiSnapshot.interval_position.store(iPos, std::memory_order_relaxed);
-            processor.uiSnapshot.interval_length.store(iLen, std::memory_order_relaxed);
-
-            int beat = (iLen > 0) ? (bpi * iPos / iLen) : 0;
-            processor.uiSnapshot.beat_position.store(beat, std::memory_order_relaxed);
-
-            // Local VU for all 4 channels
-            for (int ch = 0; ch < 4; ++ch)
-            {
-                processor.uiSnapshot.local_ch_vu_left[ch].store(
-                    client->GetLocalChannelPeak(ch, 0), std::memory_order_relaxed);
-                processor.uiSnapshot.local_ch_vu_right[ch].store(
-                    client->GetLocalChannelPeak(ch, 1), std::memory_order_relaxed);
-            }
-            // Keep backward compat: also write channel 0 to the original fields
-            processor.uiSnapshot.local_vu_left.store(
-                processor.uiSnapshot.local_ch_vu_left[0].load(std::memory_order_relaxed),
-                std::memory_order_relaxed);
-            processor.uiSnapshot.local_vu_right.store(
-                processor.uiSnapshot.local_ch_vu_right[0].load(std::memory_order_relaxed),
-                std::memory_order_relaxed);
-
-            // Master VU (output peak)
-            processor.uiSnapshot.master_vu_left.store(
-                client->GetOutputPeak(0), std::memory_order_relaxed);
-            processor.uiSnapshot.master_vu_right.store(
-                client->GetOutputPeak(1), std::memory_order_relaxed);
+            handleStatusChange(client, currentStatus);
+            handleUserInfoChange(client);
+            updateRemoteVuLevels(client);
+            detectBpmBpiChanges(client);
+            updateSessionAndVuSnapshot(client);
         }
 
         // Adaptive sleep: connected = 20ms, disconnected = 50ms

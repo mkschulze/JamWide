@@ -157,6 +157,10 @@ void JamWideJuceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     // Use samplesPerBlock from the host. AudioProc zeros the buffer internally.
     outputScratch.setSize(kTotalOutChannels, samplesPerBlock, false, true, false);
 
+    // Initialize standalone MIDI collector with host sample rate
+    if (midiMapper)
+        midiMapper->setSampleRate(sampleRate, samplesPerBlock);
+
     // Start the NinjamRun thread for NJClient::Run() loop
     runThread = std::make_unique<NinjamRunThread>(*this);
     runThread->startThread(juce::Thread::Priority::normal);
@@ -178,15 +182,12 @@ void JamWideJuceProcessor::releaseResources()
     }
 }
 
-void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
-                                         juce::MidiBuffer& midiMessages)
+//==============================================================================
+// processBlock helpers (audio-thread safe, no allocations)
+//==============================================================================
+
+void JamWideJuceProcessor::syncApvtsToAtomics()
 {
-    juce::ScopedNoDenormals noDenormals;
-
-    const int numSamples = buffer.getNumSamples();
-    const int totalChannels = buffer.getNumChannels();
-
-    // Sync APVTS parameters to NJClient atomics
     if (client)
     {
         client->config_mastervolume.store(
@@ -202,50 +203,271 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
             *apvts.getRawParameterValue("metroMute") >= 0.5f,
             std::memory_order_relaxed);
     }
+}
+
+int JamWideJuceProcessor::collectInputChannels(juce::AudioBuffer<float>& buffer,
+                                                float* inPtrs[], int numSamples)
+{
+    // Collect inputs from all active stereo input buses
+    // BusesProperties declares 4 stereo inputs: Local 1..4
+    // NJClient::AudioProc expects mono channel pointers
+    const int numInputBuses = getBusCount(true);
+    const int maxInputChannels = numInputBuses * 2;  // up to 8 mono channels
+
+    // Size scratch buffer for all input channels
+    inputScratch.setSize(maxInputChannels, numSamples, false, false, true);
+
+    int numInputChannels = 0;
+    for (int bus = 0; bus < numInputBuses; ++bus)
+    {
+        auto* inputBus = getBus(true, bus);
+        if (inputBus == nullptr || !inputBus->isEnabled())
+        {
+            // Disabled bus: zero its channels in scratch
+            inputScratch.clear(bus * 2,     0, numSamples);
+            inputScratch.clear(bus * 2 + 1, 0, numSamples);
+            numInputChannels += 2;  // Still count them for NJClient channel mapping
+            continue;
+        }
+        // Get the buffer range for this input bus
+        auto busBuffer = getBusBuffer(buffer, true, bus);
+        int busChannels = busBuffer.getNumChannels();
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            int scratchCh = bus * 2 + ch;
+            if (ch < busChannels)
+                inputScratch.copyFrom(scratchCh, 0, busBuffer, ch, 0, numSamples);
+            else
+                inputScratch.clear(scratchCh, 0, numSamples);
+        }
+        numInputChannels += 2;
+    }
+
+    // Build input pointer array for AudioProc
+    for (int ch = 0; ch < numInputChannels && ch < 8; ++ch)
+        inPtrs[ch] = inputScratch.getWritePointer(ch);
+
+    return numInputChannels;
+}
+
+bool JamWideJuceProcessor::handleTransportSync(int numSamples)
+{
+    // --- DAW Transport Sync (D-01, D-02, SYNC-01, SYNC-02) ---
+    bool hostPlaying = true;  // Default: playing (standalone behavior per D-16)
+
+    if (auto* playHead = getPlayHead())
+    {
+        if (auto pos = playHead->getPosition())
+        {
+            bool rawPlaying = pos->getIsPlaying();
+
+            // Cache host BPM for sync validation on UI thread
+            if (auto bpm = pos->getBpm())
+                cachedHostBpm_.store(static_cast<float>(*bpm),
+                                    std::memory_order_relaxed);
+
+            // Edge detection using RAW transport state (not overridden value)
+            // Addresses Claude review: wasPlaying_ was set to overridden hostPlaying
+            // which could cause spurious edge after WAITING->ACTIVE in same block.
+            bool transportJustStarted = rawPlaying && !rawHostPlaying_;
+            rawHostPlaying_ = rawPlaying;
+
+            hostPlaying = rawPlaying;
+
+            // --- Seek/loop discontinuity detection ---
+            // Addresses Codex HIGH concern: no handling for loop wrap, seek,
+            // punch-in, tempo automation, sample-position reset.
+            double ppqPos = 0.0;
+            bool hasPpq = false;
+            if (auto ppq = pos->getPpqPosition())
+            {
+                ppqPos = *ppq;
+                hasPpq = true;
+            }
+
+            // Detect seek: large PPQ jump (> 1 beat) that is not forward-continuous
+            // A seek while sync is ACTIVE invalidates the alignment
+            if (hasPpq && rawPlaying)
+            {
+                double ppqDelta = ppqPos - prevPpqPos_;
+                double expectedDelta = (numSamples / storedSampleRate) *
+                    (cachedHostBpm_.load(std::memory_order_relaxed) / 60.0);
+
+                // If PPQ moved backward or jumped more than 2x expected, it's a seek/loop
+                if (ppqDelta < -0.01 || ppqDelta > expectedDelta * 2.0 + 1.0)
+                {
+                    int expected = kSyncActive;
+                    if (syncState_.compare_exchange_strong(expected, kSyncIdle,
+                            std::memory_order_acq_rel))
+                    {
+                        // Sync was active, now auto-disabled due to seek
+                        evt_queue.try_push(jamwide::SyncStateChangedEvent{
+                            kSyncIdle, jamwide::SyncReason::TransportSeek});
+                    }
+                }
+            }
+            if (hasPpq)
+                prevPpqPos_ = ppqPos;
+
+            // --- Sync state machine: WAITING -> ACTIVE transition ---
+            int currentSync = syncState_.load(std::memory_order_acquire);
+            if (currentSync == kSyncWaiting)
+            {
+                // Trigger sync on transport start OR if transport was already
+                // playing when Sync was clicked (first WAITING processBlock)
+                bool justEnteredWaiting = (prevSyncState_ != kSyncWaiting);
+                if (transportJustStarted || (justEnteredWaiting && rawPlaying))
+                {
+                    // Calculate PPQ sync offset (JamTaba algorithm adapted for JUCE)
+                    double hostBpm = cachedHostBpm_.load(std::memory_order_relaxed);
+                    double barStart = 0.0;
+                    int timeSigNum = 4;
+
+                    if (auto bar = pos->getPpqPositionOfLastBarStart()) barStart = *bar;
+                    if (auto sig = pos->getTimeSignature()) timeSigNum = sig->numerator;
+
+                    if (hostBpm > 0.0)
+                    {
+                        double samplesPerBeat = (60.0 * storedSampleRate) / hostBpm;
+                        int startPosition = 0;
+
+                        if (ppqPos > 0.0)
+                        {
+                            double cursorInMeasure = ppqPos - barStart;
+                            if (cursorInMeasure > 0.00000001)  // Float tolerance (Reaper workaround)
+                            {
+                                double samplesUntilNextMeasure =
+                                    (timeSigNum - cursorInMeasure) * samplesPerBeat;
+                                startPosition = -static_cast<int>(samplesUntilNextMeasure);
+                            }
+                        }
+                        else
+                        {
+                            startPosition = static_cast<int>(ppqPos * samplesPerBeat);
+                        }
+
+                        // Apply offset to NJClient interval position
+                        int iPos, iLen;
+                        client->GetPosition(&iPos, &iLen);
+                        if (iLen > 0)
+                        {
+                            int newPos;
+                            if (startPosition >= 0)
+                                newPos = startPosition % iLen;
+                            else
+                                newPos = iLen - std::abs(startPosition % iLen);
+                            client->SetIntervalPosition(newPos);
+                        }
+                    }
+
+                    // Atomic transition: WAITING -> ACTIVE (race-safe)
+                    // If run thread already set to IDLE (BPM change), this fails safely
+                    int expectedWaiting = kSyncWaiting;
+                    if (syncState_.compare_exchange_strong(expectedWaiting, kSyncActive,
+                            std::memory_order_acq_rel))
+                    {
+                        evt_queue.try_push(jamwide::SyncStateChangedEvent{
+                            kSyncActive, jamwide::SyncReason::TransportStarted});
+                    }
+                }
+
+                // While WAITING, send silence (D-04)
+                hostPlaying = false;
+            }
+            prevSyncState_ = currentSync;
+        }
+    }
+
+    return hostPlaying;
+}
+
+void JamWideJuceProcessor::accumulateBusesToMainMix(float* outPtrs[], int numSamples)
+{
+    // Accumulate individual buses into main mix (D-08: Main Mix always has everything)
+    // NJClient applies master volume to outbuf[0..1] only (channels 0-1).
+    // Individual remote buses need master vol applied when accumulated into main mix.
+    // REVIEW FIX: Metronome bus (kMetronomeBus) is accumulated WITHOUT master volume.
+    // In original NJClient, metronome is mixed into outbuf[0..1] AFTER master vol is applied,
+    // so it is independent of master volume. Preserve this behavior.
+    float masterVol = client->config_mastermute.load(std::memory_order_relaxed)
+                      ? 0.0f
+                      : client->config_mastervolume.load(std::memory_order_relaxed);
+    float masterPan = client->config_masterpan.load(std::memory_order_relaxed);
+    float mvL = masterVol, mvR = masterVol;
+    if (masterPan > 0.0f) mvL *= 1.0f - masterPan;
+    else if (masterPan < 0.0f) mvR *= 1.0f + masterPan;
+
+    float* mainL = outPtrs[0];
+    float* mainR = outPtrs[1];
+
+    // Accumulate remote user buses (1 through kMetronomeBus-1) WITH master volume
+    for (int bus = 1; bus < kMetronomeBus; ++bus)
+    {
+        const float* busL = outPtrs[bus * 2];
+        const float* busR = outPtrs[bus * 2 + 1];
+        for (int s = 0; s < numSamples; ++s)
+        {
+            mainL[s] += busL[s] * mvL;
+            mainR[s] += busR[s] * mvR;
+        }
+    }
+
+    // Accumulate metronome bus WITHOUT master volume (preserves original NJClient behavior)
+    {
+        const float* metroL = outPtrs[kMetronomeBus * 2];
+        const float* metroR = outPtrs[kMetronomeBus * 2 + 1];
+        for (int s = 0; s < numSamples; ++s)
+        {
+            mainL[s] += metroL[s];
+            mainR[s] += metroR[s];
+        }
+    }
+}
+
+void JamWideJuceProcessor::routeOutputsToJuceBuses(juce::AudioBuffer<float>& buffer,
+                                                    int numSamples)
+{
+    // Copy outputScratch to JUCE output buses (per Pitfall 1: check isEnabled)
+    const int numOutputBuses = getBusCount(false);
+    for (int bus = 0; bus < numOutputBuses && bus < kNumOutputBuses; ++bus)
+    {
+        auto* outputBus = getBus(false, bus);
+        if (outputBus == nullptr || !outputBus->isEnabled())
+            continue;
+        auto busBuffer = getBusBuffer(buffer, false, bus);
+        int busCh = busBuffer.getNumChannels();
+        if (busCh >= 1)
+            busBuffer.copyFrom(0, 0, outputScratch, bus * 2, 0, numSamples);
+        if (busCh >= 2)
+            busBuffer.copyFrom(1, 0, outputScratch, bus * 2 + 1, 0, numSamples);
+    }
+}
+
+void JamWideJuceProcessor::measureMasterVu(int numSamples)
+{
+    // Master VU from main mix (post-accumulation for accurate measurement)
+    float masterPeakL = outputScratch.getMagnitude(0, 0, numSamples);
+    float masterPeakR = outputScratch.getMagnitude(1, 0, numSamples);
+    uiSnapshot.master_vu_left.store(masterPeakL, std::memory_order_relaxed);
+    uiSnapshot.master_vu_right.store(masterPeakR, std::memory_order_relaxed);
+}
+
+//==============================================================================
+void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
+                                         juce::MidiBuffer& midiMessages)
+{
+    juce::ScopedNoDenormals noDenormals;
+
+    const int numSamples = buffer.getNumSamples();
+
+    syncApvtsToAtomics();
 
     // Call AudioProc when connected
     if (client && client->cached_status.load(std::memory_order_acquire)
                   == NJClient::NJC_STATUS_OK)
     {
-        // Collect inputs from all active stereo input buses
-        // BusesProperties declares 4 stereo inputs: Local 1..4
-        // NJClient::AudioProc expects mono channel pointers
-        const int numInputBuses = getBusCount(true);
-        const int maxInputChannels = numInputBuses * 2;  // up to 8 mono channels
-
-        // Size scratch buffer for all input channels
-        inputScratch.setSize(maxInputChannels, numSamples, false, false, true);
-
-        int numInputChannels = 0;
-        for (int bus = 0; bus < numInputBuses; ++bus)
-        {
-            auto* inputBus = getBus(true, bus);
-            if (inputBus == nullptr || !inputBus->isEnabled())
-            {
-                // Disabled bus: zero its channels in scratch
-                inputScratch.clear(bus * 2,     0, numSamples);
-                inputScratch.clear(bus * 2 + 1, 0, numSamples);
-                numInputChannels += 2;  // Still count them for NJClient channel mapping
-                continue;
-            }
-            // Get the buffer range for this input bus
-            auto busBuffer = getBusBuffer(buffer, true, bus);
-            int busChannels = busBuffer.getNumChannels();
-            for (int ch = 0; ch < 2; ++ch)
-            {
-                int scratchCh = bus * 2 + ch;
-                if (ch < busChannels)
-                    inputScratch.copyFrom(scratchCh, 0, busBuffer, ch, 0, numSamples);
-                else
-                    inputScratch.clear(scratchCh, 0, numSamples);
-            }
-            numInputChannels += 2;
-        }
-
-        // Build input pointer array for AudioProc
         float* inPtrs[8] = {};
-        for (int ch = 0; ch < numInputChannels && ch < 8; ++ch)
-            inPtrs[ch] = inputScratch.getWritePointer(ch);
+        int numInputChannels = collectInputChannels(buffer, inPtrs, numSamples);
 
         // Expanded output: 17 stereo pairs = 34 mono channels
         // REVIEW FIX: outputScratch pre-allocated in prepareToPlay(). If host sends a larger
@@ -258,203 +480,21 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         for (int ch = 0; ch < kTotalOutChannels; ++ch)
             outPtrs[ch] = outputScratch.getWritePointer(ch);
 
-        // --- DAW Transport Sync (D-01, D-02, SYNC-01, SYNC-02) ---
-        bool hostPlaying = true;  // Default: playing (standalone behavior per D-16)
-
-        if (auto* playHead = getPlayHead())
-        {
-            if (auto pos = playHead->getPosition())
-            {
-                bool rawPlaying = pos->getIsPlaying();
-
-                // Cache host BPM for sync validation on UI thread
-                if (auto bpm = pos->getBpm())
-                    cachedHostBpm_.store(static_cast<float>(*bpm),
-                                        std::memory_order_relaxed);
-
-                // Edge detection using RAW transport state (not overridden value)
-                // Addresses Claude review: wasPlaying_ was set to overridden hostPlaying
-                // which could cause spurious edge after WAITING->ACTIVE in same block.
-                bool transportJustStarted = rawPlaying && !rawHostPlaying_;
-                rawHostPlaying_ = rawPlaying;
-
-                hostPlaying = rawPlaying;
-
-                // --- Seek/loop discontinuity detection ---
-                // Addresses Codex HIGH concern: no handling for loop wrap, seek,
-                // punch-in, tempo automation, sample-position reset.
-                double ppqPos = 0.0;
-                bool hasPpq = false;
-                if (auto ppq = pos->getPpqPosition())
-                {
-                    ppqPos = *ppq;
-                    hasPpq = true;
-                }
-
-                // Detect seek: large PPQ jump (> 1 beat) that is not forward-continuous
-                // A seek while sync is ACTIVE invalidates the alignment
-                if (hasPpq && rawPlaying)
-                {
-                    double ppqDelta = ppqPos - prevPpqPos_;
-                    double expectedDelta = (numSamples / storedSampleRate) *
-                        (cachedHostBpm_.load(std::memory_order_relaxed) / 60.0);
-
-                    // If PPQ moved backward or jumped more than 2x expected, it's a seek/loop
-                    if (ppqDelta < -0.01 || ppqDelta > expectedDelta * 2.0 + 1.0)
-                    {
-                        int expected = kSyncActive;
-                        if (syncState_.compare_exchange_strong(expected, kSyncIdle,
-                                std::memory_order_acq_rel))
-                        {
-                            // Sync was active, now auto-disabled due to seek
-                            evt_queue.try_push(jamwide::SyncStateChangedEvent{
-                                kSyncIdle, jamwide::SyncReason::TransportSeek});
-                        }
-                    }
-                }
-                if (hasPpq)
-                    prevPpqPos_ = ppqPos;
-
-                // --- Sync state machine: WAITING -> ACTIVE transition ---
-                int currentSync = syncState_.load(std::memory_order_acquire);
-                if (currentSync == kSyncWaiting)
-                {
-                    // Trigger sync on transport start OR if transport was already
-                    // playing when Sync was clicked (first WAITING processBlock)
-                    bool justEnteredWaiting = (prevSyncState_ != kSyncWaiting);
-                    if (transportJustStarted || (justEnteredWaiting && rawPlaying))
-                    {
-                        // Calculate PPQ sync offset (JamTaba algorithm adapted for JUCE)
-                        double hostBpm = cachedHostBpm_.load(std::memory_order_relaxed);
-                        double barStart = 0.0;
-                        int timeSigNum = 4;
-
-                        if (auto bar = pos->getPpqPositionOfLastBarStart()) barStart = *bar;
-                        if (auto sig = pos->getTimeSignature()) timeSigNum = sig->numerator;
-
-                        if (hostBpm > 0.0)
-                        {
-                            double samplesPerBeat = (60.0 * storedSampleRate) / hostBpm;
-                            int startPosition = 0;
-
-                            if (ppqPos > 0.0)
-                            {
-                                double cursorInMeasure = ppqPos - barStart;
-                                if (cursorInMeasure > 0.00000001)  // Float tolerance (Reaper workaround)
-                                {
-                                    double samplesUntilNextMeasure =
-                                        (timeSigNum - cursorInMeasure) * samplesPerBeat;
-                                    startPosition = -static_cast<int>(samplesUntilNextMeasure);
-                                }
-                            }
-                            else
-                            {
-                                startPosition = static_cast<int>(ppqPos * samplesPerBeat);
-                            }
-
-                            // Apply offset to NJClient interval position
-                            int iPos, iLen;
-                            client->GetPosition(&iPos, &iLen);
-                            if (iLen > 0)
-                            {
-                                int newPos;
-                                if (startPosition >= 0)
-                                    newPos = startPosition % iLen;
-                                else
-                                    newPos = iLen - std::abs(startPosition % iLen);
-                                client->SetIntervalPosition(newPos);
-                            }
-                        }
-
-                        // Atomic transition: WAITING -> ACTIVE (race-safe)
-                        // If run thread already set to IDLE (BPM change), this fails safely
-                        int expectedWaiting = kSyncWaiting;
-                        if (syncState_.compare_exchange_strong(expectedWaiting, kSyncActive,
-                                std::memory_order_acq_rel))
-                        {
-                            evt_queue.try_push(jamwide::SyncStateChangedEvent{
-                                kSyncActive, jamwide::SyncReason::TransportStarted});
-                        }
-                    }
-
-                    // While WAITING, send silence (D-04)
-                    hostPlaying = false;
-                }
-                prevSyncState_ = currentSync;
-            }
-        }
-
-        // wasPlaying_ tracks the final hostPlaying for non-sync purposes
+        bool hostPlaying = handleTransportSync(numSamples);
         wasPlaying_ = hostPlaying;
 
         client->AudioProc(inPtrs, numInputChannels, outPtrs, kTotalOutChannels,
                           numSamples, static_cast<int>(storedSampleRate),
                           false, hostPlaying);
 
-        // Accumulate individual buses into main mix (D-08: Main Mix always has everything)
-        // NJClient applies master volume to outbuf[0..1] only (channels 0-1).
-        // Individual remote buses need master vol applied when accumulated into main mix.
-        // REVIEW FIX: Metronome bus (kMetronomeBus) is accumulated WITHOUT master volume.
-        // In original NJClient, metronome is mixed into outbuf[0..1] AFTER master vol is applied,
-        // so it is independent of master volume. Preserve this behavior.
-        float masterVol = client->config_mastermute.load(std::memory_order_relaxed)
-                          ? 0.0f
-                          : client->config_mastervolume.load(std::memory_order_relaxed);
-        float masterPan = client->config_masterpan.load(std::memory_order_relaxed);
-        float mvL = masterVol, mvR = masterVol;
-        if (masterPan > 0.0f) mvL *= 1.0f - masterPan;
-        else if (masterPan < 0.0f) mvR *= 1.0f + masterPan;
-
-        float* mainL = outPtrs[0];
-        float* mainR = outPtrs[1];
-
-        // Accumulate remote user buses (1 through kMetronomeBus-1) WITH master volume
-        for (int bus = 1; bus < kMetronomeBus; ++bus)
-        {
-            const float* busL = outPtrs[bus * 2];
-            const float* busR = outPtrs[bus * 2 + 1];
-            for (int s = 0; s < numSamples; ++s)
-            {
-                mainL[s] += busL[s] * mvL;
-                mainR[s] += busR[s] * mvR;
-            }
-        }
-
-        // Accumulate metronome bus WITHOUT master volume (preserves original NJClient behavior)
-        {
-            const float* metroL = outPtrs[kMetronomeBus * 2];
-            const float* metroR = outPtrs[kMetronomeBus * 2 + 1];
-            for (int s = 0; s < numSamples; ++s)
-            {
-                mainL[s] += metroL[s];
-                mainR[s] += metroR[s];
-            }
-        }
-
-        // Copy outputScratch to JUCE output buses (per Pitfall 1: check isEnabled)
-        const int numOutputBuses = getBusCount(false);
-        for (int bus = 0; bus < numOutputBuses && bus < kNumOutputBuses; ++bus)
-        {
-            auto* outputBus = getBus(false, bus);
-            if (outputBus == nullptr || !outputBus->isEnabled())
-                continue;
-            auto busBuffer = getBusBuffer(buffer, false, bus);
-            int busCh = busBuffer.getNumChannels();
-            if (busCh >= 1)
-                busBuffer.copyFrom(0, 0, outputScratch, bus * 2, 0, numSamples);
-            if (busCh >= 2)
-                busBuffer.copyFrom(1, 0, outputScratch, bus * 2 + 1, 0, numSamples);
-        }
-
-        // Master VU from main mix (post-accumulation for accurate measurement)
-        float masterPeakL = outputScratch.getMagnitude(0, 0, numSamples);
-        float masterPeakR = outputScratch.getMagnitude(1, 0, numSamples);
-        uiSnapshot.master_vu_left.store(masterPeakL, std::memory_order_relaxed);
-        uiSnapshot.master_vu_right.store(masterPeakR, std::memory_order_relaxed);
+        accumulateBusesToMainMix(outPtrs, numSamples);
+        routeOutputsToJuceBuses(buffer, numSamples);
+        measureMasterVu(numSamples);
     }
     else
     {
         // Not connected: silence all outputs
+        const int totalChannels = buffer.getNumChannels();
         for (int ch = 0; ch < totalChannels; ++ch)
             buffer.clear(ch, 0, numSamples);
     }
@@ -464,7 +504,7 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     // Order: processIncomingMidi FIRST, appendFeedbackMidi SECOND (per research Pitfall 4/5)
     if (midiMapper)
     {
-        midiMapper->processIncomingMidi(midiMessages);
+        midiMapper->processIncomingMidi(midiMessages, numSamples);
         midiMapper->appendFeedbackMidi(midiMessages);
     }
 }

@@ -30,6 +30,12 @@ public:
 
 private:
     void processCommands(NJClient* client);
+    void pollServerList();
+    void handleStatusChange(NJClient* client, int currentStatus);
+    void handleUserInfoChange(NJClient* client);
+    void updateRemoteVuLevels(NJClient* client);
+    void detectBpmBpiChanges(NJClient* client);
+    void updateSessionAndVuSnapshot(NJClient* client);
 
     JamWideJuceProcessor& processor;
     jamwide::ServerListFetcher serverListFetcher;

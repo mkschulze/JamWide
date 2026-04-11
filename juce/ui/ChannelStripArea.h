@@ -35,6 +35,9 @@ public:
 private:
     void timerCallback() override;  // 30Hz: tick all VU meters
     void rebuildStrips();
+    void attachRemoteStripParams(ChannelStrip& strip, int visibleSlot);
+    void wireChannelCallbacks(ChannelStrip& strip, const juce::String& userName,
+                              const juce::String& channelName);
 
     JamWideJuceProcessor& processorRef;
 
@@ -57,8 +60,17 @@ private:
         std::unique_ptr<juce::ParameterAttachment> vol;   // VbFader uses ParameterAttachment
         std::unique_ptr<juce::SliderParameterAttachment> pan;
         std::unique_ptr<juce::ButtonParameterAttachment> mute;
+        std::unique_ptr<juce::ButtonParameterAttachment> solo;
     };
     std::array<LocalChannelAttachments, 4> localAttachments_;
+
+    // APVTS attachments for remote strip params (rebuilt on user list change)
+    struct RemoteStripAttachments {
+        std::unique_ptr<juce::SliderParameterAttachment> pan;
+        std::unique_ptr<juce::ButtonParameterAttachment> mute;
+        std::unique_ptr<juce::ButtonParameterAttachment> solo;
+    };
+    std::vector<RemoteStripAttachments> remoteAttachments_;
 
     // APVTS attachments for metronome
     std::unique_ptr<juce::SliderParameterAttachment> metroSliderAttachment_;

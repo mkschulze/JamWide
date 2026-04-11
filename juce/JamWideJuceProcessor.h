@@ -127,6 +127,11 @@ public:
     // User count (atomic for lock-free UI read)
     std::atomic<int> userCount{0};
 
+    // Visible (non-bot) remote user count and slot-to-NJClient mapping.
+    // Written by message thread (refreshFromUsers), read by message thread (timerCallback).
+    std::atomic<int> visibleRemoteUserCount{0};
+    std::array<int, 16> remoteSlotToUserIndex{}; // APVTS slot → NJClient user_index
+
     // Last error message from server (written by editor drain, read by ConnectionBar)
     juce::String lastErrorMsg;
 
@@ -205,6 +210,14 @@ private:
 
     // Previous sync state for detecting IDLE->WAITING transition in audio thread
     int prevSyncState_{0};  // kSyncIdle
+
+    // processBlock helpers (audio-thread safe, no allocations)
+    void syncApvtsToAtomics();
+    int  collectInputChannels(juce::AudioBuffer<float>& buffer, float* inPtrs[], int numSamples);
+    bool handleTransportSync(int numSamples);
+    void accumulateBusesToMainMix(float* outPtrs[], int numSamples);
+    void routeOutputsToJuceBuses(juce::AudioBuffer<float>& buffer, int numSamples);
+    void measureMasterVu(int numSamples);
 
     std::unique_ptr<NinjamRunThread> runThread;
 

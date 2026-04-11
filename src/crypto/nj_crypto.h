@@ -33,11 +33,14 @@ struct DecryptedPayload {
 EncryptedPayload encrypt_payload(const unsigned char* plaintext, int plaintext_len,
                                   const unsigned char key[32]);
 
+#ifdef JAMWIDE_BUILD_TESTS
 // Test-only variant that accepts an explicit IV instead of generating randomly.
-// Used for deterministic known-vector tests. MUST NOT be used in production code.
+// Used for deterministic known-vector tests. MUST NOT be used in production code
+// -- IV reuse breaks IND-CPA security.
 EncryptedPayload encrypt_payload_with_iv(const unsigned char* plaintext, int plaintext_len,
                                           const unsigned char key[32],
                                           const unsigned char iv[16]);
+#endif
 
 // Decrypt payload produced by encrypt_payload.
 // Input: [16-byte IV][ciphertext]. Minimum valid length is 32 (IV + one AES block).

@@ -66,12 +66,14 @@ EncryptedPayload encrypt_payload(const unsigned char* plaintext, int plaintext_l
     return encrypt_payload_impl(plaintext, plaintext_len, key, iv);
 }
 
+#ifdef JAMWIDE_BUILD_TESTS
 EncryptedPayload encrypt_payload_with_iv(const unsigned char* plaintext, int plaintext_len,
                                           const unsigned char key[32],
                                           const unsigned char iv[16])
 {
     return encrypt_payload_impl(plaintext, plaintext_len, key, iv);
 }
+#endif
 
 DecryptedPayload decrypt_payload(const unsigned char* encrypted, int encrypted_len,
                                   const unsigned char key[32])

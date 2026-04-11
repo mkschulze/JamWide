@@ -114,6 +114,9 @@ target_link_libraries(njclient PUBLIC wdl vorbis vorbisenc ogg FLAC OpenSSL::Cry
 if(JAMWIDE_DEV_BUILD)
     target_compile_definitions(njclient PRIVATE JAMWIDE_DEV_BUILD=1)
 endif()
+if(JAMWIDE_BUILD_TESTS)
+    target_compile_definitions(njclient PRIVATE JAMWIDE_BUILD_TESTS=1)
+endif()
 
 # ── IXWebSocket (WebSocket server for video companion, per D-12) ──
 set(USE_TLS OFF CACHE BOOL "" FORCE)

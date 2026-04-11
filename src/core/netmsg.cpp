@@ -136,13 +136,22 @@ Net_Message *Net_Connection::Run(int *wantsleep)
               m_error = -4;  // encryption failure
               break;
           }
-          // Allocate new payload with encrypted data
-          sendm->set_size((int)enc.data.size());
-          if (sendm->get_size() != (int)enc.data.size() || sendm->get_data() == nullptr) {
+          // Encrypt into a NEW message to avoid mutating the shared original
+          // (Net_Message is refcounted; callers may retain a reference)
+          Net_Message *enc_msg = new Net_Message;
+          enc_msg->set_type(sendm->get_type());
+          enc_msg->set_size((int)enc.data.size());
+          if (enc_msg->get_size() != (int)enc.data.size() || enc_msg->get_data() == nullptr) {
+              delete enc_msg;
               m_error = -4;  // allocation failed
               break;
           }
-          memcpy(sendm->get_data(), enc.data.data(), enc.data.size());
+          memcpy(enc_msg->get_data(), enc.data.data(), enc.data.size());
+          enc_msg->addRef();
+          // Replace the queue slot pointer and release the original
+          sendm->releaseRef();
+          *topofq = enc_msg;
+          sendm = enc_msg;
       }
       if (m_msgsendpos<0) // send header
       {

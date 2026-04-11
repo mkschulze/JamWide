@@ -147,9 +147,9 @@ Plans:
   4. Encryption is transparent — no extra configuration required beyond the existing password field
 **Plans**: 2 plans
 Plans:
-- [ ] 15-01-PLAN.md — Crypto module (TDD): nj_crypto.h/.cpp with AES-256-CBC encrypt/decrypt via OpenSSL EVP, SHA-256 key derivation, 12 unit tests, CMake OpenSSL linkage
-- [ ] 15-02-PLAN.md — Protocol integration: Net_Connection encrypt-on-send/decrypt-on-receive hooks, capability bit negotiation in auth handshake, key derivation after auth, CI OpenSSL setup
-**Reference**: AES-256-CBC with OpenSSL EVP, SHA-256 key derivation from password, random IV per message
+- [ ] 15-01-PLAN.md — Crypto module (TDD): nj_crypto.h/.cpp with AES-256-CBC encrypt/decrypt via OpenSSL EVP, SHA-256 key derivation, test-only IV injection API, 15+ unit tests (round-trip, known-vector, size overhead, zero-length, tamper), CMake OpenSSL linkage
+- [ ] 15-02-PLAN.md — Protocol integration: redesigned auth flow (server advertises encryption in AUTH_CHALLENGE, client encrypts AUTH_USER credentials), Net_Connection encrypt-on-send/decrypt-on-receive hooks, downgrade detection, CI OpenSSL setup for all platforms
+**Reference**: AES-256-CBC with OpenSSL EVP, SHA-256 key derivation from password, random IV per message, server_caps/client_caps/flag capability negotiation
 
 ### Phase 16: Opus Codec Integration
 **Goal**: Users get low-latency, high-quality audio with automatic bitrate adaptation and packet loss resilience

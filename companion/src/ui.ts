@@ -174,6 +174,14 @@ export function buildVdoNinjaUrl(
     + `&maxvideobitrate=${bw.maxvideobitrate}`
     + fx;
 
+  // Include cached buffer delay in URL so VDO.Ninja applies it at page init,
+  // before its JS postMessage handler is ready. This fixes the race condition
+  // where setBufferDelay via postMessage arrives before VDO.Ninja initializes.
+  // Subsequent BPM/BPI changes still update via postMessage.
+  if (cachedBufferDelay !== null && cachedBufferDelay > 0) {
+    url += `&buffer=${cachedBufferDelay}`;
+  }
+
   // D-05: Room derived password forwarded as VDO.Ninja password param in iframe URL
   // (Addresses review concern R-MEDIUM-08: uses "password" terminology consistently)
   if (hashFragment)
@@ -297,10 +305,15 @@ export function loadVdoNinjaIframe(
   iframe.style.height = '100%';
   iframe.style.border = 'none';
 
-  // Pitfall 4 + review concern R-MEDIUM-06: Re-apply cached buffer delay after iframe loads.
-  // The load event fires after VDO.Ninja's JS has initialized, so postMessage will be received.
+  // Re-apply cached buffer delay after iframe loads. The load event fires when the
+  // iframe HTML is parsed, but VDO.Ninja's internal JS (chunked buffer system) needs
+  // additional time to initialize its postMessage handler. Retry with increasing delays
+  // to ensure the buffer delay is applied. The &buffer= URL param handles the initial
+  // value; these retries catch dynamic updates (BPM/BPI change during iframe load).
   iframe.addEventListener('load', () => {
     reapplyCachedBufferDelay();
+    setTimeout(reapplyCachedBufferDelay, 1000);
+    setTimeout(reapplyCachedBufferDelay, 3000);
   });
 
   main.appendChild(iframe);

@@ -31,7 +31,7 @@
 - [x] **Phase 10: OSC Remote Users and Template** -- Index-based remote user control, roster broadcasts, connect/disconnect, shipped TouchOSC template (completed 2026-04-07)
 - [x] **Phase 11: Video Companion Foundation** -- One-click VDO.Ninja launch with auto room ID, companion page, local WebSocket server, safety notices (completed 2026-04-07)
 - [x] **Phase 12: Video Sync and Roster Discovery** -- Interval-synced buffering, VDO.Ninja API roster mapping, room security, bandwidth profiles (completed 2026-04-07)
-- [ ] **Phase 13: Video Display Modes and OSC Integration** -- Per-user popout windows, OSC video control, grid/popout mode switching
+- [x] **Phase 13: Video Display Modes and OSC Integration** -- Per-user popout windows, OSC video control, grid/popout mode switching (completed 2026-04-07)
 - [ ] **Phase 14: MIDI Remote Control** -- MIDI CC mapping for mixer parameters including remote channels, bidirectional feedback where possible
 
 ## Phase Details
@@ -105,8 +105,8 @@ Plans:
   2. User can open video, close video, switch display modes, and trigger popouts via OSC commands from their control surface
 **Plans**: 2 plans
 Plans:
-- [ ] 13-01-PLAN.md — Companion popout windows: popout.html page, popout.ts entry point, URL builder &view= extension, roster pill click-to-popout, window tracking Map, postMessage roster relay, deactivate handler, Vite multi-page build, tests
-- [ ] 13-02-PLAN.md — C++ OSC video control + TouchOSC: VideoCompanion requestPopout + deactivate broadcast + cached roster, OscServer /video/active + /video/popout/{idx} dispatch + feedback, TouchOSC VIDEO section, docs/osc.md update
+- [x] 13-01-PLAN.md — Companion popout windows: popout.html page, popout.ts entry point, URL builder &view= extension, roster pill click-to-popout, window tracking Map, postMessage roster relay, deactivate handler, Vite multi-page build, tests
+- [x] 13-02-PLAN.md — C++ OSC video control + TouchOSC: VideoCompanion requestPopout + deactivate broadcast + cached roster, OscServer /video/active + /video/popout/{idx} dispatch + feedback, TouchOSC VIDEO section, docs/osc.md update
 **UI hint**: yes
 
 ### Phase 14: MIDI Remote Control
@@ -206,7 +206,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 10. OSC Remote Users and Template | v1.1 | 2/2 | Complete    | 2026-04-07 |
 | 11. Video Companion Foundation | v1.1 | 3/3 | Complete    | 2026-04-07 |
 | 12. Video Sync and Roster Discovery | v1.1 | 2/2 | Complete   | 2026-04-07 |
-| 13. Video Display Modes and OSC Integration | v1.1 | 0/2 | Not started | - |
+| 13. Video Display Modes and OSC Integration | v1.1 | 2/2 | Complete    | 2026-04-07 |
 | 14. MIDI Remote Control | v1.1 | 0/0 | Not started | - |
 | 15. Connection Encryption | v1.2 | 0/0 | Not started | - |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |

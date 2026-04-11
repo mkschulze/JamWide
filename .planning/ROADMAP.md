@@ -129,7 +129,7 @@ Plans:
 
 **Milestone Goal:** Harden JamWide with connection encryption, modern Opus codec, resilient networking, and production-grade testing infrastructure.
 
-- [ ] **Phase 15: Connection Encryption** -- AES-256-CBC end-to-end encryption for credentials and audio, backward-compatible with unencrypted NINJAM servers
+- [x] **Phase 15: Connection Encryption** -- AES-256-CBC end-to-end encryption for credentials and audio, backward-compatible with unencrypted NINJAM servers (completed 2026-04-11)
 - [ ] **Phase 16: Opus Codec Integration** -- Native libopus with automatic bitrate adaptation, packet loss concealment, and mixed-codec capability negotiation
 - [ ] **Phase 17: Network Resilience** -- Exponential backoff reconnection (1s-30s), per-peer adaptive jitter buffer, graceful degradation on network loss
 - [ ] **Phase 18: Testing Infrastructure** -- Stress tests (1000x create/destroy, 10 concurrent instances), documented shutdown sequence, CI-gated test pipeline
@@ -147,8 +147,8 @@ Plans:
   4. Encryption is transparent — no extra configuration required beyond the existing password field
 **Plans**: 2 plans
 Plans:
-- [ ] 15-01-PLAN.md — Crypto module (TDD): nj_crypto.h/.cpp with AES-256-CBC encrypt/decrypt via OpenSSL EVP, SHA-256 key derivation, test-only IV injection API, 15+ unit tests (round-trip, known-vector, size overhead, zero-length, tamper), CMake OpenSSL linkage
-- [ ] 15-02-PLAN.md — Protocol integration: redesigned auth flow (server advertises encryption in AUTH_CHALLENGE, client encrypts AUTH_USER credentials), Net_Connection encrypt-on-send/decrypt-on-receive hooks, downgrade detection, CI OpenSSL setup for all platforms
+- [x] 15-01-PLAN.md — Crypto module (TDD): nj_crypto.h/.cpp with AES-256-CBC encrypt/decrypt via OpenSSL EVP, SHA-256 key derivation, test-only IV injection API, 15+ unit tests (round-trip, known-vector, size overhead, zero-length, tamper), CMake OpenSSL linkage
+- [x] 15-02-PLAN.md — Protocol integration: redesigned auth flow (server advertises encryption in AUTH_CHALLENGE, client encrypts AUTH_USER credentials), Net_Connection encrypt-on-send/decrypt-on-receive hooks, downgrade detection, CI OpenSSL setup for all platforms
 **Reference**: AES-256-CBC with OpenSSL EVP, SHA-256 key derivation from password, random IV per message, server_caps/client_caps/flag capability negotiation
 
 ### Phase 16: Opus Codec Integration
@@ -216,7 +216,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 12. Video Sync and Roster Discovery | v1.1 | 2/2 | Complete   | 2026-04-07 |
 | 13. Video Display Modes and OSC Integration | v1.1 | 2/2 | Complete    | 2026-04-07 |
 | 14. MIDI Remote Control | v1.1 | 0/3 | In Progress | - |
-| 15. Connection Encryption | v1.2 | 0/2 | Not started | - |
+| 15. Connection Encryption | v1.2 | 2/2 | Complete    | 2026-04-11 |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |
 | 18. Testing Infrastructure | v1.2 | 0/0 | Not started | - |

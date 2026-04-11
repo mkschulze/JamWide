@@ -27,8 +27,13 @@ bool MidiLearnManager::tryLearn(int ccNumber, int midiChannel)
 
     if (onLearnedCallback_)
     {
-        onLearnedCallback_(ccNumber, midiChannel);
+        // Move callback off audio thread: the callback does message-thread work
+        // (addMapping modifies staging_, repaint, Timer::callAfterDelay).
+        auto cb = std::move(onLearnedCallback_);
         onLearnedCallback_ = nullptr;
+        juce::MessageManager::callAsync([cb, ccNumber, midiChannel]() {
+            cb(ccNumber, midiChannel);
+        });
     }
 
     learningParamId_.clear();

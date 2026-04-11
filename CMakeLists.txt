@@ -84,18 +84,33 @@ if(WIN32)
     target_link_libraries(wdl PUBLIC ws2_32 comdlg32 shell32)
 endif()
 
+# ── OpenSSL (for AES-256-CBC encryption, SHA-256 key derivation — Phase 15) ──
+if(APPLE)
+    # Help CMake find Homebrew OpenSSL on macOS (not in default search path)
+    execute_process(COMMAND brew --prefix openssl@3
+        OUTPUT_VARIABLE OPENSSL_BREW_PREFIX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(OPENSSL_BREW_PREFIX)
+        set(OPENSSL_ROOT_DIR "${OPENSSL_BREW_PREFIX}" CACHE PATH "OpenSSL root" FORCE)
+    endif()
+endif()
+find_package(OpenSSL REQUIRED)
+
 # NJClient core (static) — shared by both CLAP and JUCE targets
 add_library(njclient STATIC
     src/core/njclient.cpp
     src/core/netmsg.cpp
     src/core/mpb.cpp
     src/core/njmisc.cpp
+    src/crypto/nj_crypto.cpp
 )
 target_include_directories(njclient PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
-target_link_libraries(njclient PUBLIC wdl vorbis vorbisenc ogg FLAC)
+target_link_libraries(njclient PUBLIC wdl vorbis vorbisenc ogg FLAC OpenSSL::Crypto)
 if(JAMWIDE_DEV_BUILD)
     target_compile_definitions(njclient PRIVATE JAMWIDE_DEV_BUILD=1)
 endif()
@@ -309,5 +324,13 @@ if(JAMWIDE_BUILD_TESTS)
     # Only expose interfaces from vorbisencdec.h (no Vorbis codec deps)
     target_compile_definitions(test_flac_codec PRIVATE WDL_VORBIS_INTERFACE_ONLY)
     add_test(NAME flac_codec COMMAND test_flac_codec)
+
+    add_executable(test_encryption tests/test_encryption.cpp src/crypto/nj_crypto.cpp)
+    target_include_directories(test_encryption PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_link_libraries(test_encryption PRIVATE OpenSSL::Crypto)
+    add_test(NAME encryption COMMAND test_encryption)
 
 endif()

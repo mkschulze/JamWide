@@ -119,6 +119,10 @@ Plans:
   3. Parameter changes in JamWide send MIDI CC feedback to the controller
   4. MIDI mappings persist across DAW sessions
 **Plans**: 2 plans
+Plans:
+- [ ] 14-01-PLAN.md -- MIDI mapper core: 69 new APVTS parameters, MidiMapper CC dispatch + feedback + echo suppression, MidiLearnManager, state version 3, unit tests
+- [ ] 14-02-PLAN.md -- MIDI Learn UX: right-click context menus, visual feedback, MidiConfigDialog (mapping table + standalone device selector), MidiStatusDot footer indicator
+**UI hint**: yes
 
 ### v1.2 Security & Quality (Planned)
 
@@ -207,7 +211,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 11. Video Companion Foundation | v1.1 | 3/3 | Complete    | 2026-04-07 |
 | 12. Video Sync and Roster Discovery | v1.1 | 2/2 | Complete   | 2026-04-07 |
 | 13. Video Display Modes and OSC Integration | v1.1 | 2/2 | Complete    | 2026-04-07 |
-| 14. MIDI Remote Control | v1.1 | 0/0 | Not started | - |
+| 14. MIDI Remote Control | v1.1 | 0/2 | In Progress | - |
 | 15. Connection Encryption | v1.2 | 0/0 | Not started | - |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |

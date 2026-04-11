@@ -423,17 +423,29 @@ void MidiConfigDialog::refreshDeviceList()
     inputDeviceSelector.clear(juce::dontSendNotification);
     inputDeviceSelector.addItem("None", 1);
     auto inputDevices = juce::MidiInput::getAvailableDevices();
+    int selectedInputId = 1;  // default to "None"
+    auto currentInputId = midiMapper.getInputDeviceId();
     for (int i = 0; i < inputDevices.size(); ++i)
+    {
         inputDeviceSelector.addItem(inputDevices[i].name, i + 2);
-    inputDeviceSelector.setSelectedId(1, juce::dontSendNotification);
+        if (currentInputId.isNotEmpty() && inputDevices[i].identifier == currentInputId)
+            selectedInputId = i + 2;
+    }
+    inputDeviceSelector.setSelectedId(selectedInputId, juce::dontSendNotification);
 
     // Output devices
     outputDeviceSelector.clear(juce::dontSendNotification);
     outputDeviceSelector.addItem("None", 1);
     auto outputDevices = juce::MidiOutput::getAvailableDevices();
+    int selectedOutputId = 1;  // default to "None"
+    auto currentOutputId = midiMapper.getOutputDeviceId();
     for (int i = 0; i < outputDevices.size(); ++i)
+    {
         outputDeviceSelector.addItem(outputDevices[i].name, i + 2);
-    outputDeviceSelector.setSelectedId(1, juce::dontSendNotification);
+        if (currentOutputId.isNotEmpty() && outputDevices[i].identifier == currentOutputId)
+            selectedOutputId = i + 2;
+    }
+    outputDeviceSelector.setSelectedId(selectedOutputId, juce::dontSendNotification);
 }
 
 //==============================================================================

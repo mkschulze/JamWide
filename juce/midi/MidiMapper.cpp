@@ -411,10 +411,12 @@ void MidiMapper::openMidiInput(const juce::String& deviceId)
     if (midiInput_)
     {
         midiInput_->start();
+        currentInputDeviceId_ = found.identifier;
         deviceError_.store(false, std::memory_order_relaxed);
     }
     else
     {
+        currentInputDeviceId_.clear();
         deviceError_.store(true, std::memory_order_relaxed);
     }
 }
@@ -457,9 +459,15 @@ void MidiMapper::openMidiOutput(const juce::String& deviceId)
 
     midiOutput_ = juce::MidiOutput::openDevice(found.identifier);
     if (midiOutput_)
+    {
+        currentOutputDeviceId_ = found.identifier;
         deviceError_.store(false, std::memory_order_relaxed);
+    }
     else
+    {
+        currentOutputDeviceId_.clear();
         deviceError_.store(true, std::memory_order_relaxed);
+    }
 }
 
 void MidiMapper::closeMidiInput()
@@ -469,12 +477,14 @@ void MidiMapper::closeMidiInput()
         midiInput_->stop();
         midiInput_.reset();
     }
+    currentInputDeviceId_.clear();
     deviceError_.store(false, std::memory_order_relaxed);
 }
 
 void MidiMapper::closeMidiOutput()
 {
     midiOutput_.reset();
+    currentOutputDeviceId_.clear();
     deviceError_.store(false, std::memory_order_relaxed);
 }
 

@@ -564,8 +564,11 @@ void JamWideJuceProcessor::getStateInformation(juce::MemoryBlock& destData)
         midiMapper->saveToState(state);
 
     // MIDI standalone device persistence (stable identifiers per review feedback)
-    state.setProperty("midiInputDeviceId", midiInputDeviceId, nullptr);
-    state.setProperty("midiOutputDeviceId", midiOutputDeviceId, nullptr);
+    // Read from midiMapper (source of truth) rather than processor fields
+    state.setProperty("midiInputDeviceId",
+                      midiMapper ? midiMapper->getInputDeviceId() : juce::String(), nullptr);
+    state.setProperty("midiOutputDeviceId",
+                      midiMapper ? midiMapper->getOutputDeviceId() : juce::String(), nullptr);
 
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);

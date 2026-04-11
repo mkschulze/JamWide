@@ -44,6 +44,10 @@ public:
     void closeMidiInput();
     void closeMidiOutput();
 
+    // Currently-open device identifiers (for persistence and UI selection)
+    juce::String getInputDeviceId() const { return currentInputDeviceId_; }
+    juce::String getOutputDeviceId() const { return currentOutputDeviceId_; }
+
     // Cross-system echo suppression API (for OscServer/ChannelStripArea callers)
     // Suppresses MIDI feedback for the given paramId for one timer tick.
     void setEchoSuppression(const juce::String& paramId);
@@ -119,6 +123,8 @@ private:
     // Standalone device state (per D-05)
     std::unique_ptr<juce::MidiInput> midiInput_;
     std::unique_ptr<juce::MidiOutput> midiOutput_;
+    juce::String currentInputDeviceId_;   // stored on successful open, cleared on close
+    juce::String currentOutputDeviceId_;  // stored on successful open, cleared on close
     std::atomic<bool> deviceError_{false};
 
     JamWideJuceProcessor& processor;

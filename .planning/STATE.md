@@ -4,8 +4,8 @@ milestone: v1.1
 milestone_name: OSC + Video
 status: executing
 stopped_at: Phase 14 UI-SPEC approved
-last_updated: "2026-04-11T14:43:30.077Z"
-last_activity: 2026-04-11 -- Phase 14 planning complete
+last_updated: "2026-04-11T15:50:19.704Z"
+last_activity: 2026-04-11 -- Phase 15 planning complete
 progress:
   total_phases: 6
   completed_phases: 5
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-05)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Phase 11 — video-companion-foundation
+**Current focus:** Phase 14 — MIDI Remote Control
 
 ## Current Position
 
-Phase: 14
-Plan: Not started
+Phase: 14 (MIDI Remote Control) — EXECUTING
+Plan: 1 of 3
 Status: Ready to execute
-Last activity: 2026-04-11 -- Phase 14 planning complete
+Last activity: 2026-04-11 -- Phase 15 planning complete
 
 Progress: [..........] 0% (v1.1 milestone)
 

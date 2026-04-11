@@ -10,7 +10,7 @@ Phase 14 adds MIDI CC control of all mixer parameters with bidirectional feedbac
 
 The JUCE framework provides all necessary MIDI primitives. `juce::MidiMessage::isController()`, `getControllerNumber()`, `getControllerValue()`, and `controllerEvent()` handle CC parsing and creation. `juce::MidiInput`/`MidiOutput` in `juce_audio_devices` (already transitively linked via `juce_audio_utils`) provide standalone device enumeration. The processBlock MidiBuffer parameter, currently ignored (`/*midiMessages*/`), becomes the primary MIDI I/O path in plugin mode once `acceptsMidi()` returns true.
 
-**Primary recommendation:** Implement as two plans: Plan 01 = APVTS parameter expansion + MidiMapper core (CC processing, mapping storage, echo suppression, state persistence) with plugin-mode I/O through processBlock MidiBuffer; Plan 02 = MIDI Learn UX (right-click on components), mapping table dialog, MIDI config dialog for standalone device selection, and MidiStatusDot in footer.
+**Primary recommendation:** Implement as two plans: Plan 01 = APVTS parameter expansion + MidiMapper core (CC processing, mapping storage, echo suppression, state persistence, APVTS-to-NJClient remote sync) with plugin-mode I/O through processBlock MidiBuffer; Plan 02 = MIDI Learn UX (right-click on components), mapping table dialog, MIDI config dialog for standalone device selection, and MidiStatusDot in footer.
 
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
@@ -58,7 +58,7 @@ The JUCE framework provides all necessary MIDI primitives. `juce::MidiMessage::i
 
 | ID | Description | Research Support |
 |----|-------------|------------------|
-| MIDI-01 | User can map MIDI CC to any mixer parameter (local, remote, master, metronome) with bidirectional feedback and persistent mappings | Full architecture documented: MidiMapper component handles CC-to-parameter mapping via APVTS + cmd_queue, bidirectional feedback via dirty-flag timer (OSC pattern), persistence via state version 3 ValueTree serialization. MIDI Learn UX via right-click context menu. All 85 APVTS parameters (existing 16 + 69 new) are mappable, plus cmd_queue-only sub-channel controls. |
+| MIDI-01 | User can map MIDI CC to any mixer parameter (local, remote, master, metronome) with bidirectional feedback and persistent mappings | Full architecture documented: MidiMapper component handles CC-to-parameter mapping via APVTS + cmd_queue, bidirectional feedback via dirty-flag timer (OSC pattern), persistence via state version 3 ValueTree serialization. MIDI Learn UX via right-click context menu. All 85 APVTS parameters (existing 16 + 69 new) are mappable, plus cmd_queue-only sub-channel controls. APVTS-to-NJClient sync via MidiMapper::timerCallback ensures remote user MIDI control actually affects audio. |
 </phase_requirements>
 
 ## Standard Stack
@@ -74,7 +74,7 @@ The JUCE framework provides all necessary MIDI primitives. `juce::MidiMessage::i
 ### Supporting
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| juce::Timer | JUCE 8.x (bundled) | Dirty-flag feedback sender (100ms interval) | MIDI feedback output on message thread |
+| juce::Timer | JUCE 8.x (bundled) | Dirty-flag feedback sender and APVTS-to-NJClient sync (100ms interval) | MIDI feedback output on message thread + remote param sync |
 | juce::CallOutBox | JUCE 8.x (bundled) | MIDI config popup dialog | Same pattern as OscConfigDialog |
 | juce::PopupMenu | JUCE 8.x (bundled) | Right-click MIDI Learn context menu | On fader/knob/button right-click |
 | juce::ValueTree | JUCE 8.x (bundled) | State persistence for MIDI mappings | getStateInformation / setStateInformation |
@@ -94,7 +94,7 @@ No new dependencies. All MIDI classes are part of JUCE modules already linked. `
 ```
 juce/
   midi/                    # New directory (mirrors juce/osc/)
-    MidiMapper.h           # Core: mapping table, CC dispatch, feedback sender
+    MidiMapper.h           # Core: mapping table, CC dispatch, feedback sender, APVTS-NJClient sync
     MidiMapper.cpp
     MidiLearnManager.h     # MIDI Learn state machine (listening, assignment)
     MidiLearnManager.cpp
@@ -105,7 +105,7 @@ juce/
 ```
 
 ### Pattern 1: MidiMapper (Core Component)
-**What:** Processor-owned component that manages CC-to-parameter mappings, processes incoming MIDI, and sends feedback.
+**What:** Processor-owned component that manages CC-to-parameter mappings, processes incoming MIDI, sends feedback, and syncs remote APVTS params to NJClient.
 **When to use:** Always -- this is the central MIDI subsystem.
 
 ```cpp
@@ -140,7 +140,7 @@ public:
     bool isReceiving() const;
 
 private:
-    void timerCallback() override; // dirty-flag feedback (message thread)
+    void timerCallback() override; // APVTS-to-NJClient sync + standalone feedback
 
     struct Mapping {
         juce::String paramId;
@@ -313,11 +313,53 @@ params.push_back(std::make_unique<juce::AudioParameterFloat>(
     juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f));
 ```
 
+### Pattern 6: APVTS-to-NJClient Remote Sync (Timer-Based)
+**What:** Sync remote user APVTS parameters to NJClient via cmd_queue on the message thread.
+**When to use:** In MidiMapper::timerCallback, every 100ms. Critical for making MIDI control of remote users actually affect audio.
+
+```cpp
+// Source: Derived from OscServer dirty-flag pattern [VERIFIED: juce/osc/OscServer.cpp]
+// Runs on message thread via Timer -- safe for cmd_queue.push (single-producer invariant)
+void MidiMapper::timerCallback()
+{
+    const int count = juce::jmin(processor.userCount.load(std::memory_order_relaxed), 16);
+    for (int i = 0; i < count; ++i)
+    {
+        juce::String suffix = juce::String(i);
+        float vol = *processor.apvts.getRawParameterValue("remoteVol_" + suffix);
+        float pan = *processor.apvts.getRawParameterValue("remotePan_" + suffix);
+        bool mute = *processor.apvts.getRawParameterValue("remoteMute_" + suffix) >= 0.5f;
+
+        bool volChanged = std::abs(vol - lastSyncedRemoteVol_[i]) > 0.001f;
+        bool panChanged = std::abs(pan - lastSyncedRemotePan_[i]) > 0.001f;
+        bool muteChanged = mute != lastSyncedRemoteMute_[i];
+
+        if (volChanged || panChanged || muteChanged)
+        {
+            jamwide::SetUserStateCommand cmd;
+            cmd.user_index = i;
+            cmd.set_vol = volChanged;  cmd.volume = vol;
+            cmd.set_pan = panChanged;  cmd.pan = pan;
+            cmd.set_mute = muteChanged; cmd.mute = mute;
+            processor.cmd_queue.push(std::move(cmd));
+
+            if (volChanged) lastSyncedRemoteVol_[i] = vol;
+            if (panChanged) lastSyncedRemotePan_[i] = pan;
+            if (muteChanged) lastSyncedRemoteMute_[i] = mute;
+        }
+    }
+    // ... also handle standalone MIDI output feedback here ...
+}
+```
+
+**IMPORTANT:** Do NOT sync remote APVTS to NJClient in processBlock. The cachedUsersMutex would be locked on the audio thread, risking priority inversion. The timer-based approach on the message thread is safe and matches the OscServer pattern.
+
 ### Anti-Patterns to Avoid
 - **Allocating in processBlock:** Never create std::string, juce::String, or allocate memory in the audio thread CC dispatch path. Use pre-allocated lookup structures. [VERIFIED: existing processBlock avoids allocation]
 - **Locking in processBlock:** The CC lookup map must be read-only during audio processing. Map modifications (add/remove mapping) happen on the message thread; use a swap-on-update pattern or atomic pointer exchange.
-- **Direct cmd_queue push from audio thread:** The SPSC cmd_queue has a single-producer invariant (message thread). MIDI CC from processBlock runs on the audio thread. For remote sub-channel controls (D-18, cmd_queue-only), dispatch via callAsync to message thread first, same as OSC. [VERIFIED: OscServer.cpp uses callAsync for all cmd_queue pushes]
+- **Direct cmd_queue push from audio thread:** The SPSC cmd_queue has a single-producer invariant (message thread only). MIDI CC from processBlock runs on the audio thread. For remote sub-channel controls (D-18, cmd_queue-only), dispatch via callAsync to message thread first, same as OSC. [VERIFIED: OscServer.cpp uses callAsync for all cmd_queue pushes]
 - **Ignoring parameter version IDs:** New APVTS parameters use version 3 in ParameterID. Old DAW states (version 1-2) will load with defaults for these new parameters. Do NOT change existing parameter version IDs -- only new params get version 3.
+- **Syncing remote APVTS in processBlock:** Do NOT lock cachedUsersMutex on audio thread -- priority inversion risk. Use timer-based sync on message thread instead.
 
 ## Don't Hand-Roll
 
@@ -329,7 +371,7 @@ params.push_back(std::make_unique<juce::AudioParameterFloat>(
 | APVTS state persistence | Custom binary serialization | `juce::ValueTree` XML serialization via `getStateInformation` | Matches existing pattern, version-safe [VERIFIED: JamWideJuceProcessor.cpp] |
 | Popup dialog | Custom window management | `juce::CallOutBox::launchAsynchronously()` | Same pattern as OscConfigDialog [VERIFIED: OscStatusDot.cpp line 53-58] |
 
-**Key insight:** Every MIDI primitive needed is in JUCE's standard modules. The only custom code is the mapping logic, MIDI Learn state machine, and integration with the existing parameter system.
+**Key insight:** Every MIDI primitive needed is in JUCE's standard modules. The only custom code is the mapping logic, MIDI Learn state machine, APVTS-NJClient sync, and integration with the existing parameter system.
 
 ## Common Pitfalls
 
@@ -372,7 +414,7 @@ params.push_back(std::make_unique<juce::AudioParameterFloat>(
 ### Pitfall 7: Remote APVTS Parameters Must Sync Bidirectionally with NJClient
 **What goes wrong:** Remote user APVTS parameters (remoteVol_0..15 etc.) are a new layer on top of the existing cmd_queue-based remote user control. The APVTS value and the NJClient actual value can diverge.
 **Why it happens:** When a remote user's volume changes via the existing UI (which uses cmd_queue), the APVTS parameter is not updated. When MIDI or DAW automation changes the APVTS parameter, NJClient is not updated.
-**How to avoid:** Establish APVTS as the source of truth for remote group controls. In processBlock, sync APVTS remote parameters to NJClient atomics (same pattern as master volume). For UI-initiated changes, update the APVTS parameter instead of (or in addition to) cmd_queue. The OSC server must also be updated to read from APVTS instead of cmd_queue for remote users.
+**How to avoid:** Use MidiMapper::timerCallback (100ms, message thread) to sync APVTS remote params to NJClient via SetUserStateCommand through cmd_queue. This uses the same dirty-flag pattern as OscServer. The timer runs on the message thread, preserving the cmd_queue single-producer invariant. Do NOT sync in processBlock (cachedUsersMutex lock on audio thread = priority inversion risk). For UI-initiated changes, the existing cmd_queue path continues to work; the APVTS params will be updated by MIDI/automation and synced to NJClient by the timer.
 **Warning signs:** MIDI-controlled remote volume reverts after one interval, or UI changes not reflected on MIDI controller.
 
 ### Pitfall 8: VbFader Uses 2.5 Power Curve but D-10 Specifies Linear CC Mapping
@@ -383,27 +425,34 @@ params.push_back(std::make_unique<juce::AudioParameterFloat>(
 
 ## Code Examples
 
-### APVTS Remote Parameter Sync in processBlock
+### APVTS Remote Parameter Sync via Timer (Message Thread)
 ```cpp
-// Source: Existing masterVol sync pattern [VERIFIED: JamWideJuceProcessor.cpp line 154]
-// Add to processBlock after existing master/metro sync:
+// Source: Derived from OscServer dirty-flag pattern [VERIFIED: OscServer.cpp]
+// In MidiMapper::timerCallback (message thread, 100ms):
 
-// Sync remote APVTS params to NJClient (D-14)
+const int count = juce::jmin(processor.userCount.load(std::memory_order_relaxed), 16);
+for (int i = 0; i < count; ++i)
 {
-    std::lock_guard<std::mutex> lk(cachedUsersMutex);
-    const int count = juce::jmin(static_cast<int>(cachedUsers.size()), 16);
-    for (int i = 0; i < count; ++i)
+    juce::String suffix = juce::String(i);
+    float vol = *processor.apvts.getRawParameterValue("remoteVol_" + suffix);
+    float pan = *processor.apvts.getRawParameterValue("remotePan_" + suffix);
+    bool mute = *processor.apvts.getRawParameterValue("remoteMute_" + suffix) >= 0.5f;
+
+    // Dirty check against last-synced values
+    if (volChanged || panChanged || muteChanged)
     {
-        juce::String suffix = juce::String(i);
-        float vol = *apvts.getRawParameterValue("remoteVol_" + suffix);
-        float pan = *apvts.getRawParameterValue("remotePan_" + suffix);
-        bool mute = *apvts.getRawParameterValue("remoteMute_" + suffix) >= 0.5f;
-        // Apply to NJClient via appropriate mechanism
+        jamwide::SetUserStateCommand cmd;
+        cmd.user_index = i;
+        cmd.set_vol = volChanged; cmd.volume = vol;
+        cmd.set_pan = panChanged; cmd.pan = pan;
+        cmd.set_mute = muteChanged; cmd.mute = mute;
+        processor.cmd_queue.push(std::move(cmd));
+        // Update last-synced tracking arrays
     }
 }
 ```
 
-**IMPORTANT NOTE:** The lock in processBlock above is a concern. The cachedUsersMutex is acquired by both run thread and message thread. Acquiring it on the audio thread could cause priority inversion. A better approach: sync APVTS -> NJClient on the message thread via timer (same as OSC dirty-flag pattern), NOT in processBlock. processBlock only handles MIDI CC parsing, not NJClient sync.
+**IMPORTANT NOTE:** This timer runs on the message thread which is safe for cmd_queue (single-producer invariant preserved). Do NOT attempt this sync in processBlock -- the cachedUsersMutex lock on the audio thread causes priority inversion.
 
 ### State Version 3 Migration
 ```cpp
@@ -474,7 +523,7 @@ void VbFader::mouseDown(const juce::MouseEvent& e)
 | acceptsMidi() returns false | Must return true for MIDI CC input | Phase 14 | Host will route MIDI to plugin processBlock |
 | producesMidi() returns false | Should return true for CC feedback | Phase 14 | Host will pass MIDI output from plugin to downstream |
 | 16 APVTS parameters | 85 APVTS parameters | Phase 14 | DAW automation lanes show all mixer params |
-| Remote user control via cmd_queue only | APVTS + cmd_queue bridge | Phase 14 | Remote users become host-automatable |
+| Remote user control via cmd_queue only | APVTS + cmd_queue bridge via timer sync | Phase 14 | Remote users become host-automatable and MIDI-controllable |
 | State version 2 | State version 3 | Phase 14 | New MIDI mapping entries in state |
 
 ## Discretion Recommendations
@@ -509,22 +558,16 @@ The alternative (generate feedback directly in processBlock) is simpler for plug
 | A2 | setValueNotifyingHost() is safe to call from the audio thread for APVTS parameters | Pattern 2: Audio Thread CC Dispatch | If not safe, would need to buffer CC values and apply on message thread. JUCE docs state it is thread-safe for atomic float parameters. [VERIFIED: JUCE parameter values are atomic floats] |
 | A3 | The existing right-click scale menu on the editor can be moved to empty-space-only without breaking UX | Pitfall 6 | If users rely on right-clicking faders for the scale menu, this change could confuse them. Low risk -- right-click on controls for context menus is universal DAW convention. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **APVTS-to-NJClient Sync Path for Remote Users**
-   - What we know: Remote user volume/pan/mute are currently controlled via cmd_queue (SetUserStateCommand). Phase 14 adds APVTS parameters for these. Both paths must stay in sync.
-   - What's unclear: Should APVTS be the single source of truth (replacing cmd_queue for remote group controls), or should APVTS mirror cmd_queue state? The OscServer currently uses cmd_queue for remote users.
-   - Recommendation: Make APVTS authoritative for remote group controls. In processBlock, read APVTS remote params and write to NJClient atomics (same as masterVol). Update OscServer to read APVTS for remote group feedback instead of NJClient state. UI and OSC both write to APVTS; cmd_queue is used only for sub-channel controls (D-18). This is the cleanest approach but requires updating OscServer's sendDirtyRemoteUsers to read APVTS.
+1. **APVTS-to-NJClient Sync Path for Remote Users** (RESOLVED)
+   - **Resolution:** APVTS is the source of truth for remote group controls. MidiMapper::timerCallback (100ms, message thread) reads remote APVTS params (remoteVol_N, remotePan_N, remoteMute_N) and dispatches SetUserStateCommand via cmd_queue when values change (dirty-flag pattern). This runs on the message thread, preserving the SPSC single-producer invariant. Do NOT sync in processBlock (cachedUsersMutex lock = priority inversion risk). UI-initiated changes continue via existing cmd_queue path; MIDI/automation changes go through APVTS and are synced to NJClient by the timer. Plan 01 Step 3 timerCallback and Plan 01 behavior Test 11 cover this.
 
-2. **Thread-Safe Map Swap for Audio Thread**
-   - What we know: The mapping table must be readable on the audio thread and writable on the message thread.
-   - What's unclear: Best atomic swap pattern for JUCE -- `std::shared_ptr` with `std::atomic_load/store`, or a simpler double-buffer with atomic index.
-   - Recommendation: Use `std::atomic<MappingTable*>` with a "published" pointer that the audio thread reads, and a staging copy on the message thread. After modification, publish the new pointer. The old pointer can be freed on the message thread after a safe delay (e.g., next timer tick, guaranteed to be after the audio thread has moved on).
+2. **Thread-Safe Map Swap for Audio Thread** (RESOLVED)
+   - **Resolution:** Use `std::shared_ptr<const MappingTable>` with `std::atomic_load/store`. Audio thread reads via `std::atomic_load(&published_)`. Message thread writes to `staging_` copy, then publishes via `std::atomic_store(&published_, newSharedPtr)`. Old shared_ptr reference count handles deallocation safely. Implemented in Plan 01 Step 3 MidiMapper class with `published_` and `staging_` members.
 
-3. **Standalone MIDI Output for Feedback**
-   - What we know: In plugin mode, feedback CC goes into the processBlock MidiBuffer. In standalone mode, the MidiBuffer may or may not be routed to an output device by JUCE's standalone wrapper.
-   - What's unclear: Whether JUCE's standalone AudioDeviceManager automatically routes processBlock MidiBuffer output to the selected MIDI output device.
-   - Recommendation: Verify during implementation. If not automatic, use MidiOutput::sendMessageNow() from the timer callback for standalone feedback. The timer already runs on the message thread, which is safe for MidiOutput calls.
+3. **Standalone MIDI Output for Feedback** (RESOLVED)
+   - **Resolution:** MidiMapper::timerCallback handles standalone feedback. If `midiOutput_` device is open, the timer iterates all mappings, computes dirty CC values, and sends via `midiOutput_->sendMessageNow()`. This runs on the message thread (safe for MidiOutput calls). Plugin mode feedback goes through processBlock's appendFeedbackMidi (audio thread appends to MidiBuffer). Both paths are implemented in Plan 01 Step 3. MidiMapper.h declares `openMidiInput`, `openMidiOutput`, `closeMidiInput`, `closeMidiOutput`, and `hasError` for Plan 02 to consume.
 
 ## Environment Availability
 
@@ -548,7 +591,8 @@ Step 2.6: No external dependencies identified. All MIDI functionality comes from
 | MIDI-01c | MIDI Learn assigns CC to parameter | unit | `./build/test_midi_mapping` | Wave 0 |
 | MIDI-01d | Mappings persist via state save/load | unit | `./build/test_midi_mapping` | Wave 0 |
 | MIDI-01e | Echo suppression prevents feedback loop | unit | `./build/test_midi_mapping` | Wave 0 |
-| MIDI-01f | pluginval passes with 85 APVTS params | smoke | `cmake --build build --target validate` | Existing |
+| MIDI-01f | APVTS remote params sync to NJClient via timerCallback | unit | `./build/test_midi_mapping` | Wave 0 |
+| MIDI-01g | pluginval passes with 85 APVTS params | smoke | `cmake --build build --target validate` | Existing |
 
 ### Sampling Rate
 - **Per task commit:** Quick unit test run
@@ -556,7 +600,7 @@ Step 2.6: No external dependencies identified. All MIDI functionality comes from
 - **Phase gate:** pluginval green + all unit tests passing
 
 ### Wave 0 Gaps
-- [ ] `tests/test_midi_mapping.cpp` -- covers MIDI-01a through MIDI-01e (CC dispatch, feedback, learn, persistence, echo suppression)
+- [ ] `tests/test_midi_mapping.cpp` -- covers MIDI-01a through MIDI-01f (CC dispatch, feedback, learn, persistence, echo suppression, APVTS-NJClient sync)
 - [ ] CMakeLists.txt test target: `test_midi_mapping` -- add juce_add_console_app similar to test_osc_loopback
 
 ## Security Domain
@@ -592,7 +636,8 @@ Step 2.6: No external dependencies identified. All MIDI functionality comes from
 - Project source `juce/JamWideJuceProcessor.h`, `.cpp` -- processBlock, APVTS, state persistence
 - Project source `juce/ui/VbFader.h`, `.cpp` -- Right-click handling, power curve, parameter attachment
 - Project source `juce/ui/ConnectionBar.h`, `.cpp` -- Footer layout, OscStatusDot placement
-- Project source `src/threading/ui_command.h` -- Command variants for cmd_queue
+- Project source `src/threading/ui_command.h` -- Command variants for cmd_queue (SetUserStateCommand)
+- Project source `juce/NinjamRunThread.cpp` -- cmd_queue processing, SetUserState dispatch
 - Project source `CMakeLists.txt` -- Build config, linked JUCE modules
 
 ### Secondary (MEDIUM confidence)
@@ -608,6 +653,7 @@ Step 2.6: No external dependencies identified. All MIDI functionality comes from
 - Architecture: HIGH -- direct adaptation of proven OSC pattern in same codebase
 - Pitfalls: HIGH -- derived from direct code analysis of threading model and existing patterns
 - APVTS expansion: HIGH -- verified existing createParameterLayout and state migration
+- APVTS-NJClient sync: HIGH -- uses established cmd_queue + timer pattern from OscServer
 - Discretion recommendations: MEDIUM -- based on engineering judgment, all supported by codebase patterns
 
 **Research date:** 2026-04-11

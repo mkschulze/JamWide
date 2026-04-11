@@ -146,6 +146,9 @@ Plans:
   3. User can still connect to legacy NINJAM servers without encryption (graceful fallback)
   4. Encryption is transparent — no extra configuration required beyond the existing password field
 **Plans**: 2 plans
+Plans:
+- [ ] 15-01-PLAN.md — Crypto module (TDD): nj_crypto.h/.cpp with AES-256-CBC encrypt/decrypt via OpenSSL EVP, SHA-256 key derivation, 12 unit tests, CMake OpenSSL linkage
+- [ ] 15-02-PLAN.md — Protocol integration: Net_Connection encrypt-on-send/decrypt-on-receive hooks, capability bit negotiation in auth handshake, key derivation after auth, CI OpenSSL setup
 **Reference**: AES-256-CBC with OpenSSL EVP, SHA-256 key derivation from password, random IV per message
 
 ### Phase 16: Opus Codec Integration
@@ -213,7 +216,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 12. Video Sync and Roster Discovery | v1.1 | 2/2 | Complete   | 2026-04-07 |
 | 13. Video Display Modes and OSC Integration | v1.1 | 2/2 | Complete    | 2026-04-07 |
 | 14. MIDI Remote Control | v1.1 | 0/3 | In Progress | - |
-| 15. Connection Encryption | v1.2 | 0/0 | Not started | - |
+| 15. Connection Encryption | v1.2 | 0/2 | Not started | - |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |
 | 18. Testing Infrastructure | v1.2 | 0/0 | Not started | - |

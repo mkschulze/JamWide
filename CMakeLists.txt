@@ -120,8 +120,8 @@ if(JAMWIDE_BUILD_JUCE)
         FORMATS VST3 AU Standalone
         VST3_CATEGORIES Fx Network
         AU_MAIN_TYPE kAudioUnitType_Effect
-        NEEDS_MIDI_INPUT FALSE
-        NEEDS_MIDI_OUTPUT FALSE
+        NEEDS_MIDI_INPUT TRUE
+        NEEDS_MIDI_OUTPUT TRUE
         IS_SYNTH FALSE
         EDITOR_WANTS_KEYBOARD_FOCUS TRUE
         VST3_AUTO_MANIFEST FALSE
@@ -151,6 +151,8 @@ if(JAMWIDE_BUILD_JUCE)
         juce/osc/OscServer.cpp
         juce/osc/OscStatusDot.cpp
         juce/osc/OscConfigDialog.cpp
+        juce/midi/MidiMapper.cpp
+        juce/midi/MidiLearnManager.cpp
         juce/video/VideoCompanion.cpp
         juce/video/VideoPrivacyDialog.cpp
         src/net/server_list.cpp
@@ -272,6 +274,25 @@ if(JAMWIDE_BUILD_JUCE)
             JUCE_STANDALONE_APPLICATION=1
         )
         add_test(NAME osc_loopback COMMAND test_osc_loopback)
+
+        juce_add_console_app(test_midi_mapping PRODUCT_NAME "MIDI Mapping Test")
+        juce_generate_juce_header(test_midi_mapping)
+        target_sources(test_midi_mapping PRIVATE tests/test_midi_mapping.cpp)
+        target_include_directories(test_midi_mapping PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_SOURCE_DIR}/juce
+        )
+        target_link_libraries(test_midi_mapping PRIVATE
+            juce::juce_audio_processors
+            juce::juce_audio_basics
+            juce::juce_events
+            juce::juce_core
+        )
+        target_compile_definitions(test_midi_mapping PRIVATE
+            JUCE_STANDALONE_APPLICATION=1
+        )
+        add_test(NAME midi_mapping COMMAND test_midi_mapping)
     endif()
 
 endif() # JAMWIDE_BUILD_JUCE

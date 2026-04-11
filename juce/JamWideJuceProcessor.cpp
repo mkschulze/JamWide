@@ -53,12 +53,16 @@ JamWideJuceProcessor::JamWideJuceProcessor()
 
     // Video companion (created after NJClient, same ownership pattern as OscServer)
     videoCompanion = std::make_unique<jamwide::VideoCompanion>(*this);
+
+    // MIDI mapper (created after NJClient and OscServer, same ownership pattern)
+    midiMapper = std::make_unique<MidiMapper>(*this);
 }
 
 JamWideJuceProcessor::~JamWideJuceProcessor()
 {
-    // Order matters: videoCompanion stops WS server, oscServer stops before runThread,
-    // runThread stops before client.
+    // Order matters: midiMapper stops timer, videoCompanion stops WS server,
+    // oscServer stops before runThread, runThread stops before client.
+    midiMapper.reset();
     videoCompanion.reset();
     oscServer.reset();
     runThread.reset();
@@ -106,6 +110,40 @@ JamWideJuceProcessor::createParameterLayout()
             false));
     }
 
+    // Remote user group controls (D-14) -- 64 new parameters
+    for (int i = 0; i < 16; ++i)
+    {
+        juce::String suffix = juce::String(i);
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{"remoteVol_" + suffix, 3},
+            "Remote " + juce::String(i + 1) + " Volume",
+            juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.0f));
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{"remotePan_" + suffix, 3},
+            "Remote " + juce::String(i + 1) + " Pan",
+            juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f));
+        params.push_back(std::make_unique<juce::AudioParameterBool>(
+            juce::ParameterID{"remoteMute_" + suffix, 3},
+            "Remote " + juce::String(i + 1) + " Mute", false));
+        params.push_back(std::make_unique<juce::AudioParameterBool>(
+            juce::ParameterID{"remoteSolo_" + suffix, 3},
+            "Remote " + juce::String(i + 1) + " Solo", false));
+    }
+
+    // Local solo (D-15) -- 4 new parameters
+    for (int ch = 0; ch < 4; ++ch)
+    {
+        params.push_back(std::make_unique<juce::AudioParameterBool>(
+            juce::ParameterID{"localSolo_" + juce::String(ch), 3},
+            "Local Ch" + juce::String(ch + 1) + " Solo", false));
+    }
+
+    // Metro pan (D-16) -- 1 new parameter
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"metroPan", 3},
+        "Metronome Pan",
+        juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f));
+
     return { params.begin(), params.end() };
 }
 
@@ -141,7 +179,7 @@ void JamWideJuceProcessor::releaseResources()
 }
 
 void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
-                                         juce::MidiBuffer& /*midiMessages*/)
+                                         juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
 
@@ -414,6 +452,13 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         uiSnapshot.master_vu_left.store(masterPeakL, std::memory_order_relaxed);
         uiSnapshot.master_vu_right.store(masterPeakR, std::memory_order_relaxed);
 
+        // MIDI CC processing: input FIRST, then feedback (per research Pitfall 4/5)
+        if (midiMapper)
+        {
+            midiMapper->processIncomingMidi(midiMessages);
+            midiMapper->appendFeedbackMidi(midiMessages);
+        }
+
         return;
     }
 
@@ -462,8 +507,8 @@ bool JamWideJuceProcessor::hasEditor() const { return true; }
 
 //==============================================================================
 const juce::String JamWideJuceProcessor::getName() const { return "JamWide JUCE"; }
-bool JamWideJuceProcessor::acceptsMidi() const { return false; }
-bool JamWideJuceProcessor::producesMidi() const { return false; }
+bool JamWideJuceProcessor::acceptsMidi() const { return true; }
+bool JamWideJuceProcessor::producesMidi() const { return true; }
 bool JamWideJuceProcessor::isMidiEffect() const { return false; }
 double JamWideJuceProcessor::getTailLengthSeconds() const { return 0.0; }
 
@@ -511,6 +556,10 @@ void JamWideJuceProcessor::getStateInformation(juce::MemoryBlock& destData)
     state.setProperty("oscReceivePort", oscReceivePort, nullptr);
     state.setProperty("oscSendIP", oscSendIP, nullptr);
     state.setProperty("oscSendPort", oscSendPort, nullptr);
+
+    // MIDI mapping persistence (state version 3)
+    if (midiMapper)
+        midiMapper->saveToState(state);
 
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
@@ -581,6 +630,11 @@ void JamWideJuceProcessor::setStateInformation(const void* data, int sizeInBytes
     // localVol_0..3, localPan_0..3, localMute_0..3
     // Missing parameters get their defaults (forward-compatible, per pitfall 3)
     apvts.replaceState(tree);
+
+    // STEP 3: Restore MIDI mappings (state version 3)
+    // Must happen after replaceState so APVTS parameters exist for validation
+    if (midiMapper)
+        midiMapper->loadFromState(tree);
 }
 
 //==============================================================================

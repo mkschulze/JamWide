@@ -22,6 +22,9 @@ jobs:
       - name: Setup CMake
         uses: lukka/get-cmake@latest
 
+      - name: Install OpenSSL
+        run: brew install openssl@3
+
       - name: Configure CMake
         run: |
           cmake -B build \
@@ -29,7 +32,8 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
             -DJAMWIDE_BUILD_JUCE=ON \
             -DJAMWIDE_BUILD_CLAP=OFF \
-            -DJAMWIDE_DEV_BUILD=OFF
+            -DJAMWIDE_DEV_BUILD=OFF \
+            -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)
 
       - name: Build
         run: cmake --build build --config Release -j $(sysctl -n hw.ncpu)
@@ -131,6 +135,9 @@ jobs:
       - name: Setup CMake
         uses: lukka/get-cmake@latest
 
+      - name: Install OpenSSL
+        run: choco install openssl --no-progress -y
+
       - name: Configure CMake
         run: |
           cmake -B build `
@@ -138,7 +145,8 @@ jobs:
             -A x64 `
             -DJAMWIDE_BUILD_JUCE=ON `
             -DJAMWIDE_BUILD_CLAP=OFF `
-            -DJAMWIDE_DEV_BUILD=OFF
+            -DJAMWIDE_DEV_BUILD=OFF `
+            -DOPENSSL_ROOT_DIR="C:/Program Files/OpenSSL-Win64"
 
       - name: Build
         run: cmake --build build --config Release
@@ -198,7 +206,8 @@ jobs:
             libxcomposite-dev \
             libgl1-mesa-dev \
             libcurl4-openssl-dev \
-            libwebkit2gtk-4.1-dev
+            libwebkit2gtk-4.1-dev \
+            libssl-dev
 
       - name: Configure CMake
         run: |

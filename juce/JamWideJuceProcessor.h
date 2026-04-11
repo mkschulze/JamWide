@@ -14,6 +14,8 @@
 #include "core/njclient.h"  // For RemoteUserInfo
 #include "osc/OscServer.h"
 #include "video/VideoCompanion.h"
+#include "midi/MidiMapper.h"
+#include "midi/MidiLearnManager.h"
 
 class JamWideJuceEditor;
 class NinjamRunThread;
@@ -81,7 +83,7 @@ public:
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-    static constexpr int currentStateVersion = 2;
+    static constexpr int currentStateVersion = 3;
     static constexpr int kTotalOutChannels = 34;  // 17 stereo buses
     static constexpr int kNumOutputBuses = 17;
     static constexpr int kMetronomeBus = 16;      // Last bus (channels 32-33)
@@ -91,6 +93,10 @@ public:
 
     // OSC server (owned by processor, UI accesses via reference)
     std::unique_ptr<OscServer> oscServer;
+
+    // MIDI mapper (owned by processor, UI accesses via reference)
+    std::unique_ptr<MidiMapper> midiMapper;
+    MidiLearnManager midiLearnManager;
 
     // Video companion (owned by processor, UI accesses via reference)
     std::unique_ptr<jamwide::VideoCompanion> videoCompanion;

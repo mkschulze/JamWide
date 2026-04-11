@@ -75,9 +75,15 @@ Recent decisions affecting current work:
 
 - Phase 3 audio transmission not working end-to-end -- needs debugging
 
+### Known Issues (v1.1 pre-release)
+
+- OSC control not yet working -- needs debugging
+- FLAC audio not yet working -- needs debugging
+- MIDI Learn not working -- currently under investigation
+
 ### Blockers/Concerns
 
-- [Phase 11]: OpenSSL linkage on Windows CI unvalidated -- project has no OpenSSL dependency yet
+- [Phase 11]: OpenSSL linkage on Windows CI unvalidated -- project now has OpenSSL dependency (Phase 15), CI steps added but untested on Windows
 - [Phase 12]: VDO.Ninja external API is self-labeled DRAFT -- may require adaptation
 
 ## Session Continuity

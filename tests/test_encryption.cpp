@@ -92,11 +92,13 @@ static void test_derive_key_known_vector() {
     if (memcmp(key, expected, 32) == 0) {
         PASS();
     } else {
-        printf("FAILED: key mismatch\n  got:      ");
-        for (int i = 0; i < 32; i++) printf("%02x", key[i]);
-        printf("\n  expected: ");
-        for (int i = 0; i < 32; i++) printf("%02x", expected[i]);
-        printf("\n");
+        char msg[256];
+        char got_hex[65], exp_hex[65];
+        for (int i = 0; i < 32; i++) snprintf(got_hex + i*2, 3, "%02x", key[i]);
+        for (int i = 0; i < 32; i++) snprintf(exp_hex + i*2, 3, "%02x", expected[i]);
+        snprintf(msg, sizeof(msg), "key mismatch\n  got:      %s\n  expected: %s", got_hex, exp_hex);
+        FAIL(msg);
+        return;
     }
 }
 
@@ -340,11 +342,13 @@ static void test_known_vector_with_iv() {
     if (memcmp(enc.data.data() + 16, expected_ciphertext, 16) == 0) {
         PASS();
     } else {
-        printf("FAILED: ciphertext mismatch\n  got:      ");
-        for (int i = 16; i < 32; i++) printf("%02x", enc.data[i]);
-        printf("\n  expected: ");
-        for (int i = 0; i < 16; i++) printf("%02x", expected_ciphertext[i]);
-        printf("\n");
+        char msg[256];
+        char got_hex[33], exp_hex[33];
+        for (int i = 0; i < 16; i++) snprintf(got_hex + i*2, 3, "%02x", enc.data[16 + i]);
+        for (int i = 0; i < 16; i++) snprintf(exp_hex + i*2, 3, "%02x", expected_ciphertext[i]);
+        snprintf(msg, sizeof(msg), "ciphertext mismatch\n  got:      %s\n  expected: %s", got_hex, exp_hex);
+        FAIL(msg);
+        return;
     }
 }
 

@@ -913,7 +913,9 @@ void NJClient::Disconnect()
 
 void NJClient::Connect(const char *host, const char *user, const char *pass)
 {
+#ifdef JAMWIDE_DEV_BUILD
   fprintf(stderr, "[NJClient] Connect called: host='%s' user='%s'\n", host ? host : "(null)", user ? user : "(null)");
+#endif
   Disconnect();
 
   m_session_pos_ms=m_session_pos_samples=0;
@@ -932,7 +934,9 @@ void NJClient::Connect(const char *host, const char *user, const char *pass)
     port=atoi(++p);
     if (!port) port=NJ_PORT;
   }
+#ifdef JAMWIDE_DEV_BUILD
   fprintf(stderr, "[NJClient] Connecting to %s:%d\n", tmp, port);
+#endif
   JNL_Connection *c=new JNL_Connection(JNL_CONNECTION_AUTODNS,65536,65536);
   c->connect(tmp,port);
   m_netcon = new Net_Connection;
@@ -942,7 +946,9 @@ void NJClient::Connect(const char *host, const char *user, const char *pass)
 
   // Update cached status for lock-free audio thread access
   cached_status.store(GetStatus(), std::memory_order_release);
+#ifdef JAMWIDE_DEV_BUILD
   fprintf(stderr, "[NJClient] Connection initiated, status=%d\n", GetStatus());
+#endif
 }
 
 int NJClient::GetStatus()
@@ -1099,6 +1105,7 @@ int NJClient::Run() // nonzero if sleep ok
 
 //              printf("Got keepalive of %d\n",m_connection_keepalive);
 
+#ifdef JAMWIDE_DEV_BUILD
               // Log auth state
               {
                 FILE* lf = fopen("/tmp/jamwide.log", "a");
@@ -1110,6 +1117,7 @@ int NJClient::Run() // nonzero if sleep ok
                   fclose(lf);
                 }
               }
+#endif
               
               if (cha.license_agreement)
               {
@@ -1118,6 +1126,7 @@ int NJClient::Run() // nonzero if sleep ok
                 if (LicenseAgreementCallback) {
                   license_result = LicenseAgreementCallback(LicenseAgreement_User,cha.license_agreement);
                 }
+#ifdef JAMWIDE_DEV_BUILD
                 {
                   FILE* lf = fopen("/tmp/jamwide.log", "a");
                   if (lf) {
@@ -1125,6 +1134,7 @@ int NJClient::Run() // nonzero if sleep ok
                     fclose(lf);
                   }
                 }
+#endif
                 if (license_result)
                 {
                   repl.client_caps|=1;
@@ -1132,6 +1142,7 @@ int NJClient::Run() // nonzero if sleep ok
               }
               m_netcon->SetKeepAlive(m_connection_keepalive);
               
+#ifdef JAMWIDE_DEV_BUILD
               {
                 FILE* lf = fopen("/tmp/jamwide.log", "a");
                 if (lf) {
@@ -1139,6 +1150,7 @@ int NJClient::Run() // nonzero if sleep ok
                   fclose(lf);
                 }
               }
+#endif
 
               // ── Encryption negotiation: derive key BEFORE sending AUTH_USER (Phase 15) ──
               // Server advertises encryption support via server_caps bit 1.
@@ -1185,6 +1197,7 @@ int NJClient::Run() // nonzero if sleep ok
                 if (ar.flag & SERVER_FLAG_ENCRYPT_ACTIVE) {
                     // Server confirmed encryption for the session.
                     // Key is already set from the challenge phase — encryption continues.
+#ifdef JAMWIDE_DEV_BUILD
                     // Log for debugging:
                     {
                         FILE* lf = fopen("/tmp/jamwide.log", "a");
@@ -1193,11 +1206,13 @@ int NJClient::Run() // nonzero if sleep ok
                             fclose(lf);
                         }
                     }
+#endif
                 } else if (m_netcon->IsEncryptionActive()) {
                     // We encrypted AUTH_USER but server didn't confirm encryption.
                     // This should not happen with a conforming JamWide server, but handle gracefully:
                     // Disable encryption so subsequent messages are unencrypted.
                     m_netcon->ClearEncryption();
+#ifdef JAMWIDE_DEV_BUILD
                     {
                         FILE* lf = fopen("/tmp/jamwide.log", "a");
                         if (lf) {
@@ -1205,6 +1220,7 @@ int NJClient::Run() // nonzero if sleep ok
                             fclose(lf);
                         }
                     }
+#endif
                 }
 
                 if (!m_max_localch)
@@ -2105,6 +2121,7 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
       int mask = user ? user->chanpresentmask : 0;
       int out_idx = user ? user->channels[0].out_chan_index : -1;
       int flags = user ? user->channels[0].flags : 0;
+#ifdef JAMWIDE_DEV_BUILD
       FILE* lf = fopen("/tmp/jamwide.log", "a");
       if (lf)
       {
@@ -2112,6 +2129,7 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
                 m_remoteusers.GetSize(), mask, out_idx, flags);
         fclose(lf);
       }
+#endif
     }
     for (u = 0; u < m_remoteusers.GetSize(); u ++)
     {

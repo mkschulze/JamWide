@@ -5,6 +5,7 @@ status: draft
 shadcn_initialized: false
 preset: none
 created: 2026-04-11
+revised: 2026-04-11
 ---
 
 # Phase 14 — UI Design Contract
@@ -52,12 +53,12 @@ Exceptions:
 |------|------|--------|-------------|
 | Body | 13px | 400 (regular) | 1.4 |
 | Label | 9px | 400 (regular) | 1.0 |
-| Heading | 14px | 600 (semibold) | 1.2 |
+| Heading | 16px | 600 (semibold) | 1.2 |
 
 Notes:
 - Label (9px): Used for "MIDI" text next to status dot and mapping table column headers. Matches "OSC" label in OscStatusDot (9.0f FontOptions).
 - Body (13px): Used for dialog field labels, mapping table cell text, popup menu items, and MIDI Learn overlay text ("Waiting for CC...", "CC 7 Ch 1").
-- Heading (14px semibold): Used for dialog title ("MIDI Configuration") and section dividers within the config dialog.
+- Heading (16px semibold): Used for dialog title ("MIDI Configuration") and section dividers within the config dialog. 3px step above body ensures clear visual hierarchy.
 
 ---
 
@@ -118,17 +119,17 @@ Additional semantic colors used in this phase:
 
 **Layout (top to bottom):**
 1. **Section: Standalone Device Selector** (only visible when `JucePlugin_Build_Standalone == 1`)
-   - Heading: "MIDI Devices" (14px semibold, kTextHeading)
+   - Heading: "MIDI Devices" (16px semibold, kTextHeading)
    - Input device ComboBox: full width, 24px height
    - Output device ComboBox: full width, 24px height
    - 8px gap between ComboBoxes
    - 16px gap after section
 
 2. **Section: Mapping Table**
-   - Heading: "Mappings" (14px semibold, kTextHeading) + mapping count badge "(4)"
+   - Heading: "Mappings" (16px semibold, kTextHeading) + mapping count badge "(4)"
    - Column headers (9px, kTextSecondary): Parameter | CC# | Ch | (delete)
    - Table rows: 24px height, alternating kSurfaceStrip / kBgPrimary
-   - Each row: parameter name (13px, kTextPrimary) | CC number (13px) | Channel (13px) | X button (kAccentDestructive on hover)
+   - Each row: parameter name (13px, kTextPrimary) | CC number (13px) | Channel (13px) | X button (kAccentDestructive on hover, tooltip: "Remove mapping")
    - Scrollable if > 8 rows visible (192px max table height)
    - Empty state: centered "No MIDI mappings" (13px, kTextSecondary)
 
@@ -187,10 +188,11 @@ Additional semantic colors used in this phase:
 | Empty state body | "Right-click any fader or knob to assign a MIDI CC" |
 | Error state (standalone) | "MIDI device not found. Check connections and reopen this dialog." |
 | Error state (no CC received) | Overlay stays in "Waiting for CC..." for 10 seconds then auto-cancels with no error toast |
-| Destructive confirmation | "Clear All": "Remove all MIDI mappings?" with "Clear All" and "Cancel" buttons |
+| Destructive confirmation | "Clear All": "Remove all MIDI mappings?" with "Clear All" and "Keep Mappings" buttons |
 | Tooltip: off | "MIDI: Off" |
 | Tooltip: active | "MIDI: Active ({N} mappings)" |
 | Tooltip: error | "MIDI: Error" |
+| Tooltip: remove row | "Remove mapping" |
 | Menu: learn | "MIDI Learn" |
 | Menu: clear | "Clear MIDI" |
 | Learn overlay: waiting | "Waiting for CC..." |
@@ -240,7 +242,7 @@ Additional semantic colors used in this phase:
 - "Clear All" button in MidiConfigDialog shows a juce::AlertWindow confirmation
 - Title: "Clear All MIDI Mappings"
 - Body: "Remove all MIDI mappings?"
-- Buttons: "Clear All" (kAccentDestructive) | "Cancel"
+- Buttons: "Clear All" (kAccentDestructive) | "Keep Mappings"
 
 ---
 

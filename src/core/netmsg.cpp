@@ -138,6 +138,10 @@ Net_Message *Net_Connection::Run(int *wantsleep)
           }
           // Allocate new payload with encrypted data
           sendm->set_size((int)enc.data.size());
+          if (sendm->get_size() != (int)enc.data.size() || sendm->get_data() == nullptr) {
+              m_error = -4;  // allocation failed
+              break;
+          }
           memcpy(sendm->get_data(), enc.data.data(), enc.data.size());
       }
       if (m_msgsendpos<0) // send header
@@ -234,7 +238,19 @@ Net_Message *Net_Connection::Run(int *wantsleep)
           }
           // Replace payload with decrypted plaintext
           retv->set_size((int)dec.data.size());
+          if (retv->get_size() != (int)dec.data.size()) {
+              retv->releaseRef();
+              retv = 0;
+              m_error = -5;  // allocation failed
+              break;
+          }
           if (dec.data.size() > 0) {
+              if (retv->get_data() == nullptr) {
+                  retv->releaseRef();
+                  retv = 0;
+                  m_error = -5;
+                  break;
+              }
               memcpy(retv->get_data(), dec.data.data(), dec.data.size());
           }
       }

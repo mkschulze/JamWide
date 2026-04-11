@@ -298,6 +298,7 @@ protected:
 #endif
 
   WDL_String m_user, m_pass, m_host;
+  unsigned char m_auth_challenge[8] = {};  // saved for encryption key derivation (Phase 15)
 
   int m_in_auth;
   int m_bpm,m_bpi;

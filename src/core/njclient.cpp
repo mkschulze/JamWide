@@ -28,6 +28,7 @@
 #include <stdarg.h>
 #include "njclient.h"
 #include "mpb.h"
+#include "crypto/nj_crypto.h"
 #include "../wdl/pcmfmtcvt.h"
 #include "../wdl/wavwrite.h"
 #include "../wdl/wdlcstring.h"
@@ -867,6 +868,7 @@ void NJClient::Disconnect()
   m_host.Set("");
   m_user.Set("");
   m_pass.Set("");
+  memset(m_auth_challenge, 0, 8);  // scrub saved challenge (Phase 15)
   m_debug_logged_remote=false;
   delete m_netcon;
   m_netcon=0;
@@ -1092,6 +1094,9 @@ int NJClient::Run() // nonzero if sleep ok
 
               m_connection_keepalive=(cha.server_caps>>8)&0xff;
 
+              // Save challenge for encryption key derivation (Phase 15)
+              memcpy(m_auth_challenge, cha.challenge, 8);
+
 //              printf("Got keepalive of %d\n",m_connection_keepalive);
 
               // Log auth state
@@ -1135,6 +1140,23 @@ int NJClient::Run() // nonzero if sleep ok
                 }
               }
 
+              // ── Encryption negotiation: derive key BEFORE sending AUTH_USER (Phase 15) ──
+              // Server advertises encryption support via server_caps bit 1.
+              // If set AND we have a password, derive key now so AUTH_USER is encrypted.
+              // This satisfies SEC-01: credentials are encrypted in transit.
+              if ((cha.server_caps & SERVER_CAP_ENCRYPT_SUPPORTED) && strlen(m_pass.Get()) > 0) {
+                  unsigned char enc_key[32];
+                  derive_encryption_key(m_pass.Get(), m_auth_challenge, enc_key);
+                  m_netcon->SetEncryptionKey(enc_key);
+                  memset(enc_key, 0, 32);  // scrub key from stack
+
+                  // Signal to server that we encrypted AUTH_USER
+                  repl.client_caps |= CLIENT_CAP_ENCRYPT_SUPPORTED;
+              }
+              // If server doesn't advertise encryption (legacy), we proceed unencrypted (SEC-03).
+              // The encrypt hook in Net_Connection::Run() will encrypt the AUTH_USER payload
+              // automatically since we called SetEncryptionKey before Send().
+
               WDL_SHA1 tmp;
               tmp.add(m_user.Get(),strlen(m_user.Get()));
               tmp.add(":",1);
@@ -1159,6 +1181,32 @@ int NJClient::Run() // nonzero if sleep ok
             {
               if (ar.flag) // send our channel information
               {
+                // ── Encryption confirmation (Phase 15) ──
+                if (ar.flag & SERVER_FLAG_ENCRYPT_ACTIVE) {
+                    // Server confirmed encryption for the session.
+                    // Key is already set from the challenge phase — encryption continues.
+                    // Log for debugging:
+                    {
+                        FILE* lf = fopen("/tmp/jamwide.log", "a");
+                        if (lf) {
+                            fprintf(lf, "[NJClient] Encryption ACTIVE for session\n");
+                            fclose(lf);
+                        }
+                    }
+                } else if (m_netcon->IsEncryptionActive()) {
+                    // We encrypted AUTH_USER but server didn't confirm encryption.
+                    // This should not happen with a conforming JamWide server, but handle gracefully:
+                    // Disable encryption so subsequent messages are unencrypted.
+                    m_netcon->ClearEncryption();
+                    {
+                        FILE* lf = fopen("/tmp/jamwide.log", "a");
+                        if (lf) {
+                            fprintf(lf, "[NJClient] Server did not confirm encryption — falling back to unencrypted\n");
+                            fclose(lf);
+                        }
+                    }
+                }
+
                 if (!m_max_localch)
                 {
                   // went from lobby to room, normalize channel indices (in case the user deleted channels in the lobby)

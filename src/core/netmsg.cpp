@@ -34,6 +34,7 @@
 #endif
 
 #include "netmsg.h"
+#include "crypto/nj_crypto.h"
 
 int Net_Message::parseBytesNeeded()
 {
@@ -62,7 +63,7 @@ int Net_Message::parseMessageHeader(void *data, int len) // returns bytes used, 
   size |= ((int)*dp++)<<16;
   size |= ((int)*dp++)<<24;
   len -= 5;
-  if (type == MESSAGE_INVALID || size < 0 || size > NET_MESSAGE_MAX_SIZE) return -1;
+  if (type == MESSAGE_INVALID || size < 0 || size > NET_MESSAGE_MAX_SIZE_ENCRYPTED) return -1;
 
   m_type=type;
   set_size(size);
@@ -121,6 +122,24 @@ Net_Message *Net_Connection::Run(int *wantsleep)
     if (sendm)
     {
       if (wantsleep) *wantsleep=0;
+      // Encrypt payload before first send if encryption active and payload non-empty
+      // Zero-length payloads (keepalive, type 0xFD) skip encryption — no security value,
+      // saves 32 bytes overhead every 3 seconds. Justified: keepalive type/size already
+      // in cleartext headers per D-07, encrypting nothing adds no confidentiality.
+      if (m_msgsendpos < 0 && m_encryption_active && sendm->get_size() > 0) {
+          auto enc = encrypt_payload(
+              (const unsigned char*)sendm->get_data(),
+              sendm->get_size(),
+              m_encryption_key
+          );
+          if (!enc.ok) {
+              m_error = -4;  // encryption failure
+              break;
+          }
+          // Allocate new payload with encrypted data
+          sendm->set_size((int)enc.data.size());
+          memcpy(sendm->get_data(), enc.data.data(), enc.data.size());
+      }
       if (m_msgsendpos<0) // send header
       {
         char buf[32];
@@ -197,6 +216,28 @@ Net_Message *Net_Connection::Run(int *wantsleep)
       retv=m_recvmsg;
       m_recvmsg=0;
       m_recvstate=0;
+
+      // Decrypt payload if encryption active and payload is non-empty
+      // Zero-length payloads (keepalive) were not encrypted on send, so skip decrypt
+      if (retv && m_encryption_active && retv->get_size() > 0) {
+          auto dec = decrypt_payload(
+              (const unsigned char*)retv->get_data(),
+              retv->get_size(),
+              m_encryption_key
+          );
+          if (!dec.ok) {
+              retv->releaseRef();
+              retv = 0;
+              // Generic error code — do NOT reveal padding details (padding oracle mitigation)
+              m_error = -5;
+              break;
+          }
+          // Replace payload with decrypted plaintext
+          retv->set_size((int)dec.data.size());
+          if (dec.data.size() > 0) {
+              memcpy(retv->get_data(), dec.data.data(), dec.data.size());
+          }
+      }
     }
     if (wantsleep) *wantsleep=0;
   }

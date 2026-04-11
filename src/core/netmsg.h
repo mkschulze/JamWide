@@ -31,11 +31,13 @@
 
 #include "../wdl/queue.h"
 #include "../wdl/jnetlib/jnetlib.h"
+#include <cstring>  // for memcpy, memset
 #ifndef _WIN32
 #include <netinet/tcp.h>
 #endif
 
 #define NET_MESSAGE_MAX_SIZE 16384
+#define NET_MESSAGE_MAX_SIZE_ENCRYPTED (NET_MESSAGE_MAX_SIZE + 32)  // +16 IV +16 PKCS#7 padding max
 
 #define NET_CON_MAX_MESSAGES 512
 
@@ -129,6 +131,17 @@ class Net_Connection
 
     void Kill(int quick=0);
 
+    // Encryption state (Phase 15, per D-07: payload-only encryption)
+    void SetEncryptionKey(const unsigned char key[32]) {
+        memcpy(m_encryption_key, key, 32);
+        m_encryption_active = true;
+    }
+    void ClearEncryption() {
+        m_encryption_active = false;
+        memset(m_encryption_key, 0, 32);  // scrub key from memory
+    }
+    bool IsEncryptionActive() const { return m_encryption_active; }
+
   private:
     int m_error;
 
@@ -143,6 +156,8 @@ class Net_Connection
     JNL_IConnection *m_con;
     WDL_Queue m_sendq;
 
+    bool m_encryption_active = false;
+    unsigned char m_encryption_key[32] = {};
 
 };
 

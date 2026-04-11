@@ -289,4 +289,19 @@ class mpb_chat_message
 
 
 
+// ── Encryption capability negotiation (JamWide extension, Phase 15) ──
+//
+// Redesigned protocol flow (addresses review concern: credentials must be encrypted):
+//   1. Server advertises encryption support in AUTH_CHALLENGE via server_caps bit 1
+//   2. Client derives key on seeing bit 1, encrypts AUTH_USER payload
+//   3. Client sets client_caps bit 2 to signal encrypted AUTH_USER
+//   4. Server confirms with flag bit 1 in AUTH_REPLY
+//
+// Legacy interop: servers without bit 1 -> client sends unencrypted -> no encryption
+//                 clients without bit 2 -> server sees no encryption -> no encryption
+
+#define SERVER_CAP_ENCRYPT_SUPPORTED  0x02  // bit 1 in server_caps (AUTH_CHALLENGE)
+#define CLIENT_CAP_ENCRYPT_SUPPORTED  0x04  // bit 2 in client_caps (AUTH_USER)
+#define SERVER_FLAG_ENCRYPT_ACTIVE    0x02  // bit 1 in auth reply flag
+
 #endif//_MPB_H_

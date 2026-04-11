@@ -325,12 +325,12 @@ if(JAMWIDE_BUILD_TESTS)
     target_compile_definitions(test_flac_codec PRIVATE WDL_VORBIS_INTERFACE_ONLY)
     add_test(NAME flac_codec COMMAND test_flac_codec)
 
-    add_executable(test_encryption tests/test_encryption.cpp src/crypto/nj_crypto.cpp)
+    add_executable(test_encryption tests/test_encryption.cpp)
     target_include_directories(test_encryption PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
-    target_link_libraries(test_encryption PRIVATE OpenSSL::Crypto)
+    target_link_libraries(test_encryption PRIVATE njclient OpenSSL::Crypto)
     add_test(NAME encryption COMMAND test_encryption)
 
 endif()

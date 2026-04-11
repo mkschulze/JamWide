@@ -1,5 +1,7 @@
 #include "ChannelStrip.h"
 #include "JamWideLookAndFeel.h"
+#include "../midi/MidiMapper.h"
+#include "../midi/MidiLearnManager.h"
 
 ChannelStrip::ChannelStrip()
 {
@@ -142,6 +144,11 @@ ChannelStrip::ChannelStrip()
         if (onSoloToggled)
             onSoloToggled(soloButton.getToggleState());
     };
+
+    // Register mouse listener on child controls for MIDI Learn right-click interception
+    panSlider.addMouseListener(this, false);
+    muteButton.addMouseListener(this, false);
+    soloButton.addMouseListener(this, false);
 }
 
 void ChannelStrip::configure(StripType type, const juce::String& name,
@@ -343,6 +350,61 @@ void ChannelStrip::resized()
 
     auto faderBounds = center.withX(center.getX() + controlX + vuW + gap).withWidth(faderW);
     fader.setBounds(faderBounds.reduced(0, 2));
+}
+
+// MIDI Learn context menu interception for child controls (pan, mute, solo)
+void ChannelStrip::mouseDown(const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu() && midiMapper_ != nullptr && midiLearnMgr_ != nullptr)
+    {
+        juce::String paramId;
+        if (e.eventComponent == &panSlider) paramId = panParamId_;
+        else if (e.eventComponent == &muteButton) paramId = muteParamId_;
+        else if (e.eventComponent == &soloButton) paramId = soloParamId_;
+
+        if (paramId.isNotEmpty())
+        {
+            showMidiLearnMenu(paramId, e.eventComponent);
+            return;
+        }
+    }
+    juce::Component::mouseDown(e);
+}
+
+void ChannelStrip::showMidiLearnMenu(const juce::String& paramId, juce::Component* target)
+{
+    juce::PopupMenu menu;
+    bool hasMidi = midiMapper_->hasMapping(paramId);
+    menu.addItem(1, "MIDI Learn");
+    if (hasMidi) menu.addItem(2, "Clear MIDI");
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target),
+        [this, paramId](int result) {
+            if (result == 1)
+                midiLearnMgr_->startLearning(paramId,
+                    [this, paramId](int cc, int ch) {
+                        midiMapper_->addMapping(paramId, cc, ch);
+                    });
+            else if (result == 2)
+                midiMapper_->removeMapping(paramId);
+        });
+}
+
+void ChannelStrip::setMidiLearnContext(MidiMapper* mapper, MidiLearnManager* learnMgr,
+                                        const juce::String& volParamId,
+                                        const juce::String& panParamId,
+                                        const juce::String& muteParamId,
+                                        const juce::String& soloParamId)
+{
+    midiMapper_ = mapper;
+    midiLearnMgr_ = learnMgr;
+    volParamId_ = volParamId;
+    panParamId_ = panParamId;
+    muteParamId_ = muteParamId;
+    soloParamId_ = soloParamId;
+
+    // Forward MIDI Learn context to the VbFader for volume control
+    fader.setMidiLearnContext(mapper, learnMgr, volParamId);
 }
 
 // Pass all scroll events through to parent (viewport).

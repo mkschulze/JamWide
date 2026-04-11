@@ -4,6 +4,9 @@
 #include "VbFader.h"
 #include <functional>
 
+class MidiMapper;
+class MidiLearnManager;
+
 class ChannelStrip : public juce::Component
 {
 public:
@@ -32,8 +35,16 @@ public:
     juce::TextButton& getMuteButton();
     juce::TextButton& getSoloButton();
 
+    // MIDI Learn support (Phase 14 D-01)
+    void setMidiLearnContext(MidiMapper* mapper, MidiLearnManager* learnMgr,
+                             const juce::String& volParamId,
+                             const juce::String& panParamId,
+                             const juce::String& muteParamId,
+                             const juce::String& soloParamId);
+
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void mouseDown(const juce::MouseEvent& e) override;
     void mouseWheelMove(const juce::MouseEvent& e,
                         const juce::MouseWheelDetails& wheel) override;
 
@@ -60,6 +71,12 @@ public:
     int getChannelCount() const { return channelCount_; }
 
 private:
+    void showMidiLearnMenu(const juce::String& paramId, juce::Component* target);
+
+    MidiMapper* midiMapper_ = nullptr;
+    MidiLearnManager* midiLearnMgr_ = nullptr;
+    juce::String volParamId_, panParamId_, muteParamId_, soloParamId_;
+
     StripType stripType = StripType::Remote;
     juce::Label nameLabel;
     juce::Label codecLabel;

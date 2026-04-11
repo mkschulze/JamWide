@@ -2,6 +2,9 @@
 #include <JuceHeader.h>
 #include <functional>
 
+class MidiMapper;
+class MidiLearnManager;
+
 /**
  * VbFader — Custom vertical fader component.
  *
@@ -44,6 +47,11 @@ public:
     /** Adjust value by a dB delta. Used by ChannelStrip scroll wheel forwarding. */
     void adjustByDb(float dbDelta);
 
+    // MIDI Learn support (Phase 14 D-01, D-02)
+    void setMidiLearnContext(MidiMapper* mapper, MidiLearnManager* learnMgr,
+                             const juce::String& paramId);
+    bool isMidiLearning() const { return midiLearning_; }
+
     // Component overrides
     void paint(juce::Graphics& g) override;
     void mouseDown(const juce::MouseEvent& e) override;
@@ -70,6 +78,15 @@ private:
     bool gestureActive_ = false;
 
     std::unique_ptr<juce::ParameterAttachment> attachment_;
+
+    // MIDI Learn state (Phase 14)
+    MidiMapper* midiMapper_ = nullptr;
+    MidiLearnManager* midiLearnMgr_ = nullptr;
+    juce::String midiParamId_;
+    bool midiLearning_ = false;   // true when waiting for CC
+    int learnedCc_ = -1;          // set on learn completion for display
+    int learnedCh_ = -1;
+    int64_t learnCompletedTime_ = 0;  // for auto-dismiss timing
 
 public:
     static constexpr int kThumbDiameter = 44;

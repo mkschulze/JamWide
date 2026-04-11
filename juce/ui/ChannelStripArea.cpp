@@ -2,6 +2,8 @@
 #include "JamWideLookAndFeel.h"
 #include "../JamWideJuceProcessor.h"
 #include "threading/ui_command.h"
+#include "../midi/MidiMapper.h"
+#include "../midi/MidiLearnManager.h"
 
 ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
     : processorRef(processor)
@@ -149,6 +151,10 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
             localStrip.getMuteButton());
     }
 
+    // Wire MIDI Learn context to local channel 0
+    localStrip.setMidiLearnContext(processorRef.midiMapper.get(), &processorRef.midiLearnManager,
+                                   "localVol_0", "localPan_0", "localMute_0", "localSolo_0");
+
     // APVTS attachments for local channels 1-3 (on child strips)
     for (int ch = 1; ch < 4; ++ch)
     {
@@ -166,10 +172,19 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
         localAttachments_[ch].mute = std::make_unique<juce::ButtonParameterAttachment>(
             *processorRef.apvts.getParameter("localMute_" + suffix),
             child.getMuteButton());
+
+        // Wire MIDI Learn context to local child channels
+        child.setMidiLearnContext(processorRef.midiMapper.get(), &processorRef.midiLearnManager,
+                                  "localVol_" + suffix, "localPan_" + suffix,
+                                  "localMute_" + suffix, "localSolo_" + suffix);
     }
 
     // Configure master strip
     masterStrip.configure(ChannelStrip::StripType::Master, "Master");
+
+    // Wire MIDI Learn context to master strip (no pan or solo for master)
+    masterStrip.setMidiLearnContext(processorRef.midiMapper.get(), &processorRef.midiLearnManager,
+                                    "masterVol", "", "masterMute", "");
 
     // Wire master strip fader to APVTS masterVol parameter
     masterStrip.onVolumeChanged = [this](float vol) {
@@ -423,6 +438,12 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
             }
             strip->configure(ChannelStrip::StripType::Remote, userName, codecStr);
 
+            // Wire MIDI Learn context for remote single-channel user (slot-based index)
+            juce::String slotIdx = juce::String(static_cast<int>(userIdx));
+            strip->setMidiLearnContext(processorRef.midiMapper.get(), &processorRef.midiLearnManager,
+                                       "remoteVol_" + slotIdx, "remotePan_" + slotIdx,
+                                       "remoteMute_" + slotIdx, "remoteSolo_" + slotIdx);
+
             if (!user.channels.empty())
             {
                 const auto& ch = user.channels[0];
@@ -529,6 +550,12 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
             parentStrip->configure(ChannelStrip::StripType::Remote, userName, parentCodec,
                                    static_cast<int>(user.channels.size()), false);
 
+            // Wire MIDI Learn context for remote multi-channel parent (slot-based index)
+            juce::String slotIdx = juce::String(static_cast<int>(userIdx));
+            parentStrip->setMidiLearnContext(processorRef.midiMapper.get(), &processorRef.midiLearnManager,
+                                             "remoteVol_" + slotIdx, "remotePan_" + slotIdx,
+                                             "remoteMute_" + slotIdx, "remoteSolo_" + slotIdx);
+
             // Expand toggle rebuilds child visibility
             parentStrip->onExpandToggled = [this]()
             {
@@ -613,6 +640,10 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
                 else if (ch.codec_fourcc == 0x7647474F) childCodec = "Vorbis";
                 childStrip->configure(ChannelStrip::StripType::RemoteChild,
                                       juce::String(ch.name), childCodec);
+
+                // RemoteChild strips: no MIDI Learn (sub-channels are not APVTS-backed per D-18)
+                childStrip->setMidiLearnContext(nullptr, nullptr, "", "", "", "");
+
                 childStrip->setSubscribed(ch.subscribed);
 
                 // Set initial mixer state from cached data

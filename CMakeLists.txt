@@ -85,15 +85,15 @@ if(WIN32)
 endif()
 
 # ── OpenSSL (for AES-256-CBC encryption, SHA-256 key derivation — Phase 15) ──
-if(APPLE)
-    # Help CMake find Homebrew OpenSSL on macOS (not in default search path)
+if(APPLE AND NOT OPENSSL_ROOT_DIR)
+    # Fallback: help CMake find Homebrew OpenSSL on macOS (not in default search path)
     execute_process(COMMAND brew --prefix openssl@3
         OUTPUT_VARIABLE OPENSSL_BREW_PREFIX
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET
     )
     if(OPENSSL_BREW_PREFIX)
-        set(OPENSSL_ROOT_DIR "${OPENSSL_BREW_PREFIX}" CACHE PATH "OpenSSL root" FORCE)
+        set(OPENSSL_ROOT_DIR "${OPENSSL_BREW_PREFIX}" CACHE PATH "OpenSSL root")
     endif()
 endif()
 find_package(OpenSSL REQUIRED)
@@ -337,5 +337,9 @@ if(JAMWIDE_BUILD_TESTS)
     )
     target_link_libraries(test_encryption PRIVATE njclient OpenSSL::Crypto)
     add_test(NAME encryption COMMAND test_encryption)
+
+    add_executable(test_video_sync tests/test_video_sync.cpp)
+    target_include_directories(test_video_sync PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    add_test(NAME video_sync COMMAND test_video_sync)
 
 endif()

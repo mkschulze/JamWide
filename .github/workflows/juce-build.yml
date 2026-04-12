@@ -225,6 +225,8 @@ jobs:
           Copy-Item "build/JamWideJuce_artefacts/Release/VST3/JamWide.vst3/Contents/x86_64-win/JamWide.vst3" "staging/JamWide.vst3"
           # CLAP: single-file bundle
           Copy-Item "build/JamWideJuce_artefacts/Release/CLAP/JamWide.clap" "staging/JamWide.clap"
+          # Standalone
+          Copy-Item "build/JamWideJuce_artefacts/Release/Standalone/JamWide.exe" "staging/JamWide.exe"
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -297,6 +299,8 @@ jobs:
           cp -r "build/JamWideJuce_artefacts/Release/VST3/JamWide.vst3" staging/
           # CLAP: single-file
           cp "build/JamWideJuce_artefacts/Release/CLAP/JamWide.clap" staging/
+          # Standalone
+          cp "build/JamWideJuce_artefacts/Release/Standalone/JamWide" staging/
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4

@@ -22,8 +22,30 @@ jobs:
       - name: Setup CMake
         uses: lukka/get-cmake@latest
 
-      - name: Install OpenSSL
-        run: brew install openssl@3
+      - name: Build universal OpenSSL
+        run: |
+          OPENSSL_VER=3.4.1
+          curl -sL "https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VER}/openssl-${OPENSSL_VER}.tar.gz" | tar xz
+          cd "openssl-${OPENSSL_VER}"
+
+          # arm64
+          ./Configure darwin64-arm64-cc --prefix="$GITHUB_WORKSPACE/openssl-arm64" no-shared no-tests
+          make -j$(sysctl -n hw.ncpu) && make install_sw && make clean
+
+          # x86_64
+          ./Configure darwin64-x86_64-cc --prefix="$GITHUB_WORKSPACE/openssl-x86_64" no-shared no-tests
+          make -j$(sysctl -n hw.ncpu) && make install_sw
+
+          # lipo into universal
+          mkdir -p "$GITHUB_WORKSPACE/openssl-universal/lib"
+          cp -r "$GITHUB_WORKSPACE/openssl-arm64/include" "$GITHUB_WORKSPACE/openssl-universal/"
+          lipo -create "$GITHUB_WORKSPACE/openssl-arm64/lib/libcrypto.a" \
+                       "$GITHUB_WORKSPACE/openssl-x86_64/lib/libcrypto.a" \
+               -output "$GITHUB_WORKSPACE/openssl-universal/lib/libcrypto.a"
+          lipo -create "$GITHUB_WORKSPACE/openssl-arm64/lib/libssl.a" \
+                       "$GITHUB_WORKSPACE/openssl-x86_64/lib/libssl.a" \
+               -output "$GITHUB_WORKSPACE/openssl-universal/lib/libssl.a"
+          lipo -info "$GITHUB_WORKSPACE/openssl-universal/lib/libcrypto.a"
 
       - name: Configure CMake
         run: |
@@ -33,7 +55,7 @@ jobs:
             -DJAMWIDE_BUILD_JUCE=ON \
             -DJAMWIDE_BUILD_CLAP=OFF \
             -DJAMWIDE_DEV_BUILD=OFF \
-            -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)
+            -DOPENSSL_ROOT_DIR="$GITHUB_WORKSPACE/openssl-universal"
 
       - name: Build
         run: cmake --build build --config Release -j $(sysctl -n hw.ncpu)

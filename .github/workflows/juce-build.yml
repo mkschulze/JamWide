@@ -131,19 +131,20 @@ jobs:
           ./scripts/notarize.sh build/JamWideJuce_artefacts/Release
           rm -f "$NOTARIZE_KEY_PATH"
 
-      - name: Stage artifacts
+      - name: Package artifacts
         run: |
           mkdir -p staging
           cp -r "build/JamWideJuce_artefacts/Release/VST3/JamWide.vst3" staging/
           cp -r "build/JamWideJuce_artefacts/Release/AU/JamWide.component" staging/
           cp -r "build/JamWideJuce_artefacts/Release/CLAP/JamWide.clap" staging/
           cp -r "build/JamWideJuce_artefacts/Release/Standalone/JamWide.app" staging/
+          cd staging && tar czf ../JamWide-macOS.tar.gz .
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: JamWide-macOS
-          path: staging/
+          path: JamWide-macOS.tar.gz
           retention-days: 30
 
   build-windows:
@@ -292,21 +293,19 @@ jobs:
             --timeout-ms 120000 \
             --validate "build/JamWideJuce_artefacts/Release/VST3/JamWide.vst3"
 
-      - name: Stage artifacts
+      - name: Package artifacts
         run: |
           mkdir -p staging
-          # VST3: bundle directory (required by VST3 spec on Linux)
           cp -r "build/JamWideJuce_artefacts/Release/VST3/JamWide.vst3" staging/
-          # CLAP: single-file
           cp "build/JamWideJuce_artefacts/Release/CLAP/JamWide.clap" staging/
-          # Standalone
           cp "build/JamWideJuce_artefacts/Release/Standalone/JamWide" staging/
+          cd staging && tar czf ../JamWide-Linux.tar.gz .
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
           name: JamWide-Linux
-          path: staging/
+          path: JamWide-Linux.tar.gz
           retention-days: 30
 
   release:
@@ -321,12 +320,16 @@ jobs:
         with:
           path: artifacts
 
-      - name: Package artifacts
+      - name: Package Windows artifacts
         run: |
-          cd artifacts
-          zip -r ../JamWide-macOS.zip JamWide-macOS/
-          zip -r ../JamWide-Windows.zip JamWide-Windows/
-          zip -r ../JamWide-Linux.zip JamWide-Linux/
+          cd artifacts/JamWide-Windows
+          zip -r ../../JamWide-Windows.zip .
+
+      - name: Prepare macOS and Linux artifacts
+        run: |
+          # macOS and Linux are already tar.gz (preserves Unix permissions)
+          cp artifacts/JamWide-macOS/JamWide-macOS.tar.gz .
+          cp artifacts/JamWide-Linux/JamWide-Linux.tar.gz .
 
       - name: Create or update release
         env:
@@ -342,16 +345,16 @@ jobs:
             gh release upload "$TAG_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber \
-              JamWide-macOS.zip \
+              JamWide-macOS.tar.gz \
               JamWide-Windows.zip \
-              JamWide-Linux.zip
+              JamWide-Linux.tar.gz
           else
             gh release create "$TAG_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --title "$TAG_NAME" \
               --generate-notes \
               $PRERELEASE_FLAG \
-              JamWide-macOS.zip \
+              JamWide-macOS.tar.gz \
               JamWide-Windows.zip \
-              JamWide-Linux.zip
+              JamWide-Linux.tar.gz
           fi

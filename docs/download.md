@@ -66,7 +66,7 @@ The previous CLAP/ImGui version. Recommended if you need a version that has been
 
 ## Installation
 
-1. Download the `.zip` file for your platform from the [releases page](https://github.com/mkschulze/JamWide/releases)
+1. Download the archive for your platform from the [releases page](https://github.com/mkschulze/JamWide/releases) (`.tar.gz` for macOS/Linux, `.zip` for Windows)
 2. Extract the plugin files
 3. Copy to the appropriate folder (see tables above)
 4. Restart your DAW

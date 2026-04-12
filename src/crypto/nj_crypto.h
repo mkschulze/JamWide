@@ -27,7 +27,7 @@ struct DecryptedPayload {
 // (16-byte IV + 16-byte PKCS#7 padding of empty block).
 // Rejects plaintext_len > NJ_CRYPTO_MAX_PLAINTEXT (returns ok=false).
 // On failure: result.ok=false AND result.data is empty (guaranteed).
-// Per D-02: Uses OpenSSL EVP_aes_256_cbc().
+// Per D-02: Uses AES-256-CBC (BCrypt on Windows, OpenSSL on macOS/Linux).
 // Per D-04: Random IV via RAND_bytes per message.
 // Per D-08: IV prepended to payload.
 EncryptedPayload encrypt_payload(const unsigned char* plaintext, int plaintext_len,

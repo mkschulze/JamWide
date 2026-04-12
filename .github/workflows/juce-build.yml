@@ -158,37 +158,6 @@ jobs:
       - name: Setup CMake
         uses: lukka/get-cmake@latest
 
-      - name: Install OpenSSL
-        run: choco install openssl --no-progress -y
-
-      - name: Find OpenSSL
-        id: openssl
-        shell: pwsh
-        run: |
-          # Chocolatey/SLP installer path varies — search common locations
-          $candidates = @(
-            "C:\Program Files\OpenSSL-Win64",
-            "C:\Program Files\OpenSSL",
-            "C:\OpenSSL-Win64"
-          )
-          foreach ($dir in $candidates) {
-            if (Test-Path "$dir\include\openssl\ssl.h") {
-              Write-Host "Found OpenSSL at: $dir"
-              echo "root=$dir" >> $env:GITHUB_OUTPUT
-              exit 0
-            }
-          }
-          # Fallback: find from openssl.exe on PATH
-          $bin = Get-Command openssl -ErrorAction SilentlyContinue
-          if ($bin) {
-            $root = Split-Path (Split-Path $bin.Source)
-            Write-Host "Found OpenSSL via PATH at: $root"
-            echo "root=$root" >> $env:GITHUB_OUTPUT
-            exit 0
-          }
-          Write-Error "OpenSSL not found"
-          exit 1
-
       - name: Configure CMake
         run: |
           cmake -B build `
@@ -196,8 +165,7 @@ jobs:
             -A x64 `
             -DJAMWIDE_BUILD_JUCE=ON `
             -DJAMWIDE_BUILD_CLAP=OFF `
-            -DJAMWIDE_DEV_BUILD=OFF `
-            -DOPENSSL_ROOT_DIR="${{ steps.openssl.outputs.root }}"
+            -DJAMWIDE_DEV_BUILD=OFF
 
       - name: Build
         run: cmake --build build --config Release

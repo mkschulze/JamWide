@@ -1,9 +1,22 @@
 #include "crypto/nj_crypto.h"
-#include <openssl/evp.h>
-#include <openssl/sha.h>
-#include <openssl/rand.h>
 #include <cstring>
 #include <string>
+
+// ── Platform crypto backends ──
+// Windows: BCrypt (built into Windows, no external dependency)
+// macOS/Linux: OpenSSL
+
+#if defined(_WIN32)
+  #include <windows.h>
+  #include <bcrypt.h>
+  #ifndef NT_SUCCESS
+    #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+  #endif
+#else
+  #include <openssl/evp.h>
+  #include <openssl/sha.h>
+  #include <openssl/rand.h>
+#endif
 
 // Internal implementation shared by both random-IV and explicit-IV variants
 static EncryptedPayload encrypt_payload_impl(const unsigned char* plaintext, int plaintext_len,
@@ -15,6 +28,57 @@ static EncryptedPayload encrypt_payload_impl(const unsigned char* plaintext, int
     // Guard against oversized allocations (DoS prevention)
     if (plaintext_len > NJ_CRYPTO_MAX_PLAINTEXT || plaintext_len < 0) return result;
 
+#if defined(_WIN32)
+    // Output buffer: IV(16) + ciphertext (plaintext + up to 16-byte PKCS#7 padding)
+    int max_ct = plaintext_len + NJ_CRYPTO_BLOCK_LEN;
+    result.data.resize(NJ_CRYPTO_IV_LEN + max_ct);
+    memcpy(result.data.data(), iv, NJ_CRYPTO_IV_LEN);
+
+    BCRYPT_ALG_HANDLE hAlg = nullptr;
+    BCRYPT_KEY_HANDLE hKey = nullptr;
+
+    if (!NT_SUCCESS(BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, nullptr, 0))) {
+        result.data.clear(); return result;
+    }
+    if (!NT_SUCCESS(BCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE,
+                                       (PUCHAR)BCRYPT_CHAIN_MODE_CBC,
+                                       sizeof(BCRYPT_CHAIN_MODE_CBC), 0))) {
+        BCryptCloseAlgorithmProvider(hAlg, 0);
+        result.data.clear(); return result;
+    }
+    if (!NT_SUCCESS(BCryptGenerateSymmetricKey(hAlg, &hKey, nullptr, 0,
+                                                (PUCHAR)key, 32, 0))) {
+        BCryptCloseAlgorithmProvider(hAlg, 0);
+        result.data.clear(); return result;
+    }
+
+    // BCrypt modifies IV in-place during operation
+    unsigned char iv_copy[NJ_CRYPTO_IV_LEN];
+    memcpy(iv_copy, iv, NJ_CRYPTO_IV_LEN);
+
+    ULONG out_len = 0;
+    unsigned char dummy = 0;
+    NTSTATUS status = BCryptEncrypt(
+        hKey,
+        plaintext_len > 0 ? (PUCHAR)plaintext : &dummy,
+        (ULONG)plaintext_len,
+        nullptr,
+        iv_copy, NJ_CRYPTO_IV_LEN,
+        result.data.data() + NJ_CRYPTO_IV_LEN,
+        (ULONG)max_ct,
+        &out_len,
+        BCRYPT_BLOCK_PADDING);
+
+    BCryptDestroyKey(hKey);
+    BCryptCloseAlgorithmProvider(hAlg, 0);
+
+    if (!NT_SUCCESS(status)) {
+        result.data.clear(); return result;
+    }
+    result.data.resize(NJ_CRYPTO_IV_LEN + out_len);
+    result.ok = true;
+
+#else  // macOS / Linux: OpenSSL
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) return result;
 
@@ -52,17 +116,28 @@ static EncryptedPayload encrypt_payload_impl(const unsigned char* plaintext, int
 
     result.data.resize(NJ_CRYPTO_IV_LEN + out1 + out2);
     result.ok = true;
+#endif
+
     return result;
 }
 
 EncryptedPayload encrypt_payload(const unsigned char* plaintext, int plaintext_len,
                                   const unsigned char key[32])
 {
+#if defined(_WIN32)
+    unsigned char iv[NJ_CRYPTO_IV_LEN];
+    if (!NT_SUCCESS(BCryptGenRandom(nullptr, iv, NJ_CRYPTO_IV_LEN,
+                                     BCRYPT_USE_SYSTEM_PREFERRED_RNG))) {
+        EncryptedPayload result;
+        return result;
+    }
+#else
     unsigned char iv[NJ_CRYPTO_IV_LEN];
     if (RAND_bytes(iv, NJ_CRYPTO_IV_LEN) != 1) {
         EncryptedPayload result;
         return result;
     }
+#endif
     return encrypt_payload_impl(plaintext, plaintext_len, key, iv);
 }
 
@@ -90,6 +165,50 @@ DecryptedPayload decrypt_payload(const unsigned char* encrypted, int encrypted_l
     const unsigned char* iv = encrypted;
     const unsigned char* ciphertext = encrypted + NJ_CRYPTO_IV_LEN;
 
+#if defined(_WIN32)
+    BCRYPT_ALG_HANDLE hAlg = nullptr;
+    BCRYPT_KEY_HANDLE hKey = nullptr;
+
+    if (!NT_SUCCESS(BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, nullptr, 0)))
+        return result;
+    if (!NT_SUCCESS(BCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE,
+                                       (PUCHAR)BCRYPT_CHAIN_MODE_CBC,
+                                       sizeof(BCRYPT_CHAIN_MODE_CBC), 0))) {
+        BCryptCloseAlgorithmProvider(hAlg, 0);
+        return result;
+    }
+    if (!NT_SUCCESS(BCryptGenerateSymmetricKey(hAlg, &hKey, nullptr, 0,
+                                                (PUCHAR)key, 32, 0))) {
+        BCryptCloseAlgorithmProvider(hAlg, 0);
+        return result;
+    }
+
+    unsigned char iv_copy[NJ_CRYPTO_IV_LEN];
+    memcpy(iv_copy, iv, NJ_CRYPTO_IV_LEN);
+
+    result.data.resize(ciphertext_len);
+    ULONG out_len = 0;
+    NTSTATUS status = BCryptDecrypt(
+        hKey,
+        (PUCHAR)ciphertext, (ULONG)ciphertext_len,
+        nullptr,
+        iv_copy, NJ_CRYPTO_IV_LEN,
+        result.data.data(),
+        (ULONG)ciphertext_len,
+        &out_len,
+        BCRYPT_BLOCK_PADDING);
+
+    BCryptDestroyKey(hKey);
+    BCryptCloseAlgorithmProvider(hAlg, 0);
+
+    if (!NT_SUCCESS(status)) {
+        result.data.clear();  // NO partial plaintext on failure
+        return result;
+    }
+    result.data.resize(out_len);
+    result.ok = true;
+
+#else  // macOS / Linux: OpenSSL
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) return result;
 
@@ -107,6 +226,8 @@ DecryptedPayload decrypt_payload(const unsigned char* encrypted, int encrypted_l
     EVP_CIPHER_CTX_free(ctx);
     result.data.resize(out1 + out2);
     result.ok = true;
+#endif
+
     return result;
 }
 
@@ -118,6 +239,20 @@ void derive_encryption_key(const char* password, const unsigned char challenge[8
     std::string phrase(password);
     phrase.append(reinterpret_cast<const char*>(challenge), 8);
 
+#if defined(_WIN32)
+    BCRYPT_ALG_HANDLE hAlg = nullptr;
+    BCRYPT_HASH_HANDLE hHash = nullptr;
+
+    if (NT_SUCCESS(BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, nullptr, 0))) {
+        if (NT_SUCCESS(BCryptCreateHash(hAlg, &hHash, nullptr, 0, nullptr, 0, 0))) {
+            BCryptHashData(hHash, (PUCHAR)phrase.data(), (ULONG)phrase.size(), 0);
+            BCryptFinishHash(hHash, key_out, 32, 0);
+            BCryptDestroyHash(hHash);
+        }
+        BCryptCloseAlgorithmProvider(hAlg, 0);
+    }
+#else
     SHA256(reinterpret_cast<const unsigned char*>(phrase.data()),
            phrase.size(), key_out);
+#endif
 }

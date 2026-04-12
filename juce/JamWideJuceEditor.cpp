@@ -291,6 +291,13 @@ void JamWideJuceEditor::timerCallback()
     int iLen = processorRef.uiSnapshot.interval_length.load(std::memory_order_relaxed);
     beatBar.update(bpi, beat, iPos, iLen);
 
+    // Broadcast beat position to video companion page for sync indicator
+    if (processorRef.videoCompanion && processorRef.videoCompanion->isActive())
+    {
+        int intervalCount = processorRef.uiSnapshot.interval_count.load(std::memory_order_relaxed);
+        processorRef.videoCompanion->broadcastBeatHeartbeat(beat, bpi, intervalCount);
+    }
+
     // Update BeatBar BPM for label area display
     beatBar.setBpm(processorRef.uiSnapshot.bpm.load(std::memory_order_relaxed));
 

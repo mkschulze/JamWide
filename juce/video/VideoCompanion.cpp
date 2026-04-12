@@ -486,6 +486,29 @@ void VideoCompanion::broadcastBufferDelay(float bpm, int bpi)
     }
 }
 
+// ── Beat Heartbeat Broadcast ──────────────────────────────────────────────
+
+void VideoCompanion::broadcastBeatHeartbeat(int beat, int bpi, int intervalCount)
+{
+    if (!isActive()) return;
+    if (beat == lastBroadcastBeat_) return;  // Change detection
+    lastBroadcastBeat_ = beat;
+
+    juce::String json = "{\"type\":\"beatHeartbeat\",\"beat\":"
+                        + juce::String(beat) + ",\"bpi\":"
+                        + juce::String(bpi) + ",\"interval\":"
+                        + juce::String(intervalCount) + "}";
+
+    std::lock_guard<std::mutex> lock(wsMutex_);
+    if (!wsServer_) return;
+    auto clients = wsServer_->getClients();
+    for (auto& client : clients)
+    {
+        if (client->getReadyState() != ix::ReadyState::Open) continue;
+        client->send(json.toStdString());
+    }
+}
+
 // ── Popout / Roster Lookup (Phase 13) ─────────────────────────────────────
 
 void VideoCompanion::requestPopout(const juce::String& streamId)
@@ -557,6 +580,7 @@ void VideoCompanion::deactivate()
     currentPassword_.clear();
     currentDerivedPassword_.clear();
     cachedDelayMs_ = 0;
+    lastBroadcastBeat_ = -1;
     cachedRoster_.clear();
     // NOTE: storedServerAddr_, storedUsername_, storedPassword_, hasLaunchedThisSession_
     // are intentionally NOT cleared here. They persist across deactivate/reactivate

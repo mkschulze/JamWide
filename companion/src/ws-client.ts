@@ -2,14 +2,15 @@
 // Connects to plugin's local WebSocket server.
 // No auto-reconnect per D-15 -- manual reconnect button only.
 
-import { isConfigMessage, isRosterMessage, isBufferDelayMessage, isPopoutMessage, isDeactivateMessage } from './types';
-import type { ConfigMessage, RosterMessage, BufferDelayMessage, PopoutMessage, DeactivateMessage } from './types';
+import { isConfigMessage, isRosterMessage, isBufferDelayMessage, isPopoutMessage, isBeatHeartbeatMessage, isDeactivateMessage } from './types';
+import type { ConfigMessage, RosterMessage, BufferDelayMessage, PopoutMessage, BeatHeartbeatMessage, DeactivateMessage } from './types';
 
 export type WsCallbacks = {
   onConfig: (msg: ConfigMessage) => void;
   onRoster: (msg: RosterMessage) => void;
   onBufferDelay: (msg: BufferDelayMessage) => void;
   onPopout: (msg: PopoutMessage) => void;
+  onBeatHeartbeat: (msg: BeatHeartbeatMessage) => void;
   onDeactivate: (msg: DeactivateMessage) => void;
   onStatusChange: (connected: boolean) => void;
 };
@@ -49,6 +50,8 @@ export function connectToPlugin(port: number, callbacks: WsCallbacks): WebSocket
       callbacks.onBufferDelay(parsed);
     } else if (isPopoutMessage(parsed)) {
       callbacks.onPopout(parsed);
+    } else if (isBeatHeartbeatMessage(parsed)) {
+      callbacks.onBeatHeartbeat(parsed);
     } else if (isDeactivateMessage(parsed)) {
       callbacks.onDeactivate(parsed);
     } else {

@@ -29,11 +29,18 @@ export interface PopoutMessage {
   streamId: string;
 }
 
+export interface BeatHeartbeatMessage {
+  type: 'beatHeartbeat';
+  beat: number;
+  bpi: number;
+  interval: number;
+}
+
 export interface DeactivateMessage {
   type: 'deactivate';
 }
 
-export type PluginMessage = ConfigMessage | RosterMessage | BufferDelayMessage | PopoutMessage | DeactivateMessage;
+export type PluginMessage = ConfigMessage | RosterMessage | BufferDelayMessage | PopoutMessage | BeatHeartbeatMessage | DeactivateMessage;
 
 // ── Runtime validation (addresses review: protocol resilience) ──
 
@@ -78,6 +85,18 @@ export function isPopoutMessage(msg: unknown): msg is PopoutMessage {
   if (typeof msg !== 'object' || msg === null) return false;
   const m = msg as Record<string, unknown>;
   return m.type === 'popout' && typeof m.streamId === 'string';
+}
+
+/** Validate that a parsed object is a valid BeatHeartbeatMessage */
+export function isBeatHeartbeatMessage(msg: unknown): msg is BeatHeartbeatMessage {
+  if (typeof msg !== 'object' || msg === null) return false;
+  const m = msg as Record<string, unknown>;
+  return (
+    m.type === 'beatHeartbeat' &&
+    typeof m.beat === 'number' &&
+    typeof m.bpi === 'number' &&
+    typeof m.interval === 'number'
+  );
 }
 
 /** Validate that a parsed object is a valid DeactivateMessage */

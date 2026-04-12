@@ -221,6 +221,46 @@ body {
   background: rgba(204, 184, 51, 0.1);
 }
 
+/* ── Sync Indicator ── */
+
+#sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--accent-connect);
+  opacity: 0.4;
+}
+
+.sync-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.beat-flash {
+  animation: beat-pulse 0.2s ease-out;
+}
+
+.beat-flash-downbeat {
+  animation: beat-pulse-strong 0.3s ease-out;
+}
+
+@keyframes beat-pulse {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0.4; transform: scale(1); }
+}
+
+@keyframes beat-pulse-strong {
+  0% { opacity: 1; transform: scale(1.5); background-color: #60ff90; }
+  100% { opacity: 0.4; transform: scale(1); background-color: var(--accent-connect); }
+}
+
 /* ── Pulse Animation ── */
 
 @keyframes pulse {

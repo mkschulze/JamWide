@@ -141,6 +141,34 @@ function effectToParams(effect: BgEffect): string {
   return '';
 }
 
+// ── Sync Indicator (Beat Heartbeat) ──
+
+export function updateSyncIndicator(beat: number, bpi: number, interval: number): void {
+  const container = document.getElementById('sync-indicator');
+  const dot = document.getElementById('sync-beat-dot');
+  const label = document.getElementById('sync-beat-label');
+  if (!container || !dot || !label) return;
+
+  container.style.display = 'inline-flex';
+  label.textContent = `${beat + 1}/${bpi} #${interval}`;
+
+  // Remove previous flash classes before adding new one
+  dot.classList.remove('beat-flash', 'beat-flash-downbeat');
+  // Force reflow to restart animation
+  void dot.offsetWidth;
+
+  if (beat === 0) {
+    dot.classList.add('beat-flash-downbeat');
+  } else {
+    dot.classList.add('beat-flash');
+  }
+}
+
+export function hideSyncIndicator(): void {
+  const container = document.getElementById('sync-indicator');
+  if (container) container.style.display = 'none';
+}
+
 // ── VDO.Ninja URL Builder ──
 
 export function buildVdoNinjaUrl(

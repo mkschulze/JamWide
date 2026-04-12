@@ -14,6 +14,8 @@ import {
   showConnectionLost,
   markDeactivated,
   showEmptyRoom,
+  updateSyncIndicator,
+  hideSyncIndicator,
   getSavedEffect,
   saveEffect,
   applyBufferDelay,
@@ -232,6 +234,10 @@ const callbacks: WsCallbacks = {
     applyBufferDelay(msg.delayMs);
   },
 
+  onBeatHeartbeat(msg) {
+    updateSyncIndicator(msg.beat, msg.bpi, msg.interval);
+  },
+
   onPopout(msg) {
     // OSC-triggered popout -- same logic as pill click.
     // Addresses review MEDIUM concern: requestPopout broadcasts to ALL connected
@@ -251,6 +257,7 @@ const callbacks: WsCallbacks = {
     updateHeaderBadge(connected);
     updateFooterStatus(connected);
     if (!connected) {
+      hideSyncIndicator();
       showConnectionLost();
     }
   },

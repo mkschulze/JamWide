@@ -8,8 +8,7 @@
 
 namespace {
 
-//==============================================================================
-// Color for each chat message type (using LookAndFeel constants)
+// Color for each chat message type
 juce::Colour colorForType(ChatMessageType type)
 {
     switch (type)
@@ -32,8 +31,6 @@ juce::Colour colorForType(ChatMessageType type)
     }
 }
 
-//==============================================================================
-// Format a chat message for display
 // Strip @IP suffix from NINJAM usernames for display
 juce::String stripIpFromSender(const std::string& sender)
 {
@@ -120,107 +117,9 @@ bool parseChatInput(const juce::String& input, jamwide::SendChatCommand& cmd)
     return true;
 }
 
-constexpr int kMessageGap = 4;
-constexpr int kLeftPadding = 8;
 constexpr float kFontSize = 13.0f;
 
 } // anonymous namespace
-
-//==============================================================================
-// ChatMessageListComponent
-//==============================================================================
-
-void ChatMessageListComponent::addMessage(const ChatMessage& msg)
-{
-    RenderedMessage rm;
-    rm.type = msg.type;
-    rm.sender = juce::String(msg.sender);
-    rm.content = formatMessage(msg);
-    rm.timestamp = juce::String(msg.timestamp);
-    messages.push_back(std::move(rm));
-
-    if (getWidth() > 0)
-        recalculateHeights(getWidth());
-}
-
-void ChatMessageListComponent::loadHistory(const std::vector<ChatMessage>& history)
-{
-    messages.clear();
-    for (auto& msg : history)
-    {
-        RenderedMessage rm;
-        rm.type = msg.type;
-        rm.sender = juce::String(msg.sender);
-        rm.content = formatMessage(msg);
-        rm.timestamp = juce::String(msg.timestamp);
-        messages.push_back(std::move(rm));
-    }
-    if (getWidth() > 0)
-        recalculateHeights(getWidth());
-}
-
-void ChatMessageListComponent::setTopic(const juce::String& topic)
-{
-    topicText = topic;
-    repaint();
-}
-
-void ChatMessageListComponent::paint(juce::Graphics& g)
-{
-    if (getWidth() != cachedWidth && getWidth() > 0)
-        recalculateHeights(getWidth());
-
-    float y = 0.0f;
-    juce::Font font{juce::FontOptions(kFontSize)};
-
-    for (auto& msg : messages)
-    {
-        g.setColour(colorForType(msg.type));
-
-        juce::AttributedString attrStr;
-        attrStr.append(msg.content, font, colorForType(msg.type));
-        attrStr.setWordWrap(juce::AttributedString::WordWrap::byWord);
-
-        juce::TextLayout layout;
-        layout.createLayout(attrStr, static_cast<float>(getWidth() - kLeftPadding * 2));
-        layout.draw(g, juce::Rectangle<float>(
-            static_cast<float>(kLeftPadding), y,
-            static_cast<float>(getWidth() - kLeftPadding * 2),
-            static_cast<float>(msg.height)));
-
-        y += static_cast<float>(msg.height) + kMessageGap;
-    }
-}
-
-int ChatMessageListComponent::getContentHeight() const
-{
-    int total = 0;
-    for (auto& msg : messages)
-        total += msg.height + kMessageGap;
-    return total > 0 ? total : 0;
-}
-
-void ChatMessageListComponent::recalculateHeights(int width)
-{
-    cachedWidth = width;
-    juce::Font font{juce::FontOptions(kFontSize)};
-    float availableWidth = static_cast<float>(width - kLeftPadding * 2);
-    if (availableWidth <= 0)
-        availableWidth = 100.0f;
-
-    for (auto& msg : messages)
-    {
-        juce::AttributedString attrStr;
-        attrStr.append(msg.content, font, colorForType(msg.type));
-        attrStr.setWordWrap(juce::AttributedString::WordWrap::byWord);
-
-        juce::TextLayout layout;
-        layout.createLayout(attrStr, availableWidth);
-        msg.height = juce::jmax(18, static_cast<int>(std::ceil(layout.getHeight())));
-    }
-
-    setSize(width, getContentHeight());
-}
 
 //==============================================================================
 // ChatPanel
@@ -235,11 +134,24 @@ ChatPanel::ChatPanel(JamWideJuceProcessor& processor)
     topicLabel.setText("", juce::dontSendNotification);
     addAndMakeVisible(topicLabel);
 
-    // Chat viewport with message list
-    chatViewport.setViewedComponent(&messageList, false);
-    chatViewport.setScrollBarsShown(true, false);
-    chatViewport.setColour(juce::ScrollBar::thumbColourId, juce::Colour(JamWideLookAndFeel::kBorderSubtle));
-    addAndMakeVisible(chatViewport);
+    // Chat log — read-only, multi-line, supports text selection & copy
+    chatLog.setMultiLine(true, true);
+    chatLog.setReadOnly(true);
+    chatLog.setCaretVisible(false);
+    chatLog.setScrollbarsShown(true);
+    chatLog.setFont(juce::FontOptions(kFontSize));
+    chatLog.setColour(juce::TextEditor::backgroundColourId,
+        juce::Colour(JamWideLookAndFeel::kBgPrimary));
+    chatLog.setColour(juce::TextEditor::textColourId,
+        juce::Colour(JamWideLookAndFeel::kTextPrimary));
+    chatLog.setColour(juce::TextEditor::outlineColourId,
+        juce::Colours::transparentBlack);
+    chatLog.setColour(juce::TextEditor::focusedOutlineColourId,
+        juce::Colours::transparentBlack);
+    chatLog.setColour(juce::ScrollBar::thumbColourId,
+        juce::Colour(JamWideLookAndFeel::kBorderSubtle));
+    chatLog.addMouseListener(this, true);
+    addAndMakeVisible(chatLog);
 
     // Chat input
     chatInput.setMultiLine(false);
@@ -322,19 +234,11 @@ ChatPanel::ChatPanel(JamWideJuceProcessor& processor)
         juce::Colour(JamWideLookAndFeel::kAccentConnect));
     jumpToBottomButton.setVisible(false);
     jumpToBottomButton.onClick = [this]() {
-        scrollToBottom();
+        chatLog.moveCaretToEnd();
         autoScroll = true;
         jumpToBottomButton.setVisible(false);
     };
     addAndMakeVisible(jumpToBottomButton);
-
-    // Timer to check scroll position
-    startTimerHz(5);
-}
-
-ChatPanel::~ChatPanel()
-{
-    stopTimer();
 }
 
 void ChatPanel::resized()
@@ -370,11 +274,8 @@ void ChatPanel::resized()
     jumpToBottomButton.setBounds(
         area.getRight() - 28, area.getBottom() - 24, 24, 20);
 
-    // Chat viewport takes remaining space
-    chatViewport.setBounds(area);
-
-    // Resize the message list to match viewport width
-    messageList.setSize(chatViewport.getMaximumVisibleWidth(), messageList.getHeight());
+    // Chat log takes remaining space
+    chatLog.setBounds(area);
 }
 
 void ChatPanel::paint(juce::Graphics& g)
@@ -397,41 +298,73 @@ void ChatPanel::paint(juce::Graphics& g)
     }
 }
 
+void ChatPanel::mouseDown(const juce::MouseEvent& e)
+{
+    if (e.eventComponent == &chatLog || chatLog.isParentOf(e.eventComponent))
+    {
+        autoScroll = false;
+        jumpToBottomButton.setVisible(true);
+    }
+}
+
+void ChatPanel::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails&)
+{
+    if (e.eventComponent == &chatLog || chatLog.isParentOf(e.eventComponent))
+    {
+        autoScroll = false;
+        jumpToBottomButton.setVisible(true);
+    }
+}
+
 void ChatPanel::addMessage(const ChatMessage& msg)
 {
-    messageList.addMessage(msg);
+    auto text = formatMessage(msg) + "\n";
 
-    // Also store in processor's persistent chat history
+    // Store in processor's persistent chat history
     ChatMessage copy = msg;
     processorRef.chatHistory.addMessage(std::move(copy));
 
+    chatLog.setColour(juce::TextEditor::textColourId, colorForType(msg.type));
+
     if (autoScroll)
     {
-        juce::MessageManager::callAsync([this]() {
-            scrollToBottom();
-        });
+        chatLog.moveCaretToEnd();
+        chatLog.insertTextAtCaret(text);
     }
     else
     {
-        jumpToBottomButton.setVisible(true);
+        // Append at end without disturbing the user's scroll/selection position.
+        // All calls are synchronous so only the final state is painted.
+        auto savedSel = chatLog.getHighlightedRegion();
+        int savedPos = chatLog.getCaretPosition();
+
+        chatLog.moveCaretToEnd();
+        chatLog.insertTextAtCaret(text);
+
+        if (!savedSel.isEmpty())
+            chatLog.setHighlightedRegion(savedSel);
+        else
+            chatLog.setCaretPosition(savedPos);
     }
 }
 
 void ChatPanel::loadHistory(const std::vector<ChatMessage>& history)
 {
-    messageList.loadHistory(history);
-    if (!history.empty())
+    chatLog.clear();
+    for (auto& msg : history)
     {
-        juce::MessageManager::callAsync([this]() {
-            scrollToBottom();
-        });
+        chatLog.setColour(juce::TextEditor::textColourId, colorForType(msg.type));
+        chatLog.moveCaretToEnd();
+        chatLog.insertTextAtCaret(formatMessage(msg) + "\n");
     }
+    chatLog.moveCaretToEnd();
+    autoScroll = true;
+    jumpToBottomButton.setVisible(false);
 }
 
 void ChatPanel::setTopic(const juce::String& topic)
 {
     topicLabel.setText(topic, juce::dontSendNotification);
-    messageList.setTopic(topic);
     resized();
 }
 
@@ -440,9 +373,7 @@ void ChatPanel::setNotConnectedState()
     isConnected_ = false;
     chatInput.setEnabled(false);
     sendButton.setEnabled(false);
-    // Clear chat history when disconnecting so stale messages
-    // don't persist across server changes.
-    messageList.loadHistory({});
+    chatLog.clear();
     topicLabel.setText("", juce::dontSendNotification);
     repaint();
 }
@@ -453,6 +384,12 @@ void ChatPanel::setConnectedState()
     chatInput.setEnabled(true);
     sendButton.setEnabled(true);
     repaint();
+}
+
+void ChatPanel::focusChatInput()
+{
+    if (isConnected_ && chatInput.isEnabled())
+        chatInput.grabKeyboardFocus();
 }
 
 void ChatPanel::handleSend()
@@ -477,38 +414,4 @@ void ChatPanel::handleSend()
 
     chatInput.clear();
     chatInput.grabKeyboardFocus();
-}
-
-bool ChatPanel::isScrolledToBottom() const
-{
-    auto viewArea = chatViewport.getViewArea();
-    int contentH = messageList.getContentHeight();
-    int viewBottom = viewArea.getBottom();
-    // Consider "at bottom" if within 20px of the end
-    return (contentH - viewBottom) < 20;
-}
-
-void ChatPanel::scrollToBottom()
-{
-    int contentH = messageList.getContentHeight();
-    int viewH = chatViewport.getViewArea().getHeight();
-    if (contentH > viewH)
-        chatViewport.setViewPosition(0, contentH - viewH);
-}
-
-void ChatPanel::timerCallback()
-{
-    // Check scroll position to manage auto-scroll behavior
-    bool atBottom = isScrolledToBottom();
-    if (atBottom)
-    {
-        autoScroll = true;
-        jumpToBottomButton.setVisible(false);
-    }
-    else if (autoScroll)
-    {
-        // User has scrolled up
-        autoScroll = false;
-        jumpToBottomButton.setVisible(true);
-    }
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include "MidiTypes.h"
 #include <unordered_map>
 #include <atomic>
 #include <memory>
@@ -8,29 +9,35 @@
 
 class JamWideJuceProcessor;
 
-class MidiMapper : private juce::Timer
+class MidiMapper : private juce::Timer,
+                    public juce::MidiInputCallback
 {
 public:
     explicit MidiMapper(JamWideJuceProcessor& proc);
     ~MidiMapper() override;
 
+    // Must be called from prepareToPlay so the standalone MIDI collector knows the sample rate
+    void setSampleRate(double sampleRate, int samplesPerBlock);
+
     // Audio thread: parse incoming CC from processBlock MidiBuffer (per D-04)
-    void processIncomingMidi(const juce::MidiBuffer& buffer);
+    // numSamples is needed to drain standalone MIDI collector with correct block size.
+    void processIncomingMidi(const juce::MidiBuffer& buffer, int numSamples);
 
     // Audio thread: append CC feedback to processBlock MidiBuffer (per D-11)
     void appendFeedbackMidi(juce::MidiBuffer& buffer);
 
     // Message thread: mapping management
-    bool addMapping(const juce::String& paramId, int ccNumber, int midiChannel);
+    bool addMapping(const juce::String& paramId, int ccNumber, int midiChannel,
+                    MidiMsgType type = MidiMsgType::CC);
     void removeMapping(const juce::String& paramId);
-    void removeMappingByCc(int ccNumber, int midiChannel);
+    void removeMappingByCc(int ccNumber, int midiChannel, MidiMsgType type = MidiMsgType::CC);
     void clearAllMappings();
     int getMappingCount() const;
 
     // Query
     bool hasMapping(const juce::String& paramId) const;
-    bool hasMappingForCc(int ccNumber, int midiChannel) const;
-    struct MappingInfo { juce::String paramId; int ccNumber; int midiChannel; };
+    bool hasMappingForCc(int ccNumber, int midiChannel, MidiMsgType type = MidiMsgType::CC) const;
+    struct MappingInfo { juce::String paramId; int number; int midiChannel; MidiMsgType type; };
     std::vector<MappingInfo> getAllMappings() const;
     std::optional<MappingInfo> getMappingForParam(const juce::String& paramId) const;
 
@@ -68,19 +75,27 @@ public:
     enum class Status { Disabled, Healthy, Degraded, Failed };
     Status getStatus() const;
 
-    // Cap per D-09: 16 channels x 128 CCs = 2048
-    static constexpr int kMaxMappings = 2048;
+    // Cap: 16 channels x 128 numbers x 2 types = 4096
+    static constexpr int kMaxMappings = 4096;
 
 private:
     void timerCallback() override; // Centralized APVTS-to-NJClient bridge + standalone feedback
 
-    // Composite key: ((channel-1) << 7) | ccNumber, where channel is 1-based JUCE convention
-    static int makeKey(int ccNumber, int midiChannel) { return ((midiChannel - 1) << 7) | ccNumber; }
+    // Composite key: (int(type) << 11) | ((channel-1) << 7) | number
+    // 12-bit key distinguishes CC 60 from Note 60 on the same channel.
+    static int makeKey(int number, int midiChannel, MidiMsgType type = MidiMsgType::CC)
+    {
+        return (static_cast<int>(type) << 11) | ((midiChannel - 1) << 7) | number;
+    }
+    static MidiMsgType keyType(int key)    { return static_cast<MidiMsgType>((key >> 11) & 1); }
+    static int         keyChannel(int key) { return ((key >> 7) & 0xF) + 1; }
+    static int         keyNumber(int key)  { return key & 0x7F; }
 
     struct Mapping {
         juce::String paramId;
-        int ccNumber;
+        int number;
         int midiChannel;
+        MidiMsgType type = MidiMsgType::CC;
     };
 
     // Thread-safe map access: audio thread reads published_, message thread writes staging_
@@ -111,6 +126,7 @@ private:
     std::array<float, 16> lastSyncedRemoteVol_{};
     std::array<float, 16> lastSyncedRemotePan_{};
     std::array<bool, 16>  lastSyncedRemoteMute_{};
+    std::array<bool, 16>  lastSyncedRemoteSolo_{};
 
     // Local solo and metro pan APVTS-to-NJClient sync
     std::array<bool, 4> lastSyncedLocalSolo_{};
@@ -120,12 +136,19 @@ private:
     std::atomic<bool> receivingMidi_{false};
     std::atomic<int64_t> lastMidiReceivedTime_{0};
 
+    // MidiInputCallback override: receives messages from standalone MIDI device thread
+    void handleIncomingMidiMessage(juce::MidiInput* source,
+                                   const juce::MidiMessage& message) override;
+
     // Standalone device state (per D-05)
     std::unique_ptr<juce::MidiInput> midiInput_;
     std::unique_ptr<juce::MidiOutput> midiOutput_;
     juce::String currentInputDeviceId_;   // stored on successful open, cleared on close
     juce::String currentOutputDeviceId_;  // stored on successful open, cleared on close
     std::atomic<bool> deviceError_{false};
+
+    // Thread-safe collector: standalone MIDI device thread → audio thread
+    juce::MidiMessageCollector standaloneMidiCollector_;
 
     JamWideJuceProcessor& processor;
 

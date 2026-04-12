@@ -364,27 +364,62 @@ void ChannelStrip::mouseDown(const juce::MouseEvent& e)
 
         if (paramId.isNotEmpty())
         {
-            showMidiLearnMenu(paramId, e.eventComponent);
+            showMidiLearnMenu(paramId, e.eventComponent, e.getScreenPosition());
             return;
         }
     }
     juce::Component::mouseDown(e);
 }
 
-void ChannelStrip::showMidiLearnMenu(const juce::String& paramId, juce::Component* target)
+void ChannelStrip::showMidiLearnMenu(const juce::String& paramId, juce::Component* target,
+                                      juce::Point<int> screenPos)
 {
     juce::PopupMenu menu;
     bool hasMidi = midiMapper_->hasMapping(paramId);
     menu.addItem(1, "MIDI Learn");
     if (hasMidi) menu.addItem(2, "Clear MIDI");
 
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target),
-        [this, paramId](int result) {
+    menu.showMenuAsync(juce::PopupMenu::Options()
+        .withTargetScreenArea(juce::Rectangle<int>(screenPos.x, screenPos.y, 1, 1)),
+        [this, paramId, target](int result) {
             if (result == 1)
+            {
+                // Visual feedback: green/mint border on target control
+                learningComponent_ = target;
+                if (auto* btn = dynamic_cast<juce::TextButton*>(target))
+                    btn->setColour(juce::TextButton::buttonColourId, juce::Colour(0xff40E070));
+                else if (auto* slider = dynamic_cast<juce::Slider*>(target))
+                    slider->setColour(juce::Slider::thumbColourId, juce::Colour(0xff40E070));
+
                 midiLearnMgr_->startLearning(paramId,
-                    [this, paramId](int cc, int ch) {
-                        midiMapper_->addMapping(paramId, cc, ch);
+                    [this, paramId, target](int number, int ch, MidiMsgType type) {
+                        midiMapper_->addMapping(paramId, number, ch, type);
+                        // Restore appearance
+                        if (auto* btn = dynamic_cast<juce::TextButton*>(target))
+                            btn->setColour(juce::TextButton::buttonColourId,
+                                           juce::Colour(0xff2A2D48u));  // kSurfaceStrip
+                        else if (auto* slider = dynamic_cast<juce::Slider*>(target))
+                            slider->setColour(juce::Slider::thumbColourId,
+                                              juce::Colour(JamWideLookAndFeel::kTextPrimary));
+                        learningComponent_ = nullptr;
                     });
+
+                // Auto-cancel after 10s — only cancel global learn if still ours
+                juce::Timer::callAfterDelay(10000, [this, paramId, target]() {
+                    if (learningComponent_ == target)
+                    {
+                        if (midiLearnMgr_->getLearningParamId() == paramId)
+                            midiLearnMgr_->cancelLearning();
+                        if (auto* btn = dynamic_cast<juce::TextButton*>(target))
+                            btn->setColour(juce::TextButton::buttonColourId,
+                                           juce::Colour(0xff2A2D48u));
+                        else if (auto* slider = dynamic_cast<juce::Slider*>(target))
+                            slider->setColour(juce::Slider::thumbColourId,
+                                              juce::Colour(JamWideLookAndFeel::kTextPrimary));
+                        learningComponent_ = nullptr;
+                    }
+                });
+            }
             else if (result == 2)
                 midiMapper_->removeMapping(paramId);
         });
@@ -405,6 +440,47 @@ void ChannelStrip::setMidiLearnContext(MidiMapper* mapper, MidiLearnManager* lea
 
     // Forward MIDI Learn context to the VbFader for volume control
     fader.setMidiLearnContext(mapper, learnMgr, volParamId);
+
+    // Poll for externally-initiated learning (e.g. from MIDI config dialog)
+    if (learnMgr != nullptr)
+        startTimerHz(4);
+}
+
+void ChannelStrip::timerCallback()
+{
+    if (midiLearnMgr_ == nullptr || learningComponent_ != nullptr)
+        return;  // local learn in progress, don't interfere
+
+    bool isLearning = midiLearnMgr_->isLearning();
+    juce::Component* target = nullptr;
+
+    if (isLearning)
+    {
+        auto learnParam = midiLearnMgr_->getLearningParamId();
+        if (learnParam == panParamId_)        target = &panSlider;
+        else if (learnParam == muteParamId_)  target = &muteButton;
+        else if (learnParam == soloParamId_)  target = &soloButton;
+    }
+
+    if (target != nullptr && externalLearnTarget_ == nullptr)
+    {
+        // Color the target green to indicate waiting for MIDI
+        externalLearnTarget_ = target;
+        if (auto* btn = dynamic_cast<juce::TextButton*>(target))
+            btn->setColour(juce::TextButton::buttonColourId, juce::Colour(0xff40E070));
+        else if (auto* slider = dynamic_cast<juce::Slider*>(target))
+            slider->setColour(juce::Slider::thumbColourId, juce::Colour(0xff40E070));
+    }
+    else if (target == nullptr && externalLearnTarget_ != nullptr)
+    {
+        // Learning ended — restore original colors
+        if (auto* btn = dynamic_cast<juce::TextButton*>(externalLearnTarget_))
+            btn->setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2A2D48u));
+        else if (auto* slider = dynamic_cast<juce::Slider*>(externalLearnTarget_))
+            slider->setColour(juce::Slider::thumbColourId,
+                              juce::Colour(JamWideLookAndFeel::kTextPrimary));
+        externalLearnTarget_ = nullptr;
+    }
 }
 
 // Pass all scroll events through to parent (viewport).

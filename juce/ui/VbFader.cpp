@@ -148,27 +148,31 @@ void VbFader::paint(juce::Graphics& g)
     }
 
     // 6. MIDI Learn visual feedback (D-02, UI-SPEC section 3)
-    if (midiLearning_)
+    bool externalLearning = (!midiLearning_ && midiLearnMgr_ != nullptr
+        && midiLearnMgr_->isLearning()
+        && midiLearnMgr_->getLearningParamId() == midiParamId_);
+    if (midiLearning_ || externalLearning)
     {
         // Pulsing kAccentWarning border (UI-SPEC: 2px, #CCB833, opacity 0.6-1.0 over 600ms)
         float phase = std::fmod(static_cast<float>(juce::Time::getMillisecondCounterHiRes() / 600.0), 1.0f);
         float alpha = 0.6f + 0.4f * std::abs(std::sin(phase * juce::MathConstants<float>::pi));
-        g.setColour(juce::Colour(0xffCCB833).withAlpha(alpha));
+        g.setColour(juce::Colour(0xff40E070).withAlpha(alpha));
         g.drawRect(getLocalBounds().toFloat(), 2.0f);
 
-        // Overlay text: "CC?" (UI-SPEC: kAccentWarning)
-        g.setColour(juce::Colour(0xffCCB833));
+        // Overlay text: "MIDI?" (green/mint to avoid solo-yellow conflict)
+        g.setColour(juce::Colour(0xff40E070));
         g.setFont(juce::FontOptions(11.0f));
-        g.drawText("CC?", getLocalBounds().removeFromTop(16),
+        g.drawText("MIDI?", getLocalBounds().removeFromTop(16),
                    juce::Justification::centred, false);
     }
-    else if (learnedCc_ >= 0)
+    else if (learnedNumber_ >= 0)
     {
-        // Learned state: solid kAccentConnect border + "CC N Ch M" text (UI-SPEC)
+        // Learned state: solid kAccentConnect border + type-aware text
         g.setColour(juce::Colour(0xff40E070));
         g.drawRect(getLocalBounds().toFloat(), 2.0f);
         g.setFont(juce::FontOptions(10.0f));
-        g.drawText("CC " + juce::String(learnedCc_) + " Ch " + juce::String(learnedCh_),
+        juce::String prefix = (learnedType_ == MidiMsgType::Note) ? "N" : "CC";
+        g.drawText(prefix + juce::String(learnedNumber_) + " Ch" + juce::String(learnedCh_),
                    getLocalBounds().removeFromTop(16),
                    juce::Justification::centred, false);
     }
@@ -195,37 +199,43 @@ void VbFader::mouseDown(const juce::MouseEvent& e)
             if (hasMidiMapping)
                 menu.addItem(2, "Clear MIDI");
 
-            menu.showMenuAsync(juce::PopupMenu::Options()
-                .withTargetComponent(this),
+            auto mouseScreenPos = e.getScreenPosition();
+        menu.showMenuAsync(juce::PopupMenu::Options()
+                .withTargetScreenArea(juce::Rectangle<int>(mouseScreenPos.x, mouseScreenPos.y, 1, 1)),
                 [this](int result) {
                     if (result == 1)
                     {
                         // Start MIDI Learn (D-02: visual feedback)
                         midiLearning_ = true;
-                        learnedCc_ = -1;
+                        learnedNumber_ = -1;
                         learnedCh_ = -1;
                         repaint();
                         midiLearnMgr_->startLearning(midiParamId_,
-                            [this](int cc, int ch) {
+                            [this](int number, int ch, MidiMsgType type) {
                                 // Learned callback -- add mapping
-                                midiMapper_->addMapping(midiParamId_, cc, ch);
+                                midiMapper_->addMapping(midiParamId_, number, ch, type);
                                 midiLearning_ = false;
-                                learnedCc_ = cc;
+                                learnedNumber_ = number;
                                 learnedCh_ = ch;
+                                learnedType_ = type;
                                 learnCompletedTime_ = juce::Time::currentTimeMillis();
                                 repaint();
                                 // Auto-dismiss learned indicator after 1200ms (per UI-SPEC)
                                 juce::Timer::callAfterDelay(1200, [this]() {
-                                    learnedCc_ = -1;
+                                    learnedNumber_ = -1;
                                     learnedCh_ = -1;
                                     repaint();
                                 });
                             });
                         // Auto-cancel learn after 10 seconds (per UI-SPEC)
+                        // Only cancel global learn if it still belongs to this fader's param
+                        // (prevents race when user starts a different learn elsewhere)
                         juce::Timer::callAfterDelay(10000, [this]() {
                             if (midiLearning_)
                             {
-                                midiLearnMgr_->cancelLearning();
+                                if (midiLearnMgr_ != nullptr
+                                    && midiLearnMgr_->getLearningParamId() == midiParamId_)
+                                    midiLearnMgr_->cancelLearning();
                                 midiLearning_ = false;
                                 repaint();
                             }
@@ -342,4 +352,29 @@ void VbFader::setMidiLearnContext(MidiMapper* mapper, MidiLearnManager* learnMgr
     midiMapper_ = mapper;
     midiLearnMgr_ = learnMgr;
     midiParamId_ = paramId;
+
+    // Low-frequency polling to detect externally-initiated MIDI learn
+    if (learnMgr != nullptr)
+        startTimerHz(4);
+}
+
+void VbFader::timerCallback()
+{
+    bool externalLearning = (!midiLearning_ && midiLearnMgr_ != nullptr
+        && midiLearnMgr_->isLearning()
+        && midiLearnMgr_->getLearningParamId() == midiParamId_);
+
+    if (midiLearning_ || externalLearning)
+    {
+        // Bump to 30fps for smooth pulsing animation
+        if (getTimerInterval() > 40)
+            startTimerHz(30);
+        repaint();
+    }
+    else if (getTimerInterval() < 40)
+    {
+        // Drop back to low-frequency polling
+        startTimerHz(4);
+        repaint(); // one final repaint to clear the indication
+    }
 }

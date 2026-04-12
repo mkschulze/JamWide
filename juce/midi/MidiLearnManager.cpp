@@ -1,7 +1,7 @@
 #include "midi/MidiLearnManager.h"
 
 void MidiLearnManager::startLearning(const juce::String& paramId,
-                                      std::function<void(int cc, int ch)> onLearned)
+                                      std::function<void(int number, int ch, MidiMsgType type)> onLearned)
 {
     learningParamId_ = paramId;
     onLearnedCallback_ = std::move(onLearned);
@@ -18,7 +18,7 @@ juce::String MidiLearnManager::getLearningParamId() const
     return learningParamId_;
 }
 
-bool MidiLearnManager::tryLearn(int ccNumber, int midiChannel)
+bool MidiLearnManager::tryLearn(int number, int midiChannel, MidiMsgType type)
 {
     if (!learning_.load(std::memory_order_acquire))
         return false;
@@ -31,8 +31,8 @@ bool MidiLearnManager::tryLearn(int ccNumber, int midiChannel)
         // (addMapping modifies staging_, repaint, Timer::callAfterDelay).
         auto cb = std::move(onLearnedCallback_);
         onLearnedCallback_ = nullptr;
-        juce::MessageManager::callAsync([cb, ccNumber, midiChannel]() {
-            cb(ccNumber, midiChannel);
+        juce::MessageManager::callAsync([cb, number, midiChannel, type]() {
+            cb(number, midiChannel, type);
         });
     }
 

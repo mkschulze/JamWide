@@ -89,8 +89,8 @@ MidiConfigDialog::MidiConfigDialog(MidiMapper& mapper, MidiLearnManager* learnMg
                 {
                     // Start MIDI Learn for selected parameter (host right-click fallback)
                     midiLearnMgr->startLearning(paramId,
-                        [this, paramId](int cc, int ch) {
-                            midiMapper.addMapping(paramId, cc, ch);
+                        [this, paramId](int number, int ch, MidiMsgType type) {
+                            midiMapper.addMapping(paramId, number, ch, type);
                             refreshMappingTable();
                         });
                 }
@@ -279,10 +279,21 @@ void MidiConfigDialog::timerCallback()
     int count = midiMapper.getMappingCount();
     auto status = midiMapper.getStatus();
     juce::String statusText = juce::String(count) + " mapping" + (count != 1 ? "s" : "");
-    if (status == MidiMapper::Status::Healthy)
-        statusText += " | Receiving MIDI";
-    else if (status == MidiMapper::Status::Failed)
-        statusText += " | Device error";
+    if (midiLearnMgr != nullptr && midiLearnMgr->isLearning())
+    {
+        auto learnParam = midiLearnMgr->getLearningParamId();
+        statusText = "Waiting for MIDI... (" + getDisplayNameForParam(learnParam) + ")";
+        statusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff40E070));
+    }
+    else
+    {
+        if (status == MidiMapper::Status::Healthy)
+            statusText += " | Receiving MIDI";
+        else if (status == MidiMapper::Status::Failed)
+            statusText += " | Device error";
+        statusLabel.setColour(juce::Label::textColourId,
+                              juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    }
     statusLabel.setText(statusText, juce::dontSendNotification);
 }
 
@@ -297,8 +308,9 @@ void MidiConfigDialog::refreshMappingTable()
         for (size_t i = 0; i < mappings.size(); ++i)
         {
             if (mappings[i].paramId != mappingRows[i].paramId
-                || mappings[i].ccNumber != mappingRows[i].ccNumber
-                || mappings[i].midiChannel != mappingRows[i].midiChannel)
+                || mappings[i].number != mappingRows[i].number
+                || mappings[i].midiChannel != mappingRows[i].midiChannel
+                || mappings[i].type != mappingRows[i].type)
             {
                 changed = true;
                 break;
@@ -310,7 +322,7 @@ void MidiConfigDialog::refreshMappingTable()
 
     mappingRows.clear();
     for (const auto& m : mappings)
-        mappingRows.push_back({m.paramId, m.ccNumber, m.midiChannel});
+        mappingRows.push_back({m.paramId, m.number, m.midiChannel, m.type});
 
     rebuildTableRows();
     resized();
@@ -340,8 +352,11 @@ void MidiConfigDialog::rebuildTableRows()
         comp->paramLabel.setColour(juce::Label::backgroundColourId, bgColour);
         comp->addAndMakeVisible(comp->paramLabel);
 
-        // CC#
-        comp->ccLabel.setText(juce::String(row.ccNumber), juce::dontSendNotification);
+        // CC# or Note#
+        juce::String ccText = (row.type == MidiMsgType::Note)
+            ? ("N" + juce::String(row.number))
+            : ("CC" + juce::String(row.number));
+        comp->ccLabel.setText(ccText, juce::dontSendNotification);
         comp->ccLabel.setFont(juce::FontOptions(12.0f));
         comp->ccLabel.setColour(juce::Label::textColourId,
                                  juce::Colour(JamWideLookAndFeel::kTextPrimary));
@@ -372,16 +387,17 @@ void MidiConfigDialog::rebuildTableRows()
         comp->learnBtn.setColour(juce::TextButton::buttonColourId, bgColour);
         comp->learnBtn.setColour(juce::TextButton::textColourOffId,
                                   juce::Colour(JamWideLookAndFeel::kAccentConnect));
-        comp->learnBtn.setTooltip("Re-learn MIDI CC for this parameter");
+        comp->learnBtn.setTooltip("Re-learn MIDI for this parameter");
         juce::String paramIdCopy = row.paramId;
         comp->learnBtn.onClick = [this, paramIdCopy]() {
             if (midiLearnMgr != nullptr)
             {
-                // Remove existing mapping, then start learn for re-assignment
-                midiMapper.removeMapping(paramIdCopy);
+                // Start learn for re-assignment. Don't remove existing mapping first --
+                // addMapping handles last-write-wins replacement, and the row stays
+                // visible while waiting for MIDI input.
                 midiLearnMgr->startLearning(paramIdCopy,
-                    [this, paramIdCopy](int cc, int ch) {
-                        midiMapper.addMapping(paramIdCopy, cc, ch);
+                    [this, paramIdCopy](int number, int ch, MidiMsgType type) {
+                        midiMapper.addMapping(paramIdCopy, number, ch, type);
                         refreshMappingTable();
                     });
             }

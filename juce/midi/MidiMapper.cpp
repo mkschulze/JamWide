@@ -16,8 +16,16 @@ MidiMapper::MidiMapper(JamWideJuceProcessor& proc)
     lastSyncedLocalSolo_.fill(false);
     lastSyncedMetroPan_ = 0.0f;
 
+    // Initialize collector with a default sample rate (updated in setSampleRate)
+    standaloneMidiCollector_.reset(48000.0);
+
     // Start timer at 20ms for responsive mixer control
     startTimer(20);
+}
+
+void MidiMapper::setSampleRate(double sampleRate, int /*samplesPerBlock*/)
+{
+    standaloneMidiCollector_.reset(sampleRate);
 }
 
 MidiMapper::~MidiMapper()
@@ -28,30 +36,64 @@ MidiMapper::~MidiMapper()
 }
 
 //==============================================================================
-// Audio thread: parse incoming CC
+// Audio thread: parse incoming CC and Note On/Off
 
-void MidiMapper::processIncomingMidi(const juce::MidiBuffer& buffer)
+void MidiMapper::processIncomingMidi(const juce::MidiBuffer& buffer, int numSamples)
 {
     auto table = std::atomic_load(&published_);
     bool hasTable = table && !table->ccToParam.empty();
     bool isLearning = processor.midiLearnManager.isLearning();
 
+    // Drain standalone MIDI device messages (always, even if no mappings —
+    // prevents unbounded queue growth when device is open but not learning/mapped).
+    juce::MidiBuffer standaloneBlock;
+    standaloneMidiCollector_.removeNextBlockOfMessages(standaloneBlock,
+                                                        numSamples);
+
     // Early return only if no mappings AND not learning
     if (!hasTable && !isLearning)
         return;
 
-    for (const auto metadata : buffer)
+    // Merge standalone device messages with host-routed buffer
+    juce::MidiBuffer combined(buffer);
+    combined.addEvents(standaloneBlock, 0, -1, 0);
+
+    for (const auto metadata : combined)
     {
         auto msg = metadata.getMessage();
-        if (!msg.isController())
+
+        // Tri-branch extraction: CC, Note On, Note Off
+        int number, ch, value;
+        MidiMsgType msgType;
+
+        if (msg.isController())
+        {
+            msgType = MidiMsgType::CC;
+            number = msg.getControllerNumber();
+            ch = msg.getChannel();
+            value = msg.getControllerValue();
+        }
+        else if (msg.isNoteOn())
+        {
+            msgType = MidiMsgType::Note;
+            number = msg.getNoteNumber();
+            ch = msg.getChannel();
+            value = static_cast<int>(msg.getVelocity());
+        }
+        else if (msg.isNoteOff())
+        {
+            msgType = MidiMsgType::Note;
+            number = msg.getNoteNumber();
+            ch = msg.getChannel();
+            value = 0;
+        }
+        else
+        {
             continue;
+        }
 
-        int cc = msg.getControllerNumber();
-        int ch = msg.getChannel();  // 1-based in JUCE
-        int value = msg.getControllerValue();
-
-        // Validate (T-14-01)
-        if (!isValidCc(cc) || !isValidChannel(ch))
+        // Validate
+        if (!isValidCc(number) || !isValidChannel(ch))
             continue;
 
         // Update activity tracking
@@ -62,14 +104,18 @@ void MidiMapper::processIncomingMidi(const juce::MidiBuffer& buffer)
         // Check MIDI Learn (must check BEFORE mapping lookup, so learn works with zero mappings)
         if (processor.midiLearnManager.isLearning())
         {
-            if (processor.midiLearnManager.tryLearn(cc, ch))
-                continue;  // Consumed by learn, skip normal dispatch
+            // Only learn from Note On (not Note Off) and CC
+            if (msgType == MidiMsgType::CC || value > 0)
+            {
+                if (processor.midiLearnManager.tryLearn(number, ch, msgType))
+                    continue;  // Consumed by learn, skip normal dispatch
+            }
         }
 
         if (!hasTable)
             continue;
 
-        int key = makeKey(cc, ch);
+        int key = makeKey(number, ch, msgType);
         auto it = table->ccToParam.find(key);
         if (it == table->ccToParam.end())
             continue;
@@ -79,7 +125,7 @@ void MidiMapper::processIncomingMidi(const juce::MidiBuffer& buffer)
         if (param == nullptr)
             continue;
 
-        // For AudioParameterBool (mute/solo per D-08): toggle on value > 0, ignore value == 0
+        // For AudioParameterBool (mute/solo): toggle on value > 0, ignore value == 0
         if (dynamic_cast<juce::AudioParameterBool*>(param))
         {
             if (value > 0)
@@ -87,7 +133,7 @@ void MidiMapper::processIncomingMidi(const juce::MidiBuffer& buffer)
         }
         else
         {
-            // For float params (vol/pan per D-10): CC 0-127 -> 0.0-1.0 normalized
+            // For float params (vol/pan): 0-127 -> 0.0-1.0 normalized
             param->setValueNotifyingHost(static_cast<float>(value) / 127.0f);
         }
 
@@ -132,11 +178,12 @@ void MidiMapper::appendFeedbackMidi(juce::MidiBuffer& buffer)
         if (ccValue != lastSentCcValues_[key])
         {
             lastSentCcValues_[key] = ccValue;
-            int channel = (key >> 7) + 1;  // back to 1-based
-            int cc = key & 0x7F;
-            buffer.addEvent(
-                juce::MidiMessage::controllerEvent(channel, cc, ccValue),
-                0);  // sample offset 0
+            int channel = keyChannel(key);
+            int num = keyNumber(key);
+            if (keyType(key) == MidiMsgType::Note)
+                buffer.addEvent(juce::MidiMessage::noteOn(channel, num, static_cast<juce::uint8>(ccValue)), 0);
+            else
+                buffer.addEvent(juce::MidiMessage::controllerEvent(channel, num, ccValue), 0);
         }
     }
 }
@@ -144,7 +191,8 @@ void MidiMapper::appendFeedbackMidi(juce::MidiBuffer& buffer)
 //==============================================================================
 // Mapping management (message thread)
 
-bool MidiMapper::addMapping(const juce::String& paramId, int ccNumber, int midiChannel)
+bool MidiMapper::addMapping(const juce::String& paramId, int ccNumber, int midiChannel,
+                             MidiMsgType type)
 {
     // Validate
     if (!isValidCc(ccNumber) || !isValidChannel(midiChannel))
@@ -154,10 +202,10 @@ bool MidiMapper::addMapping(const juce::String& paramId, int ccNumber, int midiC
     if (static_cast<int>(staging_.ccToParam.size()) >= kMaxMappings)
         return false;
 
-    int key = makeKey(ccNumber, midiChannel);
+    int key = makeKey(ccNumber, midiChannel, type);
 
     // Duplicate conflict handling: last-write-wins
-    // If the CC+Ch key already maps to a different paramId, remove that old mapping
+    // If the key already maps to a different paramId, remove that old mapping
     auto ccIt = staging_.ccToParam.find(key);
     if (ccIt != staging_.ccToParam.end())
     {
@@ -166,7 +214,7 @@ bool MidiMapper::addMapping(const juce::String& paramId, int ccNumber, int midiC
         staging_.ccToParam.erase(ccIt);
     }
 
-    // If the paramId already has a mapping to a different CC+Ch, remove the old one
+    // If the paramId already has a mapping to a different key, remove the old one
     auto paramIt = staging_.paramToCc.find(paramId);
     if (paramIt != staging_.paramToCc.end())
     {
@@ -175,7 +223,7 @@ bool MidiMapper::addMapping(const juce::String& paramId, int ccNumber, int midiC
     }
 
     // Add the new mapping
-    staging_.ccToParam[key] = Mapping{paramId, ccNumber, midiChannel};
+    staging_.ccToParam[key] = Mapping{paramId, ccNumber, midiChannel, type};
     staging_.paramToCc[paramId] = key;
 
     publishMappings();
@@ -193,9 +241,9 @@ void MidiMapper::removeMapping(const juce::String& paramId)
     }
 }
 
-void MidiMapper::removeMappingByCc(int ccNumber, int midiChannel)
+void MidiMapper::removeMappingByCc(int ccNumber, int midiChannel, MidiMsgType type)
 {
-    int key = makeKey(ccNumber, midiChannel);
+    int key = makeKey(ccNumber, midiChannel, type);
     auto it = staging_.ccToParam.find(key);
     if (it != staging_.ccToParam.end())
     {
@@ -227,9 +275,9 @@ bool MidiMapper::hasMapping(const juce::String& paramId) const
     return staging_.paramToCc.find(paramId) != staging_.paramToCc.end();
 }
 
-bool MidiMapper::hasMappingForCc(int ccNumber, int midiChannel) const
+bool MidiMapper::hasMappingForCc(int ccNumber, int midiChannel, MidiMsgType type) const
 {
-    int key = makeKey(ccNumber, midiChannel);
+    int key = makeKey(ccNumber, midiChannel, type);
     return staging_.ccToParam.find(key) != staging_.ccToParam.end();
 }
 
@@ -238,7 +286,7 @@ std::vector<MidiMapper::MappingInfo> MidiMapper::getAllMappings() const
     std::vector<MappingInfo> result;
     result.reserve(staging_.ccToParam.size());
     for (const auto& [key, mapping] : staging_.ccToParam)
-        result.push_back({mapping.paramId, mapping.ccNumber, mapping.midiChannel});
+        result.push_back({mapping.paramId, mapping.number, mapping.midiChannel, mapping.type});
     return result;
 }
 
@@ -250,7 +298,7 @@ std::optional<MidiMapper::MappingInfo> MidiMapper::getMappingForParam(const juce
     auto ccIt = staging_.ccToParam.find(it->second);
     if (ccIt == staging_.ccToParam.end())
         return std::nullopt;
-    return MappingInfo{ccIt->second.paramId, ccIt->second.ccNumber, ccIt->second.midiChannel};
+    return MappingInfo{ccIt->second.paramId, ccIt->second.number, ccIt->second.midiChannel, ccIt->second.type};
 }
 
 //==============================================================================
@@ -263,8 +311,11 @@ void MidiMapper::saveToState(juce::ValueTree& state) const
     {
         auto entry = juce::ValueTree("Mapping");
         entry.setProperty("paramId", mapping.paramId, nullptr);
-        entry.setProperty("cc", mapping.ccNumber, nullptr);
+        entry.setProperty("cc", mapping.number, nullptr);
         entry.setProperty("channel", mapping.midiChannel, nullptr);
+        // Only write type for Note mappings (omit for CC = backward compat)
+        if (mapping.type == MidiMsgType::Note)
+            entry.setProperty("type", "note", nullptr);
         midiMappings.addChild(entry, -1, nullptr);
     }
     state.addChild(midiMappings, -1, nullptr);
@@ -287,12 +338,17 @@ void MidiMapper::loadFromState(const juce::ValueTree& state)
         int rawCc = static_cast<int>(entry.getProperty("cc", -1));
         int rawCh = static_cast<int>(entry.getProperty("channel", 0));
 
+        // Read type: default to CC if absent (backward compat with old presets)
+        MidiMsgType type = MidiMsgType::CC;
+        if (entry.getProperty("type", "").toString() == "note")
+            type = MidiMsgType::Note;
+
         // Validate: reject entries with empty paramId
         if (paramId.isEmpty())
             continue;
 
         // Validate: reject entries with out-of-range values
-        // cc must be 0-127, channel must be 1-16
+        // number must be 0-127, channel must be 1-16
         if (rawCc < 0 || rawCc > 127)
             continue;
         if (rawCh < 1 || rawCh > 16)
@@ -310,8 +366,8 @@ void MidiMapper::loadFromState(const juce::ValueTree& state)
         if (static_cast<int>(staging_.ccToParam.size()) >= kMaxMappings)
             break;
 
-        int key = makeKey(cc, ch);
-        staging_.ccToParam[key] = Mapping{paramId, cc, ch};
+        int key = makeKey(cc, ch, type);
+        staging_.ccToParam[key] = Mapping{paramId, cc, ch, type};
         staging_.paramToCc[paramId] = key;
     }
 
@@ -362,6 +418,7 @@ void MidiMapper::resetRemoteSlotDefaults(int slotIndex)
     lastSyncedRemoteVol_[static_cast<size_t>(slotIndex)] = 1.0f;
     lastSyncedRemotePan_[static_cast<size_t>(slotIndex)] = 0.0f;
     lastSyncedRemoteMute_[static_cast<size_t>(slotIndex)] = false;
+    lastSyncedRemoteSolo_[static_cast<size_t>(slotIndex)] = false;
 }
 
 //==============================================================================
@@ -404,10 +461,10 @@ void MidiMapper::openMidiInput(const juce::String& deviceId)
         return;
     }
 
-    // Open with a MidiInputCallback
-    // Note: In a real implementation, this would use a callback to feed
-    // received messages into processIncomingMidi. For now, we open the device.
-    midiInput_ = juce::MidiInput::openDevice(found.identifier, nullptr);
+    // Open with this MidiMapper as the callback receiver.
+    // handleIncomingMidiMessage buffers messages into standaloneMidiCollector_,
+    // which processIncomingMidi drains each audio block.
+    midiInput_ = juce::MidiInput::openDevice(found.identifier, this);
     if (midiInput_)
     {
         midiInput_->start();
@@ -470,6 +527,21 @@ void MidiMapper::openMidiOutput(const juce::String& deviceId)
     }
 }
 
+void MidiMapper::handleIncomingMidiMessage(juce::MidiInput* /*source*/,
+                                            const juce::MidiMessage& message)
+{
+    // Called on the MIDI device thread. Buffer into collector for audio-thread retrieval.
+    if (message.isController())
+        DBG("MidiMapper standalone CC=" + juce::String(message.getControllerNumber())
+            + " ch=" + juce::String(message.getChannel())
+            + " val=" + juce::String(message.getControllerValue()));
+    else if (message.isNoteOn())
+        DBG("MidiMapper standalone NoteOn=" + juce::String(message.getNoteNumber())
+            + " ch=" + juce::String(message.getChannel())
+            + " vel=" + juce::String(message.getVelocity()));
+    standaloneMidiCollector_.addMessageToQueue(message);
+}
+
 void MidiMapper::closeMidiInput()
 {
     if (midiInput_)
@@ -527,9 +599,13 @@ MidiMapper::Status MidiMapper::getStatus() const
 void MidiMapper::timerCallback()
 {
     // === CENTRALIZED APVTS-to-NJClient remote sync (SOLE cmd_queue path) ===
-    const int count = juce::jmin(processor.userCount.load(std::memory_order_relaxed), 16);
+    // Use visible slot count (excludes bots) and slot-to-userIndex mapping
+    const int count = juce::jmin(processor.visibleRemoteUserCount.load(std::memory_order_relaxed), 16);
     for (int i = 0; i < count; ++i)
     {
+        int njUserIndex = processor.remoteSlotToUserIndex[static_cast<size_t>(i)];
+        if (njUserIndex < 0) continue;  // unmapped slot
+
         juce::String suffix = juce::String(i);
         float vol = *processor.apvts.getRawParameterValue("remoteVol_" + suffix);
         float pan = *processor.apvts.getRawParameterValue("remotePan_" + suffix);
@@ -542,18 +618,51 @@ void MidiMapper::timerCallback()
         if (volChanged || panChanged || muteChanged)
         {
             jamwide::SetUserStateCommand cmd;
-            cmd.user_index = i;
+            cmd.user_index = njUserIndex;
             cmd.set_vol = volChanged;
             cmd.volume = vol;
             cmd.set_pan = panChanged;
             cmd.pan = pan;
             cmd.set_mute = muteChanged;
             cmd.mute = mute;
-            processor.cmd_queue.try_push(std::move(cmd));
+            bool pushed = processor.cmd_queue.try_push(std::move(cmd));
+            DBG("MidiMapper::timerCallback sync slot " + juce::String(i)
+                + " -> user " + juce::String(njUserIndex)
+                + " vol=" + juce::String(vol, 3)
+                + " pan=" + juce::String(pan, 3)
+                + " mute=" + juce::String((int)mute)
+                + " pushed=" + juce::String((int)pushed));
 
             if (volChanged) lastSyncedRemoteVol_[static_cast<size_t>(i)] = vol;
             if (panChanged) lastSyncedRemotePan_[static_cast<size_t>(i)] = pan;
             if (muteChanged) lastSyncedRemoteMute_[static_cast<size_t>(i)] = mute;
+        }
+    }
+
+    // === Remote solo APVTS-to-NJClient sync (per-channel) ===
+    for (int i = 0; i < count; ++i)
+    {
+        int njUserIndex = processor.remoteSlotToUserIndex[static_cast<size_t>(i)];
+        if (njUserIndex < 0) continue;
+
+        bool solo = *processor.apvts.getRawParameterValue("remoteSolo_" + juce::String(i)) >= 0.5f;
+        if (solo != lastSyncedRemoteSolo_[static_cast<size_t>(i)])
+        {
+            lastSyncedRemoteSolo_[static_cast<size_t>(i)] = solo;
+            // Solo is per-channel — toggle all channels for this user
+            std::lock_guard<std::mutex> lk(processor.cachedUsersMutex);
+            if (njUserIndex < static_cast<int>(processor.cachedUsers.size()))
+            {
+                for (const auto& ch : processor.cachedUsers[static_cast<size_t>(njUserIndex)].channels)
+                {
+                    jamwide::SetUserChannelStateCommand cmd;
+                    cmd.user_index = njUserIndex;
+                    cmd.channel_index = ch.channel_index;
+                    cmd.set_solo = true;
+                    cmd.solo = solo;
+                    processor.cmd_queue.try_push(std::move(cmd));
+                }
+            }
         }
     }
 
@@ -612,10 +721,14 @@ void MidiMapper::timerCallback()
                 if (ccValue != lastSentCcValues_[key])
                 {
                     lastSentCcValues_[key] = ccValue;
-                    int channel = (key >> 7) + 1;
-                    int cc = key & 0x7F;
-                    midiOutput_->sendMessageNow(
-                        juce::MidiMessage::controllerEvent(channel, cc, ccValue));
+                    int channel = keyChannel(key);
+                    int num = keyNumber(key);
+                    if (keyType(key) == MidiMsgType::Note)
+                        midiOutput_->sendMessageNow(
+                            juce::MidiMessage::noteOn(channel, num, static_cast<juce::uint8>(ccValue)));
+                    else
+                        midiOutput_->sendMessageNow(
+                            juce::MidiMessage::controllerEvent(channel, num, ccValue));
                 }
             }
         }

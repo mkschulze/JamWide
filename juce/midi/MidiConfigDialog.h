@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include "MidiTypes.h"
 
 class MidiMapper;
 class MidiLearnManager;
@@ -38,8 +39,9 @@ private:
     struct MappingRow
     {
         juce::String paramId;
-        int ccNumber;
+        int number;
         int midiChannel;
+        MidiMsgType type = MidiMsgType::CC;
     };
     std::vector<MappingRow> mappingRows;
 

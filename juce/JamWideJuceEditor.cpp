@@ -161,6 +161,11 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
         }
     }
 
+    // Listen to mouse clicks on all child components so that any left-click
+    // in the plugin window focuses the chat input (saves an extra click when
+    // switching from the DAW).
+    addMouseListener(this, true);
+
     // Start 20Hz timer for event drain and status polling
     startTimerHz(20);
 
@@ -171,6 +176,7 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
 
 JamWideJuceEditor::~JamWideJuceEditor()
 {
+    removeMouseListener(this);
     stopTimer();
     setLookAndFeel(nullptr);
 }
@@ -182,6 +188,29 @@ void JamWideJuceEditor::paint(juce::Graphics& g)
 
 void JamWideJuceEditor::mouseDown(const juce::MouseEvent& e)
 {
+    // Clicks from child components arrive here via addMouseListener(this, true).
+    // Forward left-clicks to the chat input so users can start typing immediately
+    // after clicking anywhere in the plugin window (no extra click needed).
+    // Skip interactive controls so they keep working without stealing focus.
+    if (e.eventComponent != this)
+    {
+        if (!e.mods.isPopupMenu()
+            && chatSidebarVisible
+            && !serverBrowser.isVisible()
+            && !licenseDialog.isVisible()
+            && !videoPrivacyDialog.isVisible()
+            && dynamic_cast<juce::TextEditor*>(e.eventComponent) == nullptr
+            && dynamic_cast<juce::Button*>(e.eventComponent) == nullptr
+            && dynamic_cast<juce::Slider*>(e.eventComponent) == nullptr
+            && dynamic_cast<juce::ComboBox*>(e.eventComponent) == nullptr
+            && dynamic_cast<VbFader*>(e.eventComponent) == nullptr)
+        {
+            chatPanel.focusChatInput();
+        }
+        return;
+    }
+
+    // Direct clicks on editor background
     if (e.mods.isPopupMenu())
     {
         juce::PopupMenu menu;
@@ -191,11 +220,6 @@ void JamWideJuceEditor::mouseDown(const juce::MouseEvent& e)
         menu.addItem(3, "2x",   true, juce::approximatelyEqual(processorRef.scaleFactor, 2.0f));
         menu.addSeparator();
         menu.addItem(4, "Show Session Info", true, infoStripVisible);
-        // withParentComponent(this) — NOT withTargetComponent — so the menu
-        // (a) inherits JamWideLookAndFeel from the editor for consistent
-        // typography/colours, and (b) still opens at the mouse position
-        // (withTargetComponent would anchor the menu to the editor's bounds,
-        // which is wrong for a right-click context menu).
         menu.showMenuAsync(juce::PopupMenu::Options().withParentComponent(this),
             [this](int result) {
                 if (result >= 1 && result <= 3)
@@ -214,6 +238,8 @@ void JamWideJuceEditor::mouseDown(const juce::MouseEvent& e)
     }
     else
     {
+        if (chatSidebarVisible)
+            chatPanel.focusChatInput();
         AudioProcessorEditor::mouseDown(e);
     }
 }

@@ -106,6 +106,9 @@ public:
     std::atomic<float> config_metronome_pan{0.0f};
 };
 
+// MidiMsgType enum (mirrors MidiTypes.h)
+enum class MidiMsgType : int { CC = 0, Note = 1 };
+
 // Stub for MidiLearnManager (included directly so we can test it)
 #include <atomic>
 #include <functional>
@@ -114,7 +117,7 @@ class MidiLearnManager
 {
 public:
     void startLearning(const juce::String& paramId,
-                       std::function<void(int cc, int ch)> onLearned)
+                       std::function<void(int number, int ch, MidiMsgType type)> onLearned)
     {
         learningParamId_ = paramId;
         onLearnedCallback_ = std::move(onLearned);
@@ -131,7 +134,7 @@ public:
         return learningParamId_;
     }
 
-    bool tryLearn(int ccNumber, int midiChannel)
+    bool tryLearn(int number, int midiChannel, MidiMsgType type)
     {
         if (!learning_.load(std::memory_order_acquire))
             return false;
@@ -140,7 +143,7 @@ public:
 
         if (onLearnedCallback_)
         {
-            onLearnedCallback_(ccNumber, midiChannel);
+            onLearnedCallback_(number, midiChannel, type);
             onLearnedCallback_ = nullptr;
         }
 
@@ -158,7 +161,7 @@ public:
 private:
     std::atomic<bool> learning_{false};
     juce::String learningParamId_;
-    std::function<void(int, int)> onLearnedCallback_;
+    std::function<void(int, int, MidiMsgType)> onLearnedCallback_;
 };
 
 // ============================================================================
@@ -312,13 +315,38 @@ public:
         for (const auto metadata : buffer)
         {
             auto msg = metadata.getMessage();
-            if (!msg.isController()) continue;
 
-            int cc = msg.getControllerNumber();
-            int ch = msg.getChannel();
-            int value = msg.getControllerValue();
+            // Tri-branch extraction: CC, Note On, Note Off
+            int number, ch, value;
+            MidiMsgType msgType;
 
-            if (!isValidCc(cc) || !isValidChannel(ch)) continue;
+            if (msg.isController())
+            {
+                msgType = MidiMsgType::CC;
+                number = msg.getControllerNumber();
+                ch = msg.getChannel();
+                value = msg.getControllerValue();
+            }
+            else if (msg.isNoteOn())
+            {
+                msgType = MidiMsgType::Note;
+                number = msg.getNoteNumber();
+                ch = msg.getChannel();
+                value = static_cast<int>(msg.getVelocity());
+            }
+            else if (msg.isNoteOff())
+            {
+                msgType = MidiMsgType::Note;
+                number = msg.getNoteNumber();
+                ch = msg.getChannel();
+                value = 0;
+            }
+            else
+            {
+                continue;
+            }
+
+            if (!isValidCc(number) || !isValidChannel(ch)) continue;
 
             receivingMidi_.store(true, std::memory_order_relaxed);
             lastMidiReceivedTime_.store(juce::Time::currentTimeMillis(),
@@ -327,13 +355,17 @@ public:
             // Check MIDI Learn before mapping lookup (learn works with zero mappings)
             if (processor.midiLearnManager.isLearning())
             {
-                if (processor.midiLearnManager.tryLearn(cc, ch))
-                    continue;
+                // Only learn from Note On (not Note Off) and CC
+                if (msgType == MidiMsgType::CC || value > 0)
+                {
+                    if (processor.midiLearnManager.tryLearn(number, ch, msgType))
+                        continue;
+                }
             }
 
             if (!hasTable) continue;
 
-            int key = makeKey(cc, ch);
+            int key = makeKey(number, ch, msgType);
             auto it = table->ccToParam.find(key);
             if (it == table->ccToParam.end()) continue;
 
@@ -382,21 +414,24 @@ public:
             if (ccValue != lastSentCcValues_[key])
             {
                 lastSentCcValues_[key] = ccValue;
-                int channel = (key >> 7) + 1;
-                int cc = key & 0x7F;
-                buffer.addEvent(
-                    juce::MidiMessage::controllerEvent(channel, cc, ccValue), 0);
+                int channel = keyChannel(key);
+                int num = keyNumber(key);
+                if (keyType(key) == MidiMsgType::Note)
+                    buffer.addEvent(juce::MidiMessage::noteOn(channel, num, static_cast<juce::uint8>(ccValue)), 0);
+                else
+                    buffer.addEvent(juce::MidiMessage::controllerEvent(channel, num, ccValue), 0);
             }
         }
     }
 
-    bool addMapping(const juce::String& paramId, int ccNumber, int midiChannel)
+    bool addMapping(const juce::String& paramId, int ccNumber, int midiChannel,
+                     MidiMsgType type = MidiMsgType::CC)
     {
         if (!isValidCc(ccNumber) || !isValidChannel(midiChannel)) return false;
         if (paramId.isEmpty()) return false;
         if (static_cast<int>(staging_.ccToParam.size()) >= kMaxMappings) return false;
 
-        int key = makeKey(ccNumber, midiChannel);
+        int key = makeKey(ccNumber, midiChannel, type);
 
         // Duplicate conflict: last-write-wins
         auto ccIt = staging_.ccToParam.find(key);
@@ -413,7 +448,7 @@ public:
             staging_.paramToCc.erase(paramIt);
         }
 
-        staging_.ccToParam[key] = Mapping{paramId, ccNumber, midiChannel};
+        staging_.ccToParam[key] = Mapping{paramId, ccNumber, midiChannel, type};
         staging_.paramToCc[paramId] = key;
         publishMappings();
         return true;
@@ -430,9 +465,9 @@ public:
         }
     }
 
-    void removeMappingByCc(int ccNumber, int midiChannel)
+    void removeMappingByCc(int ccNumber, int midiChannel, MidiMsgType type = MidiMsgType::CC)
     {
-        int key = makeKey(ccNumber, midiChannel);
+        int key = makeKey(ccNumber, midiChannel, type);
         auto it = staging_.ccToParam.find(key);
         if (it != staging_.ccToParam.end())
         {
@@ -458,7 +493,7 @@ public:
         return staging_.paramToCc.find(paramId) != staging_.paramToCc.end();
     }
 
-    struct MappingInfo { juce::String paramId; int ccNumber; int midiChannel; };
+    struct MappingInfo { juce::String paramId; int number; int midiChannel; MidiMsgType type; };
 
     std::optional<MappingInfo> getMappingForParam(const juce::String& paramId) const
     {
@@ -466,7 +501,7 @@ public:
         if (it == staging_.paramToCc.end()) return std::nullopt;
         auto ccIt = staging_.ccToParam.find(it->second);
         if (ccIt == staging_.ccToParam.end()) return std::nullopt;
-        return MappingInfo{ccIt->second.paramId, ccIt->second.ccNumber, ccIt->second.midiChannel};
+        return MappingInfo{ccIt->second.paramId, ccIt->second.number, ccIt->second.midiChannel, ccIt->second.type};
     }
 
     void saveToState(juce::ValueTree& state) const
@@ -476,8 +511,10 @@ public:
         {
             auto entry = juce::ValueTree("Mapping");
             entry.setProperty("paramId", mapping.paramId, nullptr);
-            entry.setProperty("cc", mapping.ccNumber, nullptr);
+            entry.setProperty("cc", mapping.number, nullptr);
             entry.setProperty("channel", mapping.midiChannel, nullptr);
+            if (mapping.type == MidiMsgType::Note)
+                entry.setProperty("type", "note", nullptr);
             midiMappings.addChild(entry, -1, nullptr);
         }
         state.addChild(midiMappings, -1, nullptr);
@@ -498,6 +535,10 @@ public:
             int rawCc = static_cast<int>(entry.getProperty("cc", -1));
             int rawCh = static_cast<int>(entry.getProperty("channel", 0));
 
+            MidiMsgType type = MidiMsgType::CC;
+            if (entry.getProperty("type", "").toString() == "note")
+                type = MidiMsgType::Note;
+
             if (paramId.isEmpty()) continue;
             if (rawCc < 0 || rawCc > 127) continue;
             if (rawCh < 1 || rawCh > 16) continue;
@@ -508,8 +549,8 @@ public:
             if (processor.apvts.getParameter(paramId) == nullptr) continue;
             if (static_cast<int>(staging_.ccToParam.size()) >= kMaxMappings) break;
 
-            int key = makeKey(cc, ch);
-            staging_.ccToParam[key] = Mapping{paramId, cc, ch};
+            int key = makeKey(cc, ch, type);
+            staging_.ccToParam[key] = Mapping{paramId, cc, ch, type};
             staging_.paramToCc[paramId] = key;
         }
         publishMappings();
@@ -536,7 +577,7 @@ public:
     // Expose timer callback for testing
     void callTimerCallback() { timerCallback(); }
 
-    static constexpr int kMaxMappings = 2048;
+    static constexpr int kMaxMappings = 4096;
 
 private:
     void timerCallback() override
@@ -594,12 +635,19 @@ private:
         }
     }
 
-    static int makeKey(int ccNumber, int midiChannel) { return ((midiChannel - 1) << 7) | ccNumber; }
+    static int makeKey(int number, int midiChannel, MidiMsgType type = MidiMsgType::CC)
+    {
+        return (static_cast<int>(type) << 11) | ((midiChannel - 1) << 7) | number;
+    }
+    static MidiMsgType keyType(int key)    { return static_cast<MidiMsgType>((key >> 11) & 1); }
+    static int         keyChannel(int key) { return ((key >> 7) & 0xF) + 1; }
+    static int         keyNumber(int key)  { return key & 0x7F; }
 
     struct Mapping {
         juce::String paramId;
-        int ccNumber;
+        int number;
         int midiChannel;
+        MidiMsgType type = MidiMsgType::CC;
     };
 
     struct MappingTable {
@@ -985,12 +1033,13 @@ void test_state_persistence()
     // Verify CC/channel are correct
     auto info = mapper2.getMappingForParam("masterVol");
     TEST_ASSERT(info.has_value(), "getMappingForParam should return value");
-    TEST_ASSERT(info->ccNumber == 7, "CC should be 7");
+    TEST_ASSERT(info->number == 7, "CC should be 7");
     TEST_ASSERT(info->midiChannel == 1, "Channel should be 1");
+    TEST_ASSERT(info->type == MidiMsgType::CC, "Type should be CC");
 
     auto info2 = mapper2.getMappingForParam("masterMute");
     TEST_ASSERT(info2.has_value(), "getMappingForParam for masterMute");
-    TEST_ASSERT(info2->ccNumber == 10, "CC should be 10");
+    TEST_ASSERT(info2->number == 10, "CC should be 10");
     TEST_ASSERT(info2->midiChannel == 2, "Channel should be 2");
 }
 
@@ -1004,11 +1053,13 @@ void test_midi_learn()
 
     int learnedCc = -1;
     int learnedCh = -1;
+    MidiMsgType learnedType = MidiMsgType::CC;
 
-    proc.midiLearnManager.startLearning("masterVol", [&](int cc, int ch) {
-        learnedCc = cc;
+    proc.midiLearnManager.startLearning("masterVol", [&](int number, int ch, MidiMsgType type) {
+        learnedCc = number;
         learnedCh = ch;
-        mapper.addMapping("masterVol", cc, ch);
+        learnedType = type;
+        mapper.addMapping("masterVol", number, ch, type);
     });
 
     TEST_ASSERT(proc.midiLearnManager.isLearning(), "Should be in learning state");
@@ -1145,14 +1196,14 @@ void test_duplicate_mapping_conflict()
     // Verify the mapping works correctly
     auto info = mapper.getMappingForParam("metroVol");
     TEST_ASSERT(info.has_value(), "Should find metroVol mapping");
-    TEST_ASSERT(info->ccNumber == 7, "CC should be 7");
+    TEST_ASSERT(info->number == 7, "CC should be 7");
     TEST_ASSERT(info->midiChannel == 1, "Channel should be 1");
 
     // Also test: same paramId, different CC+Ch -> old CC+Ch removed
     mapper.addMapping("metroVol", 11, 2);  // move metroVol to CC 11 Ch 2
     TEST_ASSERT(mapper.getMappingCount() == 1, "Should still have 1 mapping");
     auto info2 = mapper.getMappingForParam("metroVol");
-    TEST_ASSERT(info2.has_value() && info2->ccNumber == 11, "metroVol should now be on CC 11");
+    TEST_ASSERT(info2.has_value() && info2->number == 11, "metroVol should now be on CC 11");
     TEST_ASSERT(info2->midiChannel == 2, "metroVol should now be on Ch 2");
 }
 
@@ -1279,7 +1330,7 @@ void test_learn_state_transitions()
     TEST_ASSERT(!learn.isLearning(), "Should not be learning initially");
 
     // Start -> isLearning true
-    learn.startLearning("masterVol", [](int, int) {});
+    learn.startLearning("masterVol", [](int, int, MidiMsgType) {});
     TEST_ASSERT(learn.isLearning(), "Should be learning after startLearning");
     TEST_ASSERT(learn.getLearningParamId() == "masterVol", "Should have correct paramId");
 
@@ -1289,19 +1340,268 @@ void test_learn_state_transitions()
 
     // Start again -> tryLearn -> isLearning false
     bool callbackCalled = false;
-    learn.startLearning("metroVol", [&](int cc, int ch) {
+    learn.startLearning("metroVol", [&](int, int, MidiMsgType) {
         callbackCalled = true;
     });
     TEST_ASSERT(learn.isLearning(), "Should be learning again");
 
-    bool result = learn.tryLearn(7, 1);
+    bool result = learn.tryLearn(7, 1, MidiMsgType::CC);
     TEST_ASSERT(result, "tryLearn should return true when learning");
     TEST_ASSERT(!learn.isLearning(), "Should not be learning after tryLearn");
     TEST_ASSERT(callbackCalled, "Callback should have been called");
 
     // tryLearn when not learning -> return false
-    bool result2 = learn.tryLearn(8, 2);
+    bool result2 = learn.tryLearn(8, 2, MidiMsgType::CC);
     TEST_ASSERT(!result2, "tryLearn should return false when not learning");
+}
+
+// ============================================================================
+// Note On/Off test helpers
+// ============================================================================
+
+static juce::MidiBuffer makeNoteOnBuffer(int note, int channel, int velocity)
+{
+    juce::MidiBuffer buf;
+    buf.addEvent(juce::MidiMessage::noteOn(channel, note, static_cast<juce::uint8>(velocity)), 0);
+    return buf;
+}
+
+static juce::MidiBuffer makeNoteOffBuffer(int note, int channel)
+{
+    juce::MidiBuffer buf;
+    buf.addEvent(juce::MidiMessage::noteOff(channel, note, static_cast<juce::uint8>(0)), 0);
+    return buf;
+}
+
+// ============================================================================
+// Test 16: Note On toggles bool param
+// ============================================================================
+void test_note_on_toggle()
+{
+    JamWideJuceProcessor proc;
+    MidiMapper mapper(proc);
+
+    mapper.addMapping("masterMute", 60, 1, MidiMsgType::Note);
+
+    float initial = proc.apvts.getParameter("masterMute")->getValue();
+    TEST_ASSERT(initial < 0.5f, "masterMute should start as false");
+
+    // Note On with velocity > 0 -> toggle to true
+    auto buf1 = makeNoteOnBuffer(60, 1, 100);
+    mapper.processIncomingMidi(buf1);
+    float after1 = proc.apvts.getParameter("masterMute")->getValue();
+    TEST_ASSERT(after1 >= 0.5f, "masterMute should be true after Note On toggle");
+
+    // Note On again -> toggle back to false
+    auto buf2 = makeNoteOnBuffer(60, 1, 100);
+    mapper.processIncomingMidi(buf2);
+    float after2 = proc.apvts.getParameter("masterMute")->getValue();
+    TEST_ASSERT(after2 < 0.5f, "masterMute should be false after second Note On toggle");
+}
+
+// ============================================================================
+// Test 17: Note On sets float param via velocity
+// ============================================================================
+void test_note_on_float()
+{
+    JamWideJuceProcessor proc;
+    MidiMapper mapper(proc);
+
+    mapper.addMapping("masterVol", 60, 1, MidiMsgType::Note);
+
+    auto buf = makeNoteOnBuffer(60, 1, 100);
+    mapper.processIncomingMidi(buf);
+
+    float expected = 100.0f / 127.0f;
+    float actual = proc.apvts.getParameter("masterVol")->getValue();
+    TEST_ASSERT(std::abs(actual - expected) < 0.01f, "masterVol should be ~0.787 after Note On vel=100");
+}
+
+// ============================================================================
+// Test 18: Note Off (value=0) does NOT toggle bool param
+// ============================================================================
+void test_note_off_no_toggle()
+{
+    JamWideJuceProcessor proc;
+    MidiMapper mapper(proc);
+
+    mapper.addMapping("masterMute", 60, 1, MidiMsgType::Note);
+
+    // Toggle to true with Note On
+    auto buf1 = makeNoteOnBuffer(60, 1, 127);
+    mapper.processIncomingMidi(buf1);
+    TEST_ASSERT(proc.apvts.getParameter("masterMute")->getValue() >= 0.5f, "Should be true after Note On");
+
+    // Note Off should NOT toggle (value == 0 is ignored for bool)
+    auto buf2 = makeNoteOffBuffer(60, 1);
+    mapper.processIncomingMidi(buf2);
+    TEST_ASSERT(proc.apvts.getParameter("masterMute")->getValue() >= 0.5f, "Should still be true after Note Off");
+}
+
+// ============================================================================
+// Test 19: Note feedback sends Note On
+// ============================================================================
+void test_note_feedback()
+{
+    JamWideJuceProcessor proc;
+    MidiMapper mapper(proc);
+
+    mapper.addMapping("masterMute", 60, 1, MidiMsgType::Note);
+
+    // Toggle mute on
+    proc.apvts.getParameter("masterMute")->setValueNotifyingHost(1.0f);
+
+    juce::MidiBuffer outBuf;
+    mapper.appendFeedbackMidi(outBuf);
+
+    TEST_ASSERT(!outBuf.isEmpty(), "Feedback buffer should not be empty");
+
+    bool foundNoteOn = false;
+    for (const auto metadata : outBuf)
+    {
+        auto msg = metadata.getMessage();
+        if (msg.isNoteOn() && msg.getNoteNumber() == 60 && msg.getChannel() == 1)
+        {
+            foundNoteOn = true;
+            TEST_ASSERT(msg.getVelocity() == 127, "Note On velocity should be 127 for bool=true");
+        }
+    }
+    TEST_ASSERT(foundNoteOn, "Should find Note On in feedback for Note-type mapping");
+}
+
+// ============================================================================
+// Test 20: CC 60 and Note 60 on same channel are independent
+// ============================================================================
+void test_cc_and_note_independent()
+{
+    JamWideJuceProcessor proc;
+    MidiMapper mapper(proc);
+
+    mapper.addMapping("masterVol", 60, 1, MidiMsgType::CC);
+    mapper.addMapping("metroVol", 60, 1, MidiMsgType::Note);
+
+    TEST_ASSERT(mapper.getMappingCount() == 2, "Should have 2 independent mappings");
+
+    // Send CC 60 -> should affect masterVol only
+    auto ccBuf = makeCcBuffer(60, 1, 100);
+    mapper.processIncomingMidi(ccBuf);
+
+    float masterVal = proc.apvts.getParameter("masterVol")->getValue();
+    float expectedMaster = 100.0f / 127.0f;
+    TEST_ASSERT(std::abs(masterVal - expectedMaster) < 0.01f, "CC 60 should change masterVol");
+
+    float metroDefault = proc.apvts.getParameter("metroVol")->getDefaultValue();
+    float metroVal = proc.apvts.getParameter("metroVol")->getValue();
+    TEST_ASSERT(std::abs(metroVal - metroDefault) < 0.01f, "Note 60 param should not change from CC");
+
+    // Send Note On 60 -> should affect metroVol only
+    auto noteBuf = makeNoteOnBuffer(60, 1, 50);
+    mapper.processIncomingMidi(noteBuf);
+
+    float metroAfter = proc.apvts.getParameter("metroVol")->getValue();
+    float expectedMetro = 50.0f / 127.0f;
+    TEST_ASSERT(std::abs(metroAfter - expectedMetro) < 0.01f, "Note 60 should change metroVol");
+
+    // masterVol should not have changed from Note On
+    float masterAfter = proc.apvts.getParameter("masterVol")->getValue();
+    TEST_ASSERT(std::abs(masterAfter - expectedMaster) < 0.01f, "masterVol should not change from Note On");
+}
+
+// ============================================================================
+// Test 21: MIDI Learn captures Note On
+// ============================================================================
+void test_midi_learn_note()
+{
+    JamWideJuceProcessor proc;
+    MidiMapper mapper(proc);
+
+    int learnedNum = -1;
+    int learnedCh = -1;
+    MidiMsgType learnedType = MidiMsgType::CC;
+
+    proc.midiLearnManager.startLearning("masterMute", [&](int number, int ch, MidiMsgType type) {
+        learnedNum = number;
+        learnedCh = ch;
+        learnedType = type;
+        mapper.addMapping("masterMute", number, ch, type);
+    });
+
+    // Send Note On -> should be captured by learn
+    auto buf = makeNoteOnBuffer(60, 2, 100);
+    mapper.processIncomingMidi(buf);
+
+    TEST_ASSERT(learnedNum == 60, "Learn should capture Note 60");
+    TEST_ASSERT(learnedCh == 2, "Learn should capture channel 2");
+    TEST_ASSERT(learnedType == MidiMsgType::Note, "Learn should capture Note type");
+    TEST_ASSERT(!proc.midiLearnManager.isLearning(), "Should no longer be learning");
+    TEST_ASSERT(mapper.hasMapping("masterMute"), "Mapping should be created by Note learn");
+
+    auto info = mapper.getMappingForParam("masterMute");
+    TEST_ASSERT(info.has_value(), "Should have mapping info");
+    TEST_ASSERT(info->type == MidiMsgType::Note, "Mapping type should be Note");
+}
+
+// ============================================================================
+// Test 22: Note mapping round-trips through save/load
+// ============================================================================
+void test_note_persistence()
+{
+    JamWideJuceProcessor proc;
+    MidiMapper mapper(proc);
+
+    mapper.addMapping("masterVol", 7, 1, MidiMsgType::CC);
+    mapper.addMapping("masterMute", 60, 2, MidiMsgType::Note);
+
+    // Save
+    juce::ValueTree state("Parameters");
+    mapper.saveToState(state);
+
+    // Load into new mapper
+    MidiMapper mapper2(proc);
+    mapper2.loadFromState(state);
+
+    TEST_ASSERT(mapper2.getMappingCount() == 2, "Should have 2 mappings after load");
+
+    auto ccInfo = mapper2.getMappingForParam("masterVol");
+    TEST_ASSERT(ccInfo.has_value(), "CC mapping should load");
+    TEST_ASSERT(ccInfo->number == 7, "CC number should be 7");
+    TEST_ASSERT(ccInfo->type == MidiMsgType::CC, "Type should be CC");
+
+    auto noteInfo = mapper2.getMappingForParam("masterMute");
+    TEST_ASSERT(noteInfo.has_value(), "Note mapping should load");
+    TEST_ASSERT(noteInfo->number == 60, "Note number should be 60");
+    TEST_ASSERT(noteInfo->midiChannel == 2, "Channel should be 2");
+    TEST_ASSERT(noteInfo->type == MidiMsgType::Note, "Type should be Note");
+}
+
+// ============================================================================
+// Test 23: Old state without type loads as CC (backward compat)
+// ============================================================================
+void test_backward_compat_load()
+{
+    JamWideJuceProcessor proc;
+    MidiMapper mapper(proc);
+
+    // Build state manually without "type" property (simulates old preset)
+    juce::ValueTree state("Parameters");
+    auto midiMappings = juce::ValueTree("MidiMappings");
+    {
+        auto entry = juce::ValueTree("Mapping");
+        entry.setProperty("paramId", "masterVol", nullptr);
+        entry.setProperty("cc", 7, nullptr);
+        entry.setProperty("channel", 1, nullptr);
+        // No "type" property — old format
+        midiMappings.addChild(entry, -1, nullptr);
+    }
+    state.addChild(midiMappings, -1, nullptr);
+
+    mapper.loadFromState(state);
+
+    TEST_ASSERT(mapper.getMappingCount() == 1, "Should have 1 mapping");
+    auto info = mapper.getMappingForParam("masterVol");
+    TEST_ASSERT(info.has_value(), "Mapping should load");
+    TEST_ASSERT(info->type == MidiMsgType::CC, "Old state without type should default to CC");
+    TEST_ASSERT(info->number == 7, "CC number should be 7");
 }
 
 // ============================================================================
@@ -1331,6 +1631,14 @@ int main()
     RUN_TEST(test_malformed_state);
     RUN_TEST(test_slot_reset);
     RUN_TEST(test_learn_state_transitions);
+    RUN_TEST(test_note_on_toggle);
+    RUN_TEST(test_note_on_float);
+    RUN_TEST(test_note_off_no_toggle);
+    RUN_TEST(test_note_feedback);
+    RUN_TEST(test_cc_and_note_independent);
+    RUN_TEST(test_midi_learn_note);
+    RUN_TEST(test_note_persistence);
+    RUN_TEST(test_backward_compat_load);
 
     printf("\n===================\n");
     printf("Results: %d passed, %d failed\n", testsPassed, testsFailed);

@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include <functional>
+#include "midi/MidiTypes.h"
 
 class MidiMapper;
 class MidiLearnManager;
@@ -15,7 +16,8 @@ class MidiLearnManager;
  * Value range: 0.0 (silence/-inf) to 2.0 (+6 dB) linear.
  * Default: 1.0 (0 dB).
  */
-class VbFader : public juce::Component
+class VbFader : public juce::Component,
+                private juce::Timer
 {
 public:
     VbFader();
@@ -62,6 +64,8 @@ public:
                         const juce::MouseWheelDetails& wheel) override;
 
 private:
+    void timerCallback() override;
+
     /** Format a linear value as a dB string for display on the thumb. */
     static juce::String formatDb(float linear);
 
@@ -83,9 +87,10 @@ private:
     MidiMapper* midiMapper_ = nullptr;
     MidiLearnManager* midiLearnMgr_ = nullptr;
     juce::String midiParamId_;
-    bool midiLearning_ = false;   // true when waiting for CC
-    int learnedCc_ = -1;          // set on learn completion for display
+    bool midiLearning_ = false;   // true when waiting for MIDI input
+    int learnedNumber_ = -1;      // set on learn completion for display
     int learnedCh_ = -1;
+    MidiMsgType learnedType_ = MidiMsgType::CC;
     int64_t learnCompletedTime_ = 0;  // for auto-dismiss timing
 
 public:

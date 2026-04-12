@@ -7,7 +7,8 @@
 class MidiMapper;
 class MidiLearnManager;
 
-class ChannelStrip : public juce::Component
+class ChannelStrip : public juce::Component,
+                     private juce::Timer
 {
 public:
     enum class StripType { Local, Remote, RemoteChild, Master };
@@ -71,7 +72,9 @@ public:
     int getChannelCount() const { return channelCount_; }
 
 private:
-    void showMidiLearnMenu(const juce::String& paramId, juce::Component* target);
+    void timerCallback() override;
+    void showMidiLearnMenu(const juce::String& paramId, juce::Component* target,
+                           juce::Point<int> screenPos);
 
     MidiMapper* midiMapper_ = nullptr;
     MidiLearnManager* midiLearnMgr_ = nullptr;
@@ -91,6 +94,10 @@ private:
     juce::ComboBox inputBusSelector;
     bool expanded_ = false;
     int channelCount_ = 1;
+
+    // MIDI Learn visual feedback for non-fader controls (pan/mute/solo)
+    juce::Component* learningComponent_ = nullptr;
+    juce::Component* externalLearnTarget_ = nullptr;  // colored by dialog-initiated learn
 
     static constexpr int kStripWidth = 100;
     static constexpr int kHeaderHeight = 84;

@@ -224,11 +224,11 @@ void JamWideLookAndFeel::drawLinearSlider(juce::Graphics& g,
                            trackY - 2.0f,
                            trackY + trackHeight + 2.0f);
 
-        // Thumb: 12px white circle
+        // Thumb: 12px circle (reads thumbColourId so MIDI Learn can tint it)
         constexpr float thumbDia = 12.0f;
         const float thumbCentreY = trackY + trackHeight / 2.0f;
 
-        g.setColour(juce::Colour(kTextPrimary)); // 0xffE0E0E0
+        g.setColour(slider.findColour(juce::Slider::thumbColourId));
         g.fillEllipse(sliderPos - thumbDia / 2.0f,
                       thumbCentreY - thumbDia / 2.0f,
                       thumbDia, thumbDia);

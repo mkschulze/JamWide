@@ -28,7 +28,7 @@ ServerBrowserOverlay::ServerBrowserOverlay()
     addAndMakeVisible(refreshButton);
 
     listBox.setModel(this);
-    listBox.setRowHeight(56);
+    listBox.setRowHeight(72);
     listBox.setColour(juce::ListBox::backgroundColourId,
         juce::Colour(JamWideLookAndFeel::kSurfaceOverlay));
     listBox.setColour(juce::ListBox::outlineColourId,
@@ -207,6 +207,22 @@ void ServerBrowserOverlay::paintListBoxItem(int row, juce::Graphics& g,
         g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary));
         g.drawText(juce::String(entry.topic),
             8, 36, width - 16, 14, juce::Justification::centredLeft, true);
+    }
+
+    // Username line (below topic)
+    auto userFont = juce::FontOptions(10.0f);
+    g.setFont(userFont);
+    if (!entry.user_list.empty())
+    {
+        g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary));
+        g.drawText(juce::String(entry.user_list),
+            8, 52, width - 16, 14, juce::Justification::centredLeft, true);
+    }
+    else
+    {
+        g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary).withAlpha(0.4f));
+        g.drawText("No users",
+            8, 52, width - 16, 14, juce::Justification::centredLeft, true);
     }
 
     // 1px bottom border

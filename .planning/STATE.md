@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 Phase: 15
 Plan: Not started
 Status: Ready to execute
-Last activity: 2026-04-11
+Last activity: 2026-04-13 - Completed quick task 260413-udi: Add usernames in server room list
 
 Progress: [..........] 0% (v1.1 milestone)
 
@@ -85,6 +85,12 @@ Recent decisions affecting current work:
 
 - [Phase 11]: OpenSSL linkage on Windows CI unvalidated -- project now has OpenSSL dependency (Phase 15), CI steps added but untested on Windows
 - [Phase 12]: VDO.Ninja external API is self-labeled DRAFT -- may require adaptation
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 260413-udi | Add usernames in server room list and audio prelisten before entering a room | 2026-04-13 | 972885d | Needs Review | [260413-udi-add-usernames-in-server-room-list-and-au](./quick/260413-udi-add-usernames-in-server-room-list-and-au/) |
 
 ## Session Continuity
 

@@ -202,12 +202,14 @@ export function buildVdoNinjaUrl(
     + `&maxvideobitrate=${bw.maxvideobitrate}`
     + fx;
 
-  // Include cached buffer delay in URL so VDO.Ninja applies it at page init,
+  // Include active buffer delay in URL so VDO.Ninja applies it at page init,
   // before its JS postMessage handler is ready. This fixes the race condition
   // where setBufferDelay via postMessage arrives before VDO.Ninja initializes.
-  // Subsequent BPM/BPI changes still update via postMessage.
-  if (cachedBufferDelay !== null && cachedBufferDelay > 0) {
-    url += `&buffer=${cachedBufferDelay}`;
+  // Addresses review HIGH: no hardcoded default. Use activeDelayMs (which may be null pre-config).
+  // If null, omit &buffer= entirely -- VDO.Ninja will use its own default.
+  if (activeDelayMs !== null && activeDelayMs > 0) {
+    console.log('VideoSync: URL includes &buffer=' + activeDelayMs);
+    url += `&buffer=${activeDelayMs}`;
   }
 
   // D-05: Room derived password forwarded as VDO.Ninja password param in iframe URL
@@ -218,44 +220,105 @@ export function buildVdoNinjaUrl(
   return url;
 }
 
-// -- Buffer Delay Relay (D-01, D-04) --
+// -- Buffer Delay State (Addresses Codex review HIGH: dual-state model) --
+// lastAutoDelayMs: always updated when plugin sends bufferDelay, even in manual mode.
+//   This ensures switchToAuto() has a value to restore without waiting for next broadcast.
+// activeDelayMs: the value currently applied to the iframe. In auto mode = lastAutoDelayMs.
+//   In manual mode = whatever the user set via slider.
+// Both start null -- no hardcoded 8000ms default. The plugin is the source of truth.
+// Pre-config state (both null) means "no delay known yet".
+const VDO_NINJA_ORIGIN = 'https://vdo.ninja';
 
-let cachedBufferDelay: number | null = null;
+let lastAutoDelayMs: number | null = null;
+let activeDelayMs: number | null = null;
+let manualMode = false;
 
-/** Apply buffer delay by caching it and forwarding to iframe via postMessage.
- *  Addresses review concern R-MEDIUM-06: postMessage is only sent if iframe exists
- *  and has a contentWindow. If iframe is not yet loaded, the value is cached and
- *  re-applied when the iframe fires its load event (see reapplyCachedBufferDelay). */
-export function applyBufferDelay(delayMs: number): void {
-  cachedBufferDelay = delayMs;
+/** Called when plugin sends bufferDelay message. Always updates lastAutoDelayMs.
+ *  In auto mode, also updates activeDelayMs and sends to iframe.
+ *  In manual mode, silently tracks the plugin value for later switchToAuto(). */
+export function setLastAutoDelay(delayMs: number): void {
+  lastAutoDelayMs = delayMs;
+  if (!manualMode) {
+    activeDelayMs = delayMs;
+    console.log('VideoSync: auto delay applied:', delayMs, 'ms');
+    sendBufferDelayToIframe(delayMs);
+  } else {
+    console.log('VideoSync: auto delay updated:', delayMs, 'ms (manual mode, not applied)');
+  }
+}
+
+/** Switch to manual mode with the given delay value. */
+export function switchToManual(delayMs: number): void {
+  manualMode = true;
+  activeDelayMs = delayMs;
+  console.log('VideoSync: switched to manual:', delayMs, 'ms');
   sendBufferDelayToIframe(delayMs);
+}
+
+/** Switch to auto mode, restoring lastAutoDelayMs to activeDelayMs immediately. */
+export function switchToAuto(): void {
+  manualMode = false;
+  activeDelayMs = lastAutoDelayMs;
+  console.log('VideoSync: switched to auto, restoring', lastAutoDelayMs, 'ms');
+  if (lastAutoDelayMs !== null) {
+    sendBufferDelayToIframe(lastAutoDelayMs);
+  }
+}
+
+/** Get the last plugin-provided auto delay value. */
+export function getLastAutoDelayMs(): number | null {
+  return lastAutoDelayMs;
+}
+
+/** Get the currently active delay value (auto or manual). */
+export function getActiveDelayMs(): number | null {
+  return activeDelayMs;
+}
+
+/** Check if manual mode is active. */
+export function isManualMode(): boolean {
+  return manualMode;
+}
+
+/** Get formatted display text for the current delay state. */
+export function getDelayDisplayText(): string {
+  if (activeDelayMs === null) return '--';
+  const mode = manualMode ? 'manual' : 'auto';
+  const seconds = (activeDelayMs / 1000).toFixed(1);
+  if (activeDelayMs === 0) return `${seconds}s (${mode}) No delay`;
+  return `${seconds}s (${mode})`;
 }
 
 function sendBufferDelayToIframe(delayMs: number): void {
   const iframe = document.querySelector('#main-area iframe') as HTMLIFrameElement | null;
   if (!iframe?.contentWindow) return;
-  iframe.contentWindow.postMessage({ setBufferDelay: delayMs }, '*');
+  console.log('VideoSync: postMessage setBufferDelay=' + delayMs + ' to ' + VDO_NINJA_ORIGIN);
+  iframe.contentWindow.postMessage({ setBufferDelay: delayMs }, VDO_NINJA_ORIGIN);
 }
 
-/** Call after iframe load event to re-apply cached buffer delay (Pitfall 4).
+/** Call after iframe load event to re-apply active delay (auto or manual).
  *  Addresses review concern R-HIGH-03: state preservation across iframe reloads.
- *  After bandwidth profile change triggers iframe reload, the cached delay value
+ *  After bandwidth/effect change triggers iframe reload, the active delay value
  *  is re-sent to the new iframe once its load event fires. */
-export function reapplyCachedBufferDelay(): void {
-  if (cachedBufferDelay !== null) {
-    sendBufferDelayToIframe(cachedBufferDelay);
+export function reapplyActiveDelay(): void {
+  if (activeDelayMs !== null) {
+    console.log('VideoSync: reapplying active delay on iframe load:', activeDelayMs, 'ms');
+    sendBufferDelayToIframe(activeDelayMs);
   }
 }
 
-/** Exported for testing */
-export function getCachedBufferDelay(): number | null {
-  return cachedBufferDelay;
+/** Reset all delay state (for testing). */
+export function resetDelayState(): void {
+  lastAutoDelayMs = null;
+  activeDelayMs = null;
+  manualMode = false;
 }
 
-/** Reset cached delay (for testing) */
-export function resetCachedBufferDelay(): void {
-  cachedBufferDelay = null;
-}
+// Legacy aliases for backward compatibility with existing tests
+export const applyBufferDelay = setLastAutoDelay;
+export const getCachedBufferDelay = getActiveDelayMs;
+export const resetCachedBufferDelay = resetDelayState;
+export const reapplyCachedBufferDelay = reapplyActiveDelay;
 
 // -- Roster Label Strip (D-09, D-10) --
 // Addresses review concern R-HIGH-02: roster lifecycle.
@@ -333,15 +396,16 @@ export function loadVdoNinjaIframe(
   iframe.style.height = '100%';
   iframe.style.border = 'none';
 
-  // Re-apply cached buffer delay after iframe loads. The load event fires when the
+  // Re-apply active buffer delay after iframe loads. The load event fires when the
   // iframe HTML is parsed, but VDO.Ninja's internal JS (chunked buffer system) needs
   // additional time to initialize its postMessage handler. Retry with increasing delays
   // to ensure the buffer delay is applied. The &buffer= URL param handles the initial
   // value; these retries catch dynamic updates (BPM/BPI change during iframe load).
   iframe.addEventListener('load', () => {
-    reapplyCachedBufferDelay();
-    setTimeout(reapplyCachedBufferDelay, 1000);
-    setTimeout(reapplyCachedBufferDelay, 3000);
+    console.log('VideoSync: iframe loaded, reapplying', activeDelayMs, 'ms');
+    reapplyActiveDelay();
+    setTimeout(reapplyActiveDelay, 1000);
+    setTimeout(reapplyActiveDelay, 3000);
   });
 
   main.appendChild(iframe);

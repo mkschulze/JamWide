@@ -18,7 +18,7 @@ import {
   hideSyncIndicator,
   getSavedEffect,
   saveEffect,
-  applyBufferDelay,
+  setLastAutoDelay,
   renderRosterStrip,
   getSavedBandwidthProfile,
   saveBandwidthProfile,
@@ -231,7 +231,8 @@ const callbacks: WsCallbacks = {
   },
 
   onBufferDelay(msg) {
-    applyBufferDelay(msg.delayMs);
+    console.log('VideoSync: plugin sent bufferDelay:', msg.delayMs, 'ms');
+    setLastAutoDelay(msg.delayMs);
   },
 
   onBeatHeartbeat(msg) {

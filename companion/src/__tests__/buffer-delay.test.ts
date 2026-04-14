@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { applyBufferDelay, getCachedBufferDelay, resetCachedBufferDelay, reapplyCachedBufferDelay } from '../ui';
+import { setLastAutoDelay, getActiveDelayMs, resetDelayState, reapplyActiveDelay } from '../ui';
 
 describe('Buffer Delay Relay (VID-08)', () => {
   beforeEach(() => {
@@ -8,15 +8,15 @@ describe('Buffer Delay Relay (VID-08)', () => {
     const main = document.createElement('main');
     main.id = 'main-area';
     document.body.appendChild(main);
-    resetCachedBufferDelay();
+    resetDelayState();
   });
 
-  it('caches buffer delay value', () => {
-    applyBufferDelay(8000);
-    expect(getCachedBufferDelay()).toBe(8000);
+  it('stores delay value via setLastAutoDelay', () => {
+    setLastAutoDelay(8000);
+    expect(getActiveDelayMs()).toBe(8000);
   });
 
-  it('sends postMessage to iframe with setBufferDelay', () => {
+  it('sends postMessage to iframe with setBufferDelay and VDO.Ninja origin', () => {
     const mockPostMessage = vi.fn();
     const iframe = document.createElement('iframe');
     Object.defineProperty(iframe, 'contentWindow', {
@@ -24,16 +24,16 @@ describe('Buffer Delay Relay (VID-08)', () => {
     });
     document.getElementById('main-area')!.appendChild(iframe);
 
-    applyBufferDelay(8000);
-    expect(mockPostMessage).toHaveBeenCalledWith({ setBufferDelay: 8000 }, '*');
+    setLastAutoDelay(8000);
+    expect(mockPostMessage).toHaveBeenCalledWith({ setBufferDelay: 8000 }, 'https://vdo.ninja');
   });
 
   it('does not throw when no iframe exists', () => {
-    expect(() => applyBufferDelay(8000)).not.toThrow();
-    expect(getCachedBufferDelay()).toBe(8000);
+    expect(() => setLastAutoDelay(8000)).not.toThrow();
+    expect(getActiveDelayMs()).toBe(8000);
   });
 
-  it('reapplyCachedBufferDelay sends cached value to iframe', () => {
+  it('reapplyActiveDelay sends active value to iframe', () => {
     const mockPostMessage = vi.fn();
     const iframe = document.createElement('iframe');
     Object.defineProperty(iframe, 'contentWindow', {
@@ -41,14 +41,14 @@ describe('Buffer Delay Relay (VID-08)', () => {
     });
     document.getElementById('main-area')!.appendChild(iframe);
 
-    applyBufferDelay(12000);
+    setLastAutoDelay(12000);
     mockPostMessage.mockClear();
 
-    reapplyCachedBufferDelay();
-    expect(mockPostMessage).toHaveBeenCalledWith({ setBufferDelay: 12000 }, '*');
+    reapplyActiveDelay();
+    expect(mockPostMessage).toHaveBeenCalledWith({ setBufferDelay: 12000 }, 'https://vdo.ninja');
   });
 
-  it('reapplyCachedBufferDelay is no-op when no cached value', () => {
+  it('reapplyActiveDelay is no-op when no active value', () => {
     const mockPostMessage = vi.fn();
     const iframe = document.createElement('iframe');
     Object.defineProperty(iframe, 'contentWindow', {
@@ -56,13 +56,13 @@ describe('Buffer Delay Relay (VID-08)', () => {
     });
     document.getElementById('main-area')!.appendChild(iframe);
 
-    reapplyCachedBufferDelay();
+    reapplyActiveDelay();
     expect(mockPostMessage).not.toHaveBeenCalled();
   });
 
-  it('overwrites previous cached value with new one', () => {
-    applyBufferDelay(8000);
-    applyBufferDelay(16000);
-    expect(getCachedBufferDelay()).toBe(16000);
+  it('overwrites previous value with new one', () => {
+    setLastAutoDelay(8000);
+    setLastAutoDelay(16000);
+    expect(getActiveDelayMs()).toBe(16000);
   });
 });

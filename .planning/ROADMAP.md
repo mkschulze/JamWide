@@ -152,8 +152,8 @@ Plans:
   5. Listen buttons are disabled when already connected to a session
 **Plans**: 2 plans
 Plans:
-- [ ] 14.1-01-PLAN.md — Audio prelisten backend: PrelistenCommand/StopPrelistenCommand types, processor prelisten_mode/prelisten_volume atomics, NinjamRunThread zero-channel connect with auto-accept license
-- [ ] 14.1-02-PLAN.md — Audio prelisten UI and editor wiring: Listen/Stop button per row, volume slider, active row visual feedback, editor command/event wiring, session guard
+- [ ] 14.1-01-PLAN.md — Audio prelisten backend: PrelistenCommand/StopPrelistenCommand types, PrelistenStateEvent with status enum and host+port, processor atomics, NinjamRunThread DeleteLocalChannel cleanup + lastUsername + auto-accept license, channel strip/connection bar suppression
+- [ ] 14.1-02-PLAN.md — Audio prelisten UI and editor wiring: Listen/Stop button per row, volume slider, host+port based active row identity (survives refresh), CONNECTING/LISTENING states, editor command/event wiring, connection bar suppression, session guard, human verification checkpoint
 **UI hint**: yes
 
 ### v1.2 Security & Quality (Planned)

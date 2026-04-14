@@ -86,6 +86,17 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
         processorRef.cmd_queue.try_push(std::move(cmd));
     };
 
+    serverBrowser.onListenClicked = [this](const std::string& host, int port) {
+        jamwide::PrelistenCommand cmd;
+        cmd.host = host;
+        cmd.port = port;
+        processorRef.cmd_queue.try_push(std::move(cmd));
+    };
+
+    serverBrowser.onStopListenClicked = [this]() {
+        processorRef.cmd_queue.try_push(jamwide::StopPrelistenCommand{});
+    };
+
     // LicenseDialog (hidden by default)
     addChildComponent(licenseDialog);
     licenseDialog.onResponse = [this](bool accepted) { handleLicenseResponse(accepted); };
@@ -284,6 +295,12 @@ void JamWideJuceEditor::timerCallback()
     drainEvents();
     pollStatus();
 
+    // Sync prelisten volume from browser slider to processor atomic (20Hz)
+    // Ownership: browser UI slider is source of truth, processor atomic is runtime consumer
+    if (processorRef.prelisten_mode.load(std::memory_order_relaxed))
+        processorRef.prelisten_volume.store(
+            serverBrowser.prelistenVolume, std::memory_order_relaxed);
+
     // Update beat bar from atomics
     int bpi = processorRef.uiSnapshot.bpi.load(std::memory_order_relaxed);
     int beat = processorRef.uiSnapshot.beat_position.load(std::memory_order_relaxed);
@@ -354,9 +371,15 @@ void JamWideJuceEditor::drainEvents()
 
             if constexpr (std::is_same_v<T, jamwide::StatusChangedEvent>)
             {
-                // Store error message for ConnectionBar to display
-                if (!e.error_msg.empty())
-                    processorRef.lastErrorMsg = juce::String(e.error_msg);
+                // During prelisten, suppress error message storage -- prelisten
+                // failure is handled by PrelistenStateEvent, not StatusChangedEvent.
+                // This prevents "Connection failed" from flashing in the connection bar
+                // when the user is just previewing rooms.
+                if (!processorRef.prelisten_mode.load(std::memory_order_relaxed))
+                {
+                    if (!e.error_msg.empty())
+                        processorRef.lastErrorMsg = juce::String(e.error_msg);
+                }
             }
             else if constexpr (std::is_same_v<T, jamwide::ServerListEvent>)
             {
@@ -403,6 +426,16 @@ void JamWideJuceEditor::drainEvents()
                 // Reason is available in e.reason for future UI feedback
                 // (e.g., toast notification on ServerBpmChanged)
             }
+            else if constexpr (std::is_same_v<T, jamwide::PrelistenStateEvent>)
+            {
+                serverBrowser.setPrelistenState(e.status, e.host, e.port);
+                // On connected, sync initial volume from browser to processor
+                if (e.status == jamwide::PrelistenStatus::Connected)
+                {
+                    processorRef.prelisten_volume.store(
+                        serverBrowser.prelistenVolume, std::memory_order_relaxed);
+                }
+            }
         }, std::move(evt));
     });
 
@@ -426,21 +459,37 @@ void JamWideJuceEditor::pollStatus()
     int status = client->cached_status.load(std::memory_order_acquire);
     int numUsers = processorRef.userCount.load(std::memory_order_relaxed);
 
-    connectionBar.updateStatus(status, numUsers);
+    // Suppress connection bar update during prelisten (Research Gray Area 6).
+    // Without this, the bar shows green dot / "Connecting..." for preview connections,
+    // which is misleading -- the user is not in a session.
+    if (processorRef.prelisten_mode.load(std::memory_order_relaxed))
+    {
+        // Show disconnected state in connection bar during prelisten
+        connectionBar.updateStatus(NJClient::NJC_STATUS_DISCONNECTED, 0);
+    }
+    else
+    {
+        connectionBar.updateStatus(status, numUsers);
+    }
 
     // REVIEW FIX: Use member variable prevPollStatus_ instead of static int lastStatus.
     // This prevents state leaking across editor reconstructions.
     if (status != prevPollStatus_)
     {
-        if (status == NJClient::NJC_STATUS_OK)
+        // Skip UI state transitions during prelisten -- mixer and chat should
+        // not react to preview connections (Research Gray Area 6)
+        if (!processorRef.prelisten_mode.load(std::memory_order_relaxed))
         {
-            channelStripArea.setConnectedState();
-            chatPanel.setConnectedState();
-        }
-        else if (prevPollStatus_ == NJClient::NJC_STATUS_OK || prevPollStatus_ == -1)
-        {
-            channelStripArea.setDisconnectedState();
-            chatPanel.setNotConnectedState();
+            if (status == NJClient::NJC_STATUS_OK)
+            {
+                channelStripArea.setConnectedState();
+                chatPanel.setConnectedState();
+            }
+            else if (prevPollStatus_ == NJClient::NJC_STATUS_OK || prevPollStatus_ == -1)
+            {
+                channelStripArea.setDisconnectedState();
+                chatPanel.setNotConnectedState();
+            }
         }
         prevPollStatus_ = status;
     }
@@ -451,6 +500,13 @@ void JamWideJuceEditor::showServerBrowser()
     serverBrowser.setLoading();
     serverBrowser.setBounds(getLocalBounds());
     serverBrowser.show();
+
+    // Disable Listen buttons when in a non-prelisten session
+    bool inSession = (processorRef.getClient()->cached_status.load(std::memory_order_acquire)
+                      == NJClient::NJC_STATUS_OK)
+                  && !processorRef.prelisten_mode.load(std::memory_order_relaxed);
+    serverBrowser.setListenEnabled(!inSession);
+
     jamwide::RequestServerListCommand cmd;
     cmd.url = "http://autosong.ninjam.com/serverlist.php";
     processorRef.cmd_queue.try_push(std::move(cmd));

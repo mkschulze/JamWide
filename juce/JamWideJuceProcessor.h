@@ -157,6 +157,13 @@ public:
     // Last known host BPM (for UI sync validation)
     std::atomic<float> cachedHostBpm_{0.0f};
 
+    // ── Prelisten state (Phase 14.1 — BROWSE-01) ──
+    // Written by NinjamRunThread on PrelistenCommand/StopPrelistenCommand.
+    // Read by audio thread (processBlock) and message thread (editor/connection bar).
+    std::atomic<bool>  prelisten_mode{false};
+    std::atomic<float> prelisten_volume{0.7f};
+    std::atomic<float> savedMetronomeVolume_{0.5f}; // saved before prelisten mutes it
+
     // MIDI standalone device persistence (stable identifiers per review feedback)
     juce::String midiInputDeviceId;
     juce::String midiOutputDeviceId;

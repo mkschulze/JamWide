@@ -488,6 +488,19 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                           false, hostPlaying);
 
         accumulateBusesToMainMix(outPtrs, numSamples);
+
+        // Prelisten volume: scale main mix (channels 0-1) by dedicated prelisten knob.
+        // During prelisten, justmonitor remains false so NJClient mixes remote audio
+        // into outPtrs normally. Local channels are cleared (DeleteLocalChannel) before
+        // Connect, so nothing encodes/transmits. Prelisten and normal session are mutually
+        // exclusive (Approach B), so this never attenuates host-routed audio.
+        if (prelisten_mode.load(std::memory_order_relaxed))
+        {
+            const float pv = prelisten_volume.load(std::memory_order_relaxed);
+            juce::FloatVectorOperations::multiply(outPtrs[0], pv, numSamples);
+            juce::FloatVectorOperations::multiply(outPtrs[1], pv, numSamples);
+        }
+
         routeOutputsToJuceBuses(buffer, numSamples);
         measureMasterVu(numSamples);
     }

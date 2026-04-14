@@ -93,6 +93,14 @@ struct SyncCommand {};           // User requests sync (IDLE -> WAITING)
 struct SyncCancelCommand {};     // User cancels sync (WAITING -> IDLE)
 struct SyncDisableCommand {};    // User disables sync (ACTIVE -> IDLE)
 
+// Audio Prelisten commands (Phase 14.1 — BROWSE-01)
+struct PrelistenCommand {
+    std::string host;
+    int port = 2049;
+};
+
+struct StopPrelistenCommand {};
+
 using UiCommand = std::variant<
     ConnectCommand,
     DisconnectCommand,
@@ -106,7 +114,9 @@ using UiCommand = std::variant<
     SetRoutingModeCommand,
     SyncCommand,
     SyncCancelCommand,
-    SyncDisableCommand
+    SyncDisableCommand,
+    PrelistenCommand,
+    StopPrelistenCommand
 >;
 
 } // namespace jamwide

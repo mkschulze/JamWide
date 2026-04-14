@@ -92,6 +92,22 @@ struct SyncStateChangedEvent {
     SyncReason reason;  // Why the state changed
 };
 
+// Prelisten connection lifecycle status (Phase 14.1 — BROWSE-01)
+// Addresses review: single bool is too weak for connection state tracking.
+enum class PrelistenStatus : int {
+    Connecting = 0,   // Connect initiated, waiting for auth
+    Connected = 1,    // NJC_STATUS_OK received, audio flowing
+    Stopped = 2,      // Disconnected (user action or error)
+    Failed = 3        // Connection failed (unreachable, auth error)
+};
+
+struct PrelistenStateEvent {
+    PrelistenStatus status = PrelistenStatus::Stopped;
+    std::string host;         // Server host for UI reconciliation
+    int port = 0;             // Server port for UI reconciliation
+    std::string server_name;  // Display name (from server list or host)
+};
+
 /**
  * Variant type for all UI events.
  *
@@ -107,7 +123,8 @@ using UiEvent = std::variant<
     ServerListEvent,
     BpmChangedEvent,
     BpiChangedEvent,
-    SyncStateChangedEvent
+    SyncStateChangedEvent,
+    PrelistenStateEvent
 >;
 
 } // namespace jamwide

@@ -723,9 +723,11 @@ void NinjamRunThread::processCommands(NJClient* client)
                 // Step 5: Build username from processor.lastUsername (NOT client->GetUser())
                 // Research Gray Area 5: Disconnect() clears m_user to empty string,
                 // so client->GetUser() would return "" here.
+                // Must use "anonymous:" prefix for passwordless connections — NINJAM
+                // servers reject usernames without this prefix when no password is set.
                 std::string uname = processor.lastUsername.toStdString();
                 if (uname.empty()) uname = "anonymous";
-                std::string username = "[preview]" + uname;
+                std::string username = "anonymous:[preview]" + uname;
 
                 // Step 6: Store host/port for Connected event emission in handleStatusChange
                 prelistenHost_ = c.host;

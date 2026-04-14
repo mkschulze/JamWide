@@ -19,6 +19,8 @@ import {
   getSavedEffect,
   saveEffect,
   setLastAutoDelay,
+  initDelayControls,
+  updateFooterDelayStatus,
   renderRosterStrip,
   getSavedBandwidthProfile,
   saveBandwidthProfile,
@@ -233,6 +235,7 @@ const callbacks: WsCallbacks = {
   onBufferDelay(msg) {
     console.log('VideoSync: plugin sent bufferDelay:', msg.delayMs, 'ms');
     setLastAutoDelay(msg.delayMs);
+    updateFooterDelayStatus();
   },
 
   onBeatHeartbeat(msg) {
@@ -266,6 +269,9 @@ const callbacks: WsCallbacks = {
 
 // ── Connect to plugin ──
 connectToPlugin(port, callbacks);
+
+// ── Wire delay slider and auto button (Phase 12.1) ──
+initDelayControls();
 
 // ── Wire reconnect button ──
 const reconnectBtn = document.getElementById('reconnect-btn');

@@ -320,6 +320,55 @@ export const getCachedBufferDelay = getActiveDelayMs;
 export const resetCachedBufferDelay = resetDelayState;
 export const reapplyCachedBufferDelay = reapplyActiveDelay;
 
+// -- Delay Controls UI (Phase 12.1 — manual slider + footer status) --
+
+/** Initialize delay control event handlers. Safe to call once after DOM load. */
+export function initDelayControls(): void {
+  const slider = document.getElementById('delay-slider') as HTMLInputElement | null;
+  const autoBtn = document.getElementById('delay-auto-btn') as HTMLButtonElement | null;
+  const status = document.getElementById('delay-status');
+  if (!slider || !autoBtn || !status) return;
+
+  slider.addEventListener('input', () => {
+    switchToManual(parseInt(slider.value, 10));
+    updateDelayUI();
+  });
+
+  autoBtn.addEventListener('click', () => {
+    switchToAuto();
+    updateDelayUI();
+  });
+}
+
+/** Update the delay UI elements (status text, slider position, auto button state). */
+export function updateDelayUI(): void {
+  const slider = document.getElementById('delay-slider') as HTMLInputElement | null;
+  const autoBtn = document.getElementById('delay-auto-btn') as HTMLButtonElement | null;
+  const status = document.getElementById('delay-status');
+  if (!slider || !autoBtn || !status) return;
+
+  const active = getActiveDelayMs();
+  if (active !== null) {
+    slider.disabled = false;
+    slider.value = String(active);
+    status.textContent = 'Buffer: ' + getDelayDisplayText();
+  } else {
+    slider.disabled = true;
+    status.textContent = 'Buffer: --';
+  }
+
+  if (isManualMode()) {
+    autoBtn.classList.remove('auto-active');
+  } else {
+    autoBtn.classList.add('auto-active');
+  }
+}
+
+/** Callback for main.ts to refresh footer after delay state changes. */
+export function updateFooterDelayStatus(): void {
+  updateDelayUI();
+}
+
 // -- Roster Label Strip (D-09, D-10) --
 // Addresses review concern R-HIGH-02: roster lifecycle.
 // Each call to renderRosterStrip is a FULL STATE REPLACEMENT per the protocol contract.

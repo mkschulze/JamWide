@@ -261,6 +261,53 @@ body {
   100% { opacity: 0.4; transform: scale(1); background-color: var(--accent-connect); }
 }
 
+/* -- Buffer Delay Controls (Phase 12.1) -- */
+
+.delay-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.delay-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  min-width: 100px;
+}
+
+.delay-slider {
+  width: 100px;
+  accent-color: #648cff;
+  cursor: pointer;
+}
+
+.delay-slider:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.delay-auto-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.delay-auto-btn:hover {
+  border-color: var(--text-secondary);
+}
+
+.delay-auto-btn.auto-active {
+  color: var(--accent-connect);
+  border-color: rgba(64, 224, 112, 0.3);
+}
+
 /* ── Pulse Animation ── */
 
 @keyframes pulse {

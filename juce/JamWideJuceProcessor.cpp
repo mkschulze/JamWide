@@ -196,12 +196,17 @@ void JamWideJuceProcessor::syncApvtsToAtomics()
         client->config_mastermute.store(
             *apvts.getRawParameterValue("masterMute") >= 0.5f,
             std::memory_order_relaxed);
-        client->config_metronome.store(
-            *apvts.getRawParameterValue("metroVol"),
-            std::memory_order_relaxed);
-        client->config_metronome_mute.store(
-            *apvts.getRawParameterValue("metroMute") >= 0.5f,
-            std::memory_order_relaxed);
+        // During prelisten, metronome is force-muted by the run thread.
+        // Skip APVTS→atomic sync so the zero isn't overwritten every buffer.
+        if (!prelisten_mode.load(std::memory_order_relaxed))
+        {
+            client->config_metronome.store(
+                *apvts.getRawParameterValue("metroVol"),
+                std::memory_order_relaxed);
+            client->config_metronome_mute.store(
+                *apvts.getRawParameterValue("metroMute") >= 0.5f,
+                std::memory_order_relaxed);
+        }
     }
 }
 

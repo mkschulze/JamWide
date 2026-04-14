@@ -151,6 +151,10 @@ int license_callback(void* user_data, const char* license_text)
 {
     auto& proc = *static_cast<JamWideJuceProcessor*>(user_data);
 
+    // Auto-accept license in prelisten mode -- no UI dialog needed
+    if (proc.prelisten_mode.load(std::memory_order_acquire))
+        return 1;
+
     // Store license text for UI to display
     {
         std::lock_guard<std::mutex> lock(proc.license_mutex);
@@ -246,6 +250,33 @@ void NinjamRunThread::handleStatusChange(NJClient* client, int currentStatus)
         statusEvt.error_msg = "Invalid credentials";
     processor.evt_queue.try_push(std::move(statusEvt));
 
+    // Handle prelisten failure or async disconnect
+    if (processor.prelisten_mode.load(std::memory_order_acquire))
+    {
+        if (currentStatus == NJClient::NJC_STATUS_CANTCONNECT ||
+            currentStatus == NJClient::NJC_STATUS_INVALIDAUTH)
+        {
+            processor.prelisten_mode.store(false, std::memory_order_release);
+            // Restore metronome volume saved during PrelistenCommand
+            client->config_metronome.store(
+                processor.savedMetronomeVolume_.load(std::memory_order_relaxed),
+                std::memory_order_relaxed);
+            processor.evt_queue.try_push(jamwide::PrelistenStateEvent{
+                jamwide::PrelistenStatus::Failed, "", 0, ""});
+        }
+        else if (currentStatus == NJClient::NJC_STATUS_DISCONNECTED)
+        {
+            // Async disconnect (server kicked us, network loss)
+            processor.prelisten_mode.store(false, std::memory_order_release);
+            // Restore metronome volume saved during PrelistenCommand
+            client->config_metronome.store(
+                processor.savedMetronomeVolume_.load(std::memory_order_relaxed),
+                std::memory_order_relaxed);
+            processor.evt_queue.try_push(jamwide::PrelistenStateEvent{
+                jamwide::PrelistenStatus::Stopped, "", 0, ""});
+        }
+    }
+
     lastStatus_ = currentStatus;
 
     // BPM/BPI suppression window: after a fresh OK transition,
@@ -257,35 +288,51 @@ void NinjamRunThread::handleStatusChange(NJClient* client, int currentStatus)
     else
         suppressBpmBpiUntilMs_ = 0;
 
-    // On connect: set up all 4 local channels per D-12
+    // On connect: set up local channels (or emit prelisten Connected event)
     if (currentStatus == NJClient::NJC_STATUS_OK)
     {
-        // Channel 0: stereo input, transmit=true (default)
-        client->SetLocalChannelInfo(0, "Ch1",
-            true, processor.localInputSelector[0] * 2 | (1 << 10),  // stereo pair: pair index → mono start ch
-            true, 256,               // 256 kbps
-            true, processor.localTransmit[0]);
-
-        // Channels 1-3: stereo input pairs, transmit from processor state
-        // Use input bus and transmit state from processor (persisted per D-14, D-21)
-        for (int ch = 1; ch < 4; ++ch)
+        if (processor.prelisten_mode.load(std::memory_order_acquire))
         {
-            juce::String name = "Ch" + juce::String(ch + 1);
-            int srcch = processor.localInputSelector[ch] * 2 | (1 << 10);  // stereo pair: pair index → mono start ch
-            client->SetLocalChannelInfo(ch, name.toRawUTF8(),
-                true, srcch,
-                true, 256,
-                true, processor.localTransmit[ch]);
+            // Prelisten: no local channels to set up.
+            // config_autosubscribe is already 1 (set in constructor), so all
+            // remote channels will be auto-subscribed.
+            // Emit Connected event with host+port for robust UI reconciliation.
+            processor.evt_queue.try_push(jamwide::PrelistenStateEvent{
+                jamwide::PrelistenStatus::Connected,
+                prelistenHost_,
+                prelistenPort_,
+                prelistenHost_});
         }
+        else
+        {
+            // Normal connection: set up all 4 local channels per D-12
+            // Channel 0: stereo input, transmit=true (default)
+            client->SetLocalChannelInfo(0, "Ch1",
+                true, processor.localInputSelector[0] * 2 | (1 << 10),  // stereo pair: pair index → mono start ch
+                true, 256,               // 256 kbps
+                true, processor.localTransmit[0]);
 
-        // Apply persisted routing mode for future auto-assign (per D-12)
-        // REVIEW FIX: Use .load() since routingMode is std::atomic<int>
-        int rm = processor.routingMode.load(std::memory_order_relaxed);
-        client->config_remote_autochan = rm;
-        // REVIEW FIX: nch=32 excludes metronome bus from auto-assign search
-        client->config_remote_autochan_nch = (rm > 0) ? 32 : 0;
-        // Set metronome to last bus (per D-11)
-        client->SetMetronomeChannel(32);
+            // Channels 1-3: stereo input pairs, transmit from processor state
+            // Use input bus and transmit state from processor (persisted per D-14, D-21)
+            for (int ch = 1; ch < 4; ++ch)
+            {
+                juce::String name = "Ch" + juce::String(ch + 1);
+                int srcch = processor.localInputSelector[ch] * 2 | (1 << 10);  // stereo pair: pair index → mono start ch
+                client->SetLocalChannelInfo(ch, name.toRawUTF8(),
+                    true, srcch,
+                    true, 256,
+                    true, processor.localTransmit[ch]);
+            }
+
+            // Apply persisted routing mode for future auto-assign (per D-12)
+            // REVIEW FIX: Use .load() since routingMode is std::atomic<int>
+            int rm = processor.routingMode.load(std::memory_order_relaxed);
+            client->config_remote_autochan = rm;
+            // REVIEW FIX: nch=32 excludes metronome bus from auto-assign search
+            client->config_remote_autochan_nch = (rm > 0) ? 32 : 0;
+            // Set metronome to last bus (per D-11)
+            client->SetMetronomeChannel(32);
+        }
     }
 }
 
@@ -315,7 +362,12 @@ void NinjamRunThread::handleUserInfoChange(NJClient* client)
         if (processor.videoCompanion && processor.videoCompanion->isActive())
             rosterCopyForCompanion = processor.cachedUsers;
     }
-    processor.evt_queue.try_push(jamwide::UserInfoChangedEvent{});
+    // Suppress channel strip refresh during prelisten (Research Gray Area 6).
+    // Prelisten users should NOT appear in the mixer. OSC roster is also
+    // implicitly suppressed since the editor's UserInfoChangedEvent handler
+    // drives refreshChannelStrips().
+    if (!processor.prelisten_mode.load(std::memory_order_acquire))
+        processor.evt_queue.try_push(jamwide::UserInfoChangedEvent{});
 
     // Bridge roster to VideoCompanion WebSocket clients. onRosterChanged
     // marshals to the message thread internally — call it without the lock.
@@ -514,6 +566,20 @@ void NinjamRunThread::processCommands(NJClient* client)
 
             if constexpr (std::is_same_v<T, jamwide::ConnectCommand>)
             {
+                // Transition contract: if prelistening, stop it before normal connect.
+                // This ensures deterministic ordering: disconnect preview, then connect session.
+                if (processor.prelisten_mode.load(std::memory_order_acquire))
+                {
+                    client->Disconnect();
+                    processor.prelisten_mode.store(false, std::memory_order_release);
+                    // Restore metronome volume saved during PrelistenCommand
+                    client->config_metronome.store(
+                        processor.savedMetronomeVolume_.load(std::memory_order_relaxed),
+                        std::memory_order_relaxed);
+                    // No PrelistenStateEvent needed -- the StatusChangedEvent from
+                    // the new connection will update the UI.
+                }
+
                 std::string effectiveUser = c.username;
                 if (c.password.empty() &&
                     effectiveUser.rfind("anonymous", 0) != 0)
@@ -614,6 +680,76 @@ void NinjamRunThread::processCommands(NJClient* client)
                 {
                     processor.evt_queue.try_push(jamwide::SyncStateChangedEvent{
                         JamWideJuceProcessor::kSyncIdle, jamwide::SyncReason::UserDisable});
+                }
+            }
+            else if constexpr (std::is_same_v<T, jamwide::PrelistenCommand>)
+            {
+                // ── Prelisten Connect Sequence ──
+                // Research Gray Area 1 fix: Disconnect() does NOT clear m_locchannels.
+                // We must call DeleteLocalChannel() for each existing channel before
+                // Connect, otherwise AUTH_REPLY's NotifyServerOfChannelChange() will
+                // announce stale local channels to the server.
+
+                // Step 1: Disconnect any existing connection
+                if (client->GetStatus() >= 0)
+                {
+                    client->cached_status.store(
+                        NJClient::NJC_STATUS_DISCONNECTED,
+                        std::memory_order_release);
+                    client->Disconnect();
+                }
+
+                // Step 2: Clear all local channels (Research Gray Area 1, Option B)
+                // DeleteLocalChannel removes from m_locchannels vector.
+                // Delete in reverse order to avoid index shifting issues.
+                for (int ch = 3; ch >= 0; --ch)
+                    client->DeleteLocalChannel(ch);
+
+                // Step 3: Mute metronome during prelisten (Research Open Question 2)
+                // Save current volume, set to 0.0 so preview audio is clean.
+                float savedMetVol = client->config_metronome.load(std::memory_order_relaxed);
+                processor.savedMetronomeVolume_.store(savedMetVol, std::memory_order_relaxed);
+                client->config_metronome.store(0.0f, std::memory_order_relaxed);
+
+                // Step 4: Set prelisten mode BEFORE Connect
+                processor.prelisten_mode.store(true, std::memory_order_release);
+
+                // Step 5: Build username from processor.lastUsername (NOT client->GetUser())
+                // Research Gray Area 5: Disconnect() clears m_user to empty string,
+                // so client->GetUser() would return "" here.
+                std::string uname = processor.lastUsername.toStdString();
+                if (uname.empty()) uname = "anonymous";
+                std::string username = "[preview]" + uname;
+
+                // Step 6: Store host/port for Connected event emission in handleStatusChange
+                prelistenHost_ = c.host;
+                prelistenPort_ = c.port;
+
+                // Step 7: Connect (justmonitor stays false in AudioProc -- Research Gray Area 4)
+                // With empty m_locchannels, nothing encodes/transmits. Remote mixing works
+                // because justmonitor=false allows the full AudioProc path.
+                std::string addr = c.host + ":" + std::to_string(c.port);
+                client->Connect(addr.c_str(), username.c_str(), "");
+
+                // Step 8: Emit Connecting state so UI can show feedback
+                processor.evt_queue.try_push(jamwide::PrelistenStateEvent{
+                    jamwide::PrelistenStatus::Connecting, c.host, c.port, c.host});
+            }
+            else if constexpr (std::is_same_v<T, jamwide::StopPrelistenCommand>)
+            {
+                if (processor.prelisten_mode.load(std::memory_order_acquire))
+                {
+                    client->cached_status.store(
+                        NJClient::NJC_STATUS_DISCONNECTED,
+                        std::memory_order_release);
+                    client->Disconnect();
+                    processor.prelisten_mode.store(false, std::memory_order_release);
+                    // Restore metronome volume saved during PrelistenCommand
+                    client->config_metronome.store(
+                        processor.savedMetronomeVolume_.load(std::memory_order_relaxed),
+                        std::memory_order_relaxed);
+                    processor.evt_queue.try_push(jamwide::PrelistenStateEvent{
+                        jamwide::PrelistenStatus::Stopped, "", 0, ""});
                 }
             }
             else if constexpr (std::is_same_v<T, jamwide::SetRoutingModeCommand>)

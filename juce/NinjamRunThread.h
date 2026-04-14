@@ -49,5 +49,9 @@ private:
     // After the window expires, normal change detection resumes.
     juce::int64 suppressBpmBpiUntilMs_ = 0;
 
+    // Prelisten connection metadata (stored from PrelistenCommand for event emission)
+    std::string prelistenHost_;
+    int prelistenPort_ = 0;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(NinjamRunThread)
 };

@@ -257,6 +257,10 @@ void NinjamRunThread::handleStatusChange(NJClient* client, int currentStatus)
             currentStatus == NJClient::NJC_STATUS_INVALIDAUTH)
         {
             processor.prelisten_mode.store(false, std::memory_order_release);
+            // Reset cached_status so pollStatus doesn't leak the error to the
+            // connection bar after prelisten_mode is cleared
+            client->cached_status.store(NJClient::NJC_STATUS_DISCONNECTED,
+                                        std::memory_order_release);
             // Restore metronome volume saved during PrelistenCommand
             client->config_metronome.store(
                 processor.savedMetronomeVolume_.load(std::memory_order_relaxed),
@@ -268,6 +272,8 @@ void NinjamRunThread::handleStatusChange(NJClient* client, int currentStatus)
         {
             // Async disconnect (server kicked us, network loss)
             processor.prelisten_mode.store(false, std::memory_order_release);
+            client->cached_status.store(NJClient::NJC_STATUS_DISCONNECTED,
+                                        std::memory_order_release);
             // Restore metronome volume saved during PrelistenCommand
             client->config_metronome.store(
                 processor.savedMetronomeVolume_.load(std::memory_order_relaxed),

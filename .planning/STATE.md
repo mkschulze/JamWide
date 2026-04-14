@@ -5,7 +5,7 @@ milestone_name: OSC + Video
 status: executing
 stopped_at: Phase 14 UI-SPEC approved
 last_updated: "2026-04-11T20:22:31.280Z"
-last_activity: 2026-04-11
+last_activity: 2026-04-13 - Phase 12.1 complete
 progress:
   total_phases: 6
   completed_phases: 5

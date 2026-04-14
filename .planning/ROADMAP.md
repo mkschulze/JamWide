@@ -109,7 +109,7 @@ Plans:
   4. Console diagnostics trace the full setBufferDelay pipeline
 **Plans**: 1 plan
 Plans:
-- [ ] 12.1-01-PLAN.md — Fix setBufferDelay pipeline (URL param, onload re-send, logging) + manual delay slider with auto/manual toggle
+- [x] 12.1-01-PLAN.md — Fix setBufferDelay pipeline (URL param, onload re-send, logging) + manual delay slider with auto/manual toggle (completed 2026-04-13)
 
 ### Phase 13: Video Display Modes and OSC Integration
 **Goal**: Users can pop out individual participant video into separate windows and control all video features from their OSC surface
@@ -245,7 +245,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 10. OSC Remote Users and Template | v1.1 | 2/2 | Complete    | 2026-04-07 |
 | 11. Video Companion Foundation | v1.1 | 3/3 | Complete    | 2026-04-07 |
 | 12. Video Sync and Roster Discovery | v1.1 | 2/2 | Complete   | 2026-04-07 |
-| 12.1 Video-Audio Sync Fix | v1.1 | 0/1 | Not started | - |
+| 12.1 Video-Audio Sync Fix | v1.1 | 1/1 | Complete | 2026-04-13 |
 | 13. Video Display Modes and OSC Integration | v1.1 | 2/2 | Complete    | 2026-04-07 |
 | 14. MIDI Remote Control | v1.1 | 0/3 | In Progress | - |
 | 14.1 Audio Prelisten | v1.1 | 0/2 | Not started | - |

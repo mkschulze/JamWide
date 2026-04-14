@@ -31,8 +31,10 @@
 - [x] **Phase 10: OSC Remote Users and Template** -- Index-based remote user control, roster broadcasts, connect/disconnect, shipped TouchOSC template (completed 2026-04-07)
 - [x] **Phase 11: Video Companion Foundation** -- One-click VDO.Ninja launch with auto room ID, companion page, local WebSocket server, safety notices (completed 2026-04-07)
 - [x] **Phase 12: Video Sync and Roster Discovery** -- Interval-synced buffering, VDO.Ninja API roster mapping, room security, bandwidth profiles (completed 2026-04-07)
+- [ ] **Phase 12.1: Video-Audio Sync Fix** -- Fix setBufferDelay pipeline + manual delay slider for video-audio sync
 - [x] **Phase 13: Video Display Modes and OSC Integration** -- Per-user popout windows, OSC video control, grid/popout mode switching (completed 2026-04-07)
 - [ ] **Phase 14: MIDI Remote Control** -- MIDI CC mapping for mixer parameters including remote channels, bidirectional feedback where possible
+- [ ] **Phase 14.1: Audio Prelisten** -- Listen button in server browser to hear room audio before joining, NJClient receive-only mode
 
 ## Phase Details
 
@@ -96,6 +98,19 @@ Plans:
 - [x] 12-01-PLAN.md — C++ plugin: juce_cryptography linkage, buffer delay calculation+broadcast, SHA-256 room hash derivation, companion URL hash fragment, BPM/BPI event wiring
 - [x] 12-02-PLAN.md — Companion page: Vitest setup, BufferDelayMessage type, URL builder (chunked/quality/hash), bandwidth dropdown, roster name label strip, buffer delay relay, all tests
 
+### Phase 12.1: Video-Audio Sync Fix
+**Goal**: Receiving participants see video delayed to match NINJAM audio timing, with a manual slider override for fine-tuning
+**Depends on**: Phase 12
+**Requirements**: VID-08 (fix)
+**Success Criteria** (what must be TRUE):
+  1. Receiving participant sees video and hears audio within ~1s of each other (not 8s gap)
+  2. Companion page footer shows current buffer delay and auto/manual mode
+  3. User can override auto delay with a manual slider (0-30s, 500ms steps)
+  4. Console diagnostics trace the full setBufferDelay pipeline
+**Plans**: 1 plan
+Plans:
+- [ ] 12.1-01-PLAN.md — Fix setBufferDelay pipeline (URL param, onload re-send, logging) + manual delay slider with auto/manual toggle
+
 ### Phase 13: Video Display Modes and OSC Integration
 **Goal**: Users can pop out individual participant video into separate windows and control all video features from their OSC surface
 **Depends on**: Phase 10, Phase 12
@@ -123,6 +138,22 @@ Plans:
 - [ ] 14-01-PLAN.md -- MIDI mapper core: 69 APVTS params, MidiMapper CC dispatch + per-mapping echo suppression + 20ms centralized APVTS-to-NJClient bridge, MidiLearnManager, state version 3, 15 unit tests
 - [ ] 14-02-PLAN.md -- MIDI Learn UX: right-click menus + config dialog Learn button (host fallback), visual feedback, MidiConfigDialog (slot-labeled mapping table + Range column + standalone device selector), MidiStatusDot 4-state footer indicator
 - [ ] 14-03-PLAN.md -- Centralized remote state: refactor OscServer + ChannelStripArea to APVTS-only for remote group controls (no direct cmd_queue), eliminating double dispatch
+**UI hint**: yes
+
+### Phase 14.1: Audio Prelisten
+**Goal**: Users can hear what's happening in a NINJAM server room before joining, via a Listen button in the server browser
+**Depends on**: Phase 8 (v1.0 complete, server browser exists)
+**Requirements**: BROWSE-01
+**Success Criteria** (what must be TRUE):
+  1. User can click a Listen button on a populated server row and hear the room's audio through their output
+  2. User can stop listening or switch to a different room with one click
+  3. User can adjust prelisten volume via a slider in the browser title bar
+  4. Closing the server browser stops any active prelisten
+  5. Listen buttons are disabled when already connected to a session
+**Plans**: 2 plans
+Plans:
+- [ ] 14.1-01-PLAN.md — Audio prelisten backend: PrelistenCommand/StopPrelistenCommand types, processor prelisten_mode/prelisten_volume atomics, NinjamRunThread zero-channel connect with auto-accept license
+- [ ] 14.1-02-PLAN.md — Audio prelisten UI and editor wiring: Listen/Stop button per row, volume slider, active row visual feedback, editor command/event wiring, session guard
 **UI hint**: yes
 
 ### v1.2 Security & Quality (Planned)
@@ -214,8 +245,10 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 10. OSC Remote Users and Template | v1.1 | 2/2 | Complete    | 2026-04-07 |
 | 11. Video Companion Foundation | v1.1 | 3/3 | Complete    | 2026-04-07 |
 | 12. Video Sync and Roster Discovery | v1.1 | 2/2 | Complete   | 2026-04-07 |
+| 12.1 Video-Audio Sync Fix | v1.1 | 0/1 | Not started | - |
 | 13. Video Display Modes and OSC Integration | v1.1 | 2/2 | Complete    | 2026-04-07 |
 | 14. MIDI Remote Control | v1.1 | 0/3 | In Progress | - |
+| 14.1 Audio Prelisten | v1.1 | 0/2 | Not started | - |
 | 15. Connection Encryption | v1.2 | 2/2 | Complete    | 2026-04-11 |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |

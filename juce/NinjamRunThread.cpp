@@ -6,6 +6,7 @@
 #include "ui/ui_state.h"
 #include "net/server_list.h"
 #include "video/VideoCompanion.h"
+#include "jnetlib/util.h"
 
 #include <chrono>
 #include <mutex>
@@ -456,6 +457,7 @@ void NinjamRunThread::updateSessionAndVuSnapshot(NJClient* client)
 //==============================================================================
 void NinjamRunThread::run()
 {
+    JNL::open_socketlib();  // Ensure Winsock is initialized for HTTP fetches
     lastStatus_ = NJClient::NJC_STATUS_DISCONNECTED;
 
     // Set up callbacks

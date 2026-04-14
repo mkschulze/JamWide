@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JamWide Video</title>
-  <script type="module" crossorigin src="/video/assets/main-CL2ikTex.js"></script>
-  <link rel="modulepreload" crossorigin href="/video/assets/ui-DhMT2Lv6.js">
-  <link rel="stylesheet" crossorigin href="/video/assets/main-rZyvYmX1.css">
+  <script type="module" crossorigin src="/video/assets/main-BfFyGUBm.js"></script>
+  <link rel="modulepreload" crossorigin href="/video/assets/ui-CG8bNa9P.js">
+  <link rel="stylesheet" crossorigin href="/video/assets/main-BXcacD9i.css">
 </head>
 <body>
   <header id="header">
@@ -46,6 +46,13 @@
     <span id="sync-indicator" style="display:none;">
       <span id="sync-beat-dot" class="sync-dot"></span>
       <span id="sync-beat-label" class="sync-label"></span>
+    </span>
+    <span id="delay-controls" class="delay-controls">
+      <span id="delay-status" class="delay-status">Buffer: --</span>
+      <input type="range" id="delay-slider" class="delay-slider"
+             min="0" max="30000" step="500" value="0" disabled
+             title="Video buffer delay" />
+      <button id="delay-auto-btn" class="delay-auto-btn auto-active" title="Switch to auto delay from plugin">Auto</button>
     </span>
     <button id="reconnect-btn" style="display:none;">Reconnect to Plugin</button>
   </footer>

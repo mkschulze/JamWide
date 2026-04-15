@@ -33,7 +33,7 @@
 - [x] **Phase 12: Video Sync and Roster Discovery** -- Interval-synced buffering, VDO.Ninja API roster mapping, room security, bandwidth profiles (completed 2026-04-07)
 - [ ] **Phase 12.1: Video-Audio Sync Fix** -- Fix setBufferDelay pipeline + manual delay slider for video-audio sync
 - [x] **Phase 13: Video Display Modes and OSC Integration** -- Per-user popout windows, OSC video control, grid/popout mode switching (completed 2026-04-07)
-- [ ] **Phase 14: MIDI Remote Control** -- MIDI CC mapping for mixer parameters including remote channels, bidirectional feedback where possible
+- [x] **Phase 14: MIDI Remote Control** -- MIDI CC mapping for mixer parameters including remote channels, bidirectional feedback where possible (completed 2026-04-15)
 - [ ] **Phase 14.1: Audio Prelisten** -- Listen button in server browser to hear room audio before joining, NJClient receive-only mode
 
 ## Phase Details
@@ -137,7 +137,7 @@ Plans:
 Plans:
 - [x] 14-01-PLAN.md -- MIDI mapper core: 69 APVTS params, MidiMapper CC dispatch + per-mapping echo suppression + 20ms centralized APVTS-to-NJClient bridge, MidiLearnManager, state version 3, 15 unit tests
 - [x] 14-02-PLAN.md -- MIDI Learn UX: right-click menus + config dialog Learn button (host fallback), visual feedback, MidiConfigDialog (slot-labeled mapping table + Range column + standalone device selector), MidiStatusDot 4-state footer indicator
-- [ ] 14-03-PLAN.md -- Centralized remote state: refactor OscServer + ChannelStripArea to APVTS-only for remote group controls (no direct cmd_queue), eliminating double dispatch
+- [x] 14-03-PLAN.md -- Centralized remote state: refactor OscServer + ChannelStripArea to APVTS-only for remote group controls (no direct cmd_queue), eliminating double dispatch
 **UI hint**: yes
 
 ### Phase 14.1: Audio Prelisten
@@ -247,7 +247,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 12. Video Sync and Roster Discovery | v1.1 | 2/2 | Complete   | 2026-04-07 |
 | 12.1 Video-Audio Sync Fix | v1.1 | 1/1 | Complete | 2026-04-13 |
 | 13. Video Display Modes and OSC Integration | v1.1 | 2/2 | Complete    | 2026-04-07 |
-| 14. MIDI Remote Control | v1.1 | 2/3 | In Progress|  |
+| 14. MIDI Remote Control | v1.1 | 3/3 | Complete   | 2026-04-15 |
 | 14.1 Audio Prelisten | v1.1 | 1/2 | In Progress|  |
 | 15. Connection Encryption | v1.2 | 2/2 | Complete    | 2026-04-11 |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |

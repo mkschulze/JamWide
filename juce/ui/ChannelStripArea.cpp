@@ -598,7 +598,17 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
                 // Volume/Pan/Mute: NOT wired via callbacks — APVTS-attached,
                 // MidiMapper::timerCallback is the sole APVTS→NJClient sync path.
 
-                strip->onSoloToggled = [this, uName, cName](bool solo) {
+                int capturedSlot = visibleSlot;  // capture before increment
+                strip->onSoloToggled = [this, uName, cName, capturedSlot](bool solo) {
+                    // Update APVTS remote solo parameter for MIDI/DAW feedback
+                    juce::String apvtsId = "remoteSolo_" + juce::String(capturedSlot);
+                    if (auto* param = processorRef.apvts.getParameter(apvtsId))
+                        param->setValueNotifyingHost(solo ? 1.0f : 0.0f);
+
+                    if (processorRef.midiMapper)
+                        processorRef.midiMapper->setEchoSuppression(apvtsId);
+
+                    // Solo still needs sub-channel cmd_queue dispatch (per D-18)
                     auto [uIdx, cIdx] = findRemoteIndex(uName, cName);
                     if (uIdx < 0) return;
                     jamwide::SetUserChannelStateCommand cmd;
@@ -649,21 +659,40 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
             // Vol/Pan/Mute: APVTS-attached, MidiMapper::timerCallback is sole sync path.
             // Solo: per-channel in NINJAM, needs callback to toggle all channels.
             juce::String parentUserName(user.name);
-            parentStrip->onSoloToggled = [this, parentUserName](bool solo) {
-                std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
-                const auto& usrs = processorRef.cachedUsers;
-                for (int u = 0; u < static_cast<int>(usrs.size()); ++u) {
-                    if (juce::String(usrs[u].name) == parentUserName) {
-                        for (size_t c = 0; c < usrs[u].channels.size(); ++c) {
-                            jamwide::SetUserChannelStateCommand cmd;
-                            cmd.user_index = u;
-                            cmd.channel_index = usrs[u].channels[c].channel_index;
-                            cmd.set_solo = true;
-                            cmd.solo = solo;
-                            processorRef.cmd_queue.try_push(std::move(cmd));
+            int capturedParentSlot = visibleSlot;  // capture before increment
+            parentStrip->onSoloToggled = [this, parentUserName, capturedParentSlot](bool solo) {
+                // Update APVTS remote solo parameter for MIDI/DAW feedback
+                juce::String apvtsId = "remoteSolo_" + juce::String(capturedParentSlot);
+                if (auto* param = processorRef.apvts.getParameter(apvtsId))
+                    param->setValueNotifyingHost(solo ? 1.0f : 0.0f);
+
+                if (processorRef.midiMapper)
+                    processorRef.midiMapper->setEchoSuppression(apvtsId);
+
+                // Solo is special: group solo = set all sub-channels to solo state.
+                // Sub-channels are NOT APVTS-backed (per D-18), so direct cmd_queue remains.
+                // IMPORTANT: mutex released BEFORE APVTS calls above (prevents deadlock).
+                struct ChInfo { int userIdx; int channelIdx; };
+                std::vector<ChInfo> channels;
+                {
+                    std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
+                    const auto& usrs = processorRef.cachedUsers;
+                    for (int u = 0; u < static_cast<int>(usrs.size()); ++u) {
+                        if (juce::String(usrs[u].name) == parentUserName) {
+                            for (size_t c = 0; c < usrs[u].channels.size(); ++c)
+                                channels.push_back({ u, usrs[u].channels[c].channel_index });
+                            break;
                         }
-                        return;
                     }
+                }
+                // Mutex released -- dispatch sub-channel solo commands
+                for (const auto& ch : channels) {
+                    jamwide::SetUserChannelStateCommand cmd;
+                    cmd.user_index = ch.userIdx;
+                    cmd.channel_index = ch.channelIdx;
+                    cmd.set_solo = true;
+                    cmd.solo = solo;
+                    processorRef.cmd_queue.try_push(std::move(cmd));
                 }
             };
 

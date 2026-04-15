@@ -135,8 +135,8 @@ Plans:
   4. MIDI mappings persist across DAW sessions
 **Plans**: 3 plans
 Plans:
-- [ ] 14-01-PLAN.md -- MIDI mapper core: 69 APVTS params, MidiMapper CC dispatch + per-mapping echo suppression + 20ms centralized APVTS-to-NJClient bridge, MidiLearnManager, state version 3, 15 unit tests
-- [ ] 14-02-PLAN.md -- MIDI Learn UX: right-click menus + config dialog Learn button (host fallback), visual feedback, MidiConfigDialog (slot-labeled mapping table + Range column + standalone device selector), MidiStatusDot 4-state footer indicator
+- [x] 14-01-PLAN.md -- MIDI mapper core: 69 APVTS params, MidiMapper CC dispatch + per-mapping echo suppression + 20ms centralized APVTS-to-NJClient bridge, MidiLearnManager, state version 3, 15 unit tests
+- [x] 14-02-PLAN.md -- MIDI Learn UX: right-click menus + config dialog Learn button (host fallback), visual feedback, MidiConfigDialog (slot-labeled mapping table + Range column + standalone device selector), MidiStatusDot 4-state footer indicator
 - [ ] 14-03-PLAN.md -- Centralized remote state: refactor OscServer + ChannelStripArea to APVTS-only for remote group controls (no direct cmd_queue), eliminating double dispatch
 **UI hint**: yes
 
@@ -152,7 +152,7 @@ Plans:
   5. Listen buttons are disabled when already connected to a session
 **Plans**: 2 plans
 Plans:
-- [ ] 14.1-01-PLAN.md — Audio prelisten backend: PrelistenCommand/StopPrelistenCommand types, PrelistenStateEvent with status enum and host+port, processor atomics, NinjamRunThread DeleteLocalChannel cleanup + lastUsername + auto-accept license, channel strip/connection bar suppression
+- [x] 14.1-01-PLAN.md — Audio prelisten backend: PrelistenCommand/StopPrelistenCommand types, PrelistenStateEvent with status enum and host+port, processor atomics, NinjamRunThread DeleteLocalChannel cleanup + lastUsername + auto-accept license, channel strip/connection bar suppression
 - [ ] 14.1-02-PLAN.md — Audio prelisten UI and editor wiring: Listen/Stop button per row, volume slider, host+port based active row identity (survives refresh), CONNECTING/LISTENING states, editor command/event wiring, connection bar suppression, session guard, human verification checkpoint
 **UI hint**: yes
 
@@ -247,8 +247,8 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 12. Video Sync and Roster Discovery | v1.1 | 2/2 | Complete   | 2026-04-07 |
 | 12.1 Video-Audio Sync Fix | v1.1 | 1/1 | Complete | 2026-04-13 |
 | 13. Video Display Modes and OSC Integration | v1.1 | 2/2 | Complete    | 2026-04-07 |
-| 14. MIDI Remote Control | v1.1 | 0/3 | In Progress | - |
-| 14.1 Audio Prelisten | v1.1 | 0/2 | Not started | - |
+| 14. MIDI Remote Control | v1.1 | 2/3 | In Progress|  |
+| 14.1 Audio Prelisten | v1.1 | 1/2 | In Progress|  |
 | 15. Connection Encryption | v1.2 | 2/2 | Complete    | 2026-04-11 |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |

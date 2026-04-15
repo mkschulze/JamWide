@@ -38,7 +38,7 @@ Requirements for OSC remote control and VDO.Ninja video companion.
 
 ### MIDI Remote Control
 
-- [ ] **MIDI-01**: User can map MIDI CC to any mixer parameter (local, remote, master, metronome) with bidirectional feedback and persistent mappings
+- [x] **MIDI-01**: User can map MIDI CC to any mixer parameter (local, remote, master, metronome) with bidirectional feedback and persistent mappings
 
 ## v2 Requirements
 
@@ -93,7 +93,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VID-10 | Phase 12 | Pending |
 | VID-11 | Phase 13 | Pending |
 | VID-12 | Phase 12 | Pending |
-| MIDI-01 | Phase 14 | Pending |
+| MIDI-01 | Phase 14 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 24 total

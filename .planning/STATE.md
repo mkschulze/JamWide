@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: OSC + Video
 status: executing
-stopped_at: Phase 14 UI-SPEC approved
-last_updated: "2026-04-11T20:22:31.280Z"
-last_activity: 2026-04-13 - Phase 12.1 complete
+stopped_at: Completed 14-02-PLAN.md
+last_updated: "2026-04-15T17:19:55.894Z"
+last_activity: 2026-04-15
 progress:
-  total_phases: 6
-  completed_phases: 5
-  total_plans: 14
-  completed_plans: 12
-  percent: 86
+  total_phases: 8
+  completed_phases: 6
+  total_plans: 17
+  completed_plans: 15
+  percent: 88
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-05)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Phase 14 — MIDI Remote Control
+**Current focus:** Phase 14 — midi-remote-control
 
 ## Current Position
 
-Phase: 15
-Plan: Not started
+Phase: 14 (midi-remote-control) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-04-13 - Completed quick task 260413-udi: Add usernames in server room list
+Last activity: 2026-04-15
 
 Progress: [..........] 0% (v1.1 milestone)
 
@@ -52,6 +52,7 @@ Progress: [..........] 0% (v1.1 milestone)
 | 15 | 2 | - | - |
 
 *Updated after each plan completion*
+| Phase 14 P02 | 788 | 2 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -68,6 +69,8 @@ Recent decisions affecting current work:
 - Companion page on GitHub Pages HTTPS, plugin runs local WebSocket only (mixed-content constraint)
 - OSC callbacks must dispatch via callAsync() to preserve SPSC cmd_queue single-producer invariant
 - State version bump 1 to 2 for OSC config persistence
+- [Phase 14]: Green/mint MIDI Learn feedback instead of yellow to avoid solo button color conflict
+- [Phase 14]: Note On/Off MIDI mapping support added beyond original CC-only plan scope
 
 ### Pending Todos
 
@@ -94,6 +97,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-11T14:24:16.648Z
-Stopped at: Phase 14 UI-SPEC approved
-Resume file: .planning/phases/14-midi-remote-control/14-UI-SPEC.md
+Last session: 2026-04-15T17:19:55.890Z
+Stopped at: Completed 14-02-PLAN.md
+Resume file: None

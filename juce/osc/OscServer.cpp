@@ -16,6 +16,7 @@
 #include "threading/ui_command.h"
 #include "core/njclient.h"
 #include "video/VideoCompanion.h"  // Phase 13: video OSC control
+#include "midi/MidiMapper.h"       // Phase 14: MIDI echo suppression for APVTS updates
 
 // Local fourcc definitions (matches pattern used in ui_local.cpp, ui_remote.cpp)
 #define MAKE_NJ_FOURCC(A,B,C,D) ((A) | ((B)<<8) | ((C)<<16) | ((D)<<24))
@@ -588,50 +589,81 @@ void OscServer::handleRemoteUserOsc(const juce::String& address, float value)
     {
         if (control == "volume")
         {
-            jamwide::SetUserStateCommand cmd;
-            cmd.user_index = userIndex;
-            cmd.set_vol = true;
-            cmd.volume = clamped * 2.0f;  // OSC 0-1 -> NJClient 0-2
-            processor.cmd_queue.try_push(std::move(cmd));
+            float njVol = clamped * 2.0f;  // OSC 0-1 -> param range 0-2
+
+            // Update APVTS remote parameter (SOLE state mutation path)
+            juce::String apvtsId = "remoteVol_" + juce::String(userIndex);
+            if (auto* param = processor.apvts.getParameter(apvtsId))
+                param->setValueNotifyingHost(param->convertTo0to1(njVol));
+
+            // Suppress MIDI echo for this parameter
+            if (processor.midiMapper)
+                processor.midiMapper->setEchoSuppression(apvtsId);
+
+            // Set OSC echo suppression (existing pattern)
             remoteOscSourced[static_cast<size_t>(userIndex)].volume = true;
+
+            // NOTE: NO cmd_queue push here. MidiMapper::timerCallback (20ms) reads
+            // APVTS and dispatches SetUserStateCommand as the centralized bridge.
         }
         else if (control == "volume/db")
         {
-            jamwide::SetUserStateCommand cmd;
-            cmd.user_index = userIndex;
-            cmd.set_vol = true;
-            cmd.volume = OscAddressMap::dbToLinear(juce::jlimit(-100.0f, 6.0f, value));
-            processor.cmd_queue.try_push(std::move(cmd));
+            float njVol = OscAddressMap::dbToLinear(juce::jlimit(-100.0f, 6.0f, value));
+
+            juce::String apvtsId = "remoteVol_" + juce::String(userIndex);
+            if (auto* param = processor.apvts.getParameter(apvtsId))
+                param->setValueNotifyingHost(param->convertTo0to1(njVol));
+
+            if (processor.midiMapper)
+                processor.midiMapper->setEchoSuppression(apvtsId);
+
             remoteOscSourced[static_cast<size_t>(userIndex)].volume = true;
+            // NO cmd_queue push
         }
         else if (control == "pan")
         {
-            jamwide::SetUserStateCommand cmd;
-            cmd.user_index = userIndex;
-            cmd.set_pan = true;
-            cmd.pan = OscAddressMap::oscPanToApvts(clamped);
-            processor.cmd_queue.try_push(std::move(cmd));
+            float njPan = OscAddressMap::oscPanToApvts(clamped);
+
+            juce::String apvtsId = "remotePan_" + juce::String(userIndex);
+            if (auto* param = processor.apvts.getParameter(apvtsId))
+                param->setValueNotifyingHost(param->convertTo0to1(njPan));
+
+            if (processor.midiMapper)
+                processor.midiMapper->setEchoSuppression(apvtsId);
+
             remoteOscSourced[static_cast<size_t>(userIndex)].pan = true;
+            // NO cmd_queue push
         }
         else if (control == "mute")
         {
-            jamwide::SetUserStateCommand cmd;
-            cmd.user_index = userIndex;
-            cmd.set_mute = true;
-            cmd.mute = (value >= 0.5f);
-            processor.cmd_queue.try_push(std::move(cmd));
+            bool muteVal = (value >= 0.5f);
+
+            juce::String apvtsId = "remoteMute_" + juce::String(userIndex);
+            if (auto* param = processor.apvts.getParameter(apvtsId))
+                param->setValueNotifyingHost(muteVal ? 1.0f : 0.0f);
+
+            if (processor.midiMapper)
+                processor.midiMapper->setEchoSuppression(apvtsId);
+
             remoteOscSourced[static_cast<size_t>(userIndex)].mute = true;
+            // NO cmd_queue push
         }
         else if (control == "solo")
         {
-            // GROUP SOLO: Authoritative behavior (addresses review concern #1)
-            // NJClient has NO group-level solo primitive. SetUserStateCommand has no set_solo.
-            // Implementation: set solo on ALL sub-channels to the same state.
-            // This means: toggling group solo ON solos every sub-channel of this user.
-            //             toggling group solo OFF un-solos every sub-channel.
-            // Individual sub-channel solo states are OVERRIDDEN by group solo toggle.
-            const auto& user = users[static_cast<size_t>(userIndex)];
+            // GROUP SOLO: Update APVTS group solo parameter for MIDI/DAW feedback,
+            // plus dispatch per-sub-channel commands (NJClient has no group solo primitive).
             bool soloState = (value >= 0.5f);
+
+            juce::String apvtsId = "remoteSolo_" + juce::String(userIndex);
+            if (auto* param = processor.apvts.getParameter(apvtsId))
+                param->setValueNotifyingHost(soloState ? 1.0f : 0.0f);
+
+            if (processor.midiMapper)
+                processor.midiMapper->setEchoSuppression(apvtsId);
+
+            // Solo is special: group solo = set all sub-channels to solo state.
+            // Sub-channels are NOT APVTS-backed (per D-18), so direct cmd_queue remains.
+            const auto& user = users[static_cast<size_t>(userIndex)];
             for (const auto& ch : user.channels)
             {
                 jamwide::SetUserChannelStateCommand cmd;
@@ -737,20 +769,23 @@ void OscServer::sendDirtyRemoteUsers(juce::OSCBundle& bundle, bool& hasContent)
         auto& src = remoteOscSourced[static_cast<size_t>(i)];
         juce::String prefix = "/JamWide/remote/" + juce::String(i + 1);
 
-        // Group bus volume: normalize NJClient 0-2 -> OSC 0-1
-        float oscVol = user.volume * 0.5f;
+        // Group bus volume: read from APVTS (source of truth for group controls)
+        // APVTS range 0-2, normalize to OSC 0-1
+        float apvtsVol = *processor.apvts.getRawParameterValue("remoteVol_" + juce::String(i));
+        float oscVol = apvtsVol * 0.5f;
         if (!src.volume && oscVol != last.volume)
         {
             bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(prefix + "/volume"), oscVol));
             bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(prefix + "/volume/db"),
-                OscAddressMap::linearToDb(user.volume)));
+                OscAddressMap::linearToDb(apvtsVol)));
             last.volume = oscVol;
             hasContent = true;
         }
         src.volume = false;
 
-        // Group bus pan: NJClient -1..1 -> OSC 0-1
-        float oscPan = OscAddressMap::apvtsPanToOsc(user.pan);
+        // Group bus pan: read from APVTS (-1..1 -> OSC 0-1)
+        float apvtsPan = *processor.apvts.getRawParameterValue("remotePan_" + juce::String(i));
+        float oscPan = OscAddressMap::apvtsPanToOsc(apvtsPan);
         if (!src.pan && oscPan != last.pan)
         {
             bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(prefix + "/pan"), oscPan));
@@ -759,8 +794,9 @@ void OscServer::sendDirtyRemoteUsers(juce::OSCBundle& bundle, bool& hasContent)
         }
         src.pan = false;
 
-        // Group bus mute
-        float oscMute = user.mute ? 1.0f : 0.0f;
+        // Group bus mute: read from APVTS
+        float apvtsMute = *processor.apvts.getRawParameterValue("remoteMute_" + juce::String(i));
+        float oscMute = apvtsMute >= 0.5f ? 1.0f : 0.0f;
         if (!src.mute && oscMute != last.mute)
         {
             bundle.addElement(juce::OSCMessage(juce::OSCAddressPattern(prefix + "/mute"), oscMute));
@@ -818,11 +854,9 @@ void OscServer::sendDirtyRemoteUsers(juce::OSCBundle& bundle, bool& hasContent)
             chSrc.solo = false;
         }
 
-        // Group bus solo feedback (derived -- see design note in objective)
-        bool allSoloed = !user.channels.empty();
-        for (const auto& ch : user.channels)
-            if (!ch.solo) { allSoloed = false; break; }
-        float oscGroupSolo = allSoloed ? 1.0f : 0.0f;
+        // Group bus solo feedback: read from APVTS (source of truth)
+        float apvtsSolo = *processor.apvts.getRawParameterValue("remoteSolo_" + juce::String(i));
+        float oscGroupSolo = apvtsSolo >= 0.5f ? 1.0f : 0.0f;
         if (oscGroupSolo != last.solo)
         {
             bundle.addElement(juce::OSCMessage(

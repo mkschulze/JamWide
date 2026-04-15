@@ -35,6 +35,7 @@
 - [x] **Phase 13: Video Display Modes and OSC Integration** -- Per-user popout windows, OSC video control, grid/popout mode switching (completed 2026-04-07)
 - [x] **Phase 14: MIDI Remote Control** -- MIDI CC mapping for mixer parameters including remote channels, bidirectional feedback where possible (completed 2026-04-15)
 - [ ] **Phase 14.1: Audio Prelisten** -- Listen button in server browser to hear room audio before joining, NJClient receive-only mode
+- [ ] **Phase 14.2: Instamode Video Sync** -- Latency-probed video buffering using NINJAM instamode channel for accurate audio-video alignment
 
 ## Phase Details
 
@@ -156,6 +157,21 @@ Plans:
 - [ ] 14.1-02-PLAN.md — Audio prelisten UI and editor wiring: Listen/Stop button per row, volume slider, host+port based active row identity (survives refresh), CONNECTING/LISTENING states, editor command/event wiring, connection bar suppression, session guard, human verification checkpoint
 **UI hint**: yes
 
+### Phase 14.2: Instamode Video Sync
+**Goal**: Remote video is accurately synced to interval-buffered audio using a measured latency probe, replacing theoretical BPM/BPI calculation with real network measurement
+**Depends on**: Phase 12.1 (video-audio sync fix)
+**Requirements**: VID-13
+**Success Criteria** (what must be TRUE):
+  1. Plugin opens a hidden instamode channel (flags 0x82: filler + instamode) that is invisible to other clients' UIs
+  2. Plugin encodes timestamp data in instamode frames at interval boundaries
+  3. Receiver measures actual audio delay by comparing instamode arrival time to interval playback time
+  4. Measured delay is sent to companion page via existing bufferDelay WebSocket message
+  5. Companion page buffers video in a ring buffer and shows black/loading state during initial fill
+  6. Video fades in once buffer reaches target delay — remote users appear to play in sync with their audio
+  7. Falls back to BPM/BPI calculation if no instamode measurement is available
+**Plans**: 0 plans
+**Reference**: `.planning/references/INSTAMODE-VIDEO-SYNC-DESIGN.md`
+
 ### v1.2 Security & Quality (Planned)
 
 **Milestone Goal:** Harden JamWide with connection encryption, modern Opus codec, resilient networking, and production-grade testing infrastructure.
@@ -249,6 +265,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 13. Video Display Modes and OSC Integration | v1.1 | 2/2 | Complete    | 2026-04-07 |
 | 14. MIDI Remote Control | v1.1 | 3/3 | Complete   | 2026-04-15 |
 | 14.1 Audio Prelisten | v1.1 | 1/2 | In Progress|  |
+| 14.2 Instamode Video Sync | v1.1 | 0/0 | Not started | - |
 | 15. Connection Encryption | v1.2 | 2/2 | Complete    | 2026-04-11 |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |
@@ -263,3 +280,4 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
+

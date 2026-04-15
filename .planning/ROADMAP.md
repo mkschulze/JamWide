@@ -158,18 +158,22 @@ Plans:
 **UI hint**: yes
 
 ### Phase 14.2: Instamode Video Sync
-**Goal**: Remote video is accurately synced to interval-buffered audio using a measured latency probe, replacing theoretical BPM/BPI calculation with real network measurement
+**Goal**: Remote video is accurately synced to interval-buffered audio using a visible Instatalk channel (flags=0x02) that doubles as push-to-talk voice talkback and latency probe, replacing theoretical BPM/BPI calculation with real network measurement
 **Depends on**: Phase 12.1 (video-audio sync fix)
 **Requirements**: VID-13
 **Success Criteria** (what must be TRUE):
-  1. Plugin opens a hidden instamode channel (flags 0x82: filler + instamode) that is invisible to other clients' UIs
-  2. Plugin encodes timestamp data in instamode frames at interval boundaries
-  3. Receiver measures actual audio delay by comparing instamode arrival time to interval playback time
-  4. Measured delay is sent to companion page via existing bufferDelay WebSocket message
-  5. Companion page buffers video in a ring buffer and shows black/loading state during initial fill
-  6. Video fades in once buffer reaches target delay — remote users appear to play in sync with their audio
-  7. Falls back to BPM/BPI calculation if no instamode measurement is available
-**Plans**: 0 plans
+  1. Plugin opens a visible instamode channel named "Instatalk" (flags=0x02) on normal connect that other users see in their mixer
+  2. Instatalk channel sends silence when PTT is inactive, voice audio when PTT is active (dual purpose: voice talkback + latency probe)
+  3. Receiver measures actual audio delay by comparing wall-clock timestamps: instamode arrival vs interval audio playback for the same remote user
+  4. Measured delay is sent to companion page via existing bufferDelay WebSocket message with syncMode:"measured" field
+  5. Companion page footer shows active sync mode: "Sync: measured (Xms)" or "Sync: calculated (Xms)" or "Sync: manual (Xms)"
+  6. Companion page shows syncing overlay that fades out after buffer fills when measured delay arrives
+  7. Three-tier delay priority: manual slider (highest) > measured probe (middle) > BPM/BPI calculation (lowest)
+  8. Falls back to BPM/BPI calculation if no instamode measurement is available (no remote JamWide users with Instatalk)
+**Plans**: 2 plans
+Plans:
+- [ ] 14.2-01-PLAN.md — Plugin-side: Instatalk channel setup (ch 4, flags=0x02), PTT silence callback, NJClient measurement atomics (t_insta/t_interval hooks in mixInChannel/on_new_interval), RemoteChannelInfo.flags, VideoCompanion broadcastMeasuredDelay + syncMode in broadcastBufferDelay, run-thread polling
+- [ ] 14.2-02-PLAN.md — Companion-side: BufferDelayMessage syncMode field, three-tier delay display (measured/calculated/manual), syncing overlay with fade-out, updated video-sync tests, new instamode-sync tests, human verification checkpoint
 **Reference**: `.planning/references/INSTAMODE-VIDEO-SYNC-DESIGN.md`
 
 ### v1.2 Security & Quality (Planned)
@@ -265,7 +269,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 13. Video Display Modes and OSC Integration | v1.1 | 2/2 | Complete    | 2026-04-07 |
 | 14. MIDI Remote Control | v1.1 | 3/3 | Complete   | 2026-04-15 |
 | 14.1 Audio Prelisten | v1.1 | 1/2 | In Progress|  |
-| 14.2 Instamode Video Sync | v1.1 | 0/0 | Not started | - |
+| 14.2 Instamode Video Sync | v1.1 | 0/2 | Not started | - |
 | 15. Connection Encryption | v1.2 | 2/2 | Complete    | 2026-04-11 |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |
@@ -280,4 +284,3 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
-

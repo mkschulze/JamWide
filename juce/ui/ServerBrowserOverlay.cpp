@@ -260,19 +260,19 @@ void ServerBrowserOverlay::paintListBoxItem(int row, juce::Graphics& g,
     }
 
     // Username line (below topic)
-    auto userFont = juce::FontOptions(10.0f);
+    auto userFont = juce::FontOptions(11.0f);
     g.setFont(userFont);
     if (!entry.user_list.empty())
     {
-        g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary));
+        g.setColour(juce::Colour(JamWideLookAndFeel::kAccentConnect));
         g.drawText(juce::String(entry.user_list),
-            8, 52, width - 16, 14, juce::Justification::centredLeft, true);
+            8, 52, width - 16, 16, juce::Justification::centredLeft, true);
     }
     else
     {
         g.setColour(juce::Colour(JamWideLookAndFeel::kTextSecondary).withAlpha(0.4f));
         g.drawText("No users",
-            8, 52, width - 16, 14, juce::Justification::centredLeft, true);
+            8, 52, width - 16, 16, juce::Justification::centredLeft, true);
     }
 
     // Active prelisten row: blue tint + left edge bar + LISTENING badge

@@ -531,14 +531,6 @@ void MidiMapper::handleIncomingMidiMessage(juce::MidiInput* /*source*/,
                                             const juce::MidiMessage& message)
 {
     // Called on the MIDI device thread. Buffer into collector for audio-thread retrieval.
-    if (message.isController())
-        DBG("MidiMapper standalone CC=" + juce::String(message.getControllerNumber())
-            + " ch=" + juce::String(message.getChannel())
-            + " val=" + juce::String(message.getControllerValue()));
-    else if (message.isNoteOn())
-        DBG("MidiMapper standalone NoteOn=" + juce::String(message.getNoteNumber())
-            + " ch=" + juce::String(message.getChannel())
-            + " vel=" + juce::String(message.getVelocity()));
     standaloneMidiCollector_.addMessageToQueue(message);
 }
 
@@ -625,13 +617,7 @@ void MidiMapper::timerCallback()
             cmd.pan = pan;
             cmd.set_mute = muteChanged;
             cmd.mute = mute;
-            bool pushed = processor.cmd_queue.try_push(std::move(cmd));
-            DBG("MidiMapper::timerCallback sync slot " + juce::String(i)
-                + " -> user " + juce::String(njUserIndex)
-                + " vol=" + juce::String(vol, 3)
-                + " pan=" + juce::String(pan, 3)
-                + " mute=" + juce::String((int)mute)
-                + " pushed=" + juce::String((int)pushed));
+            processor.cmd_queue.try_push(std::move(cmd));
 
             if (volChanged) lastSyncedRemoteVol_[static_cast<size_t>(i)] = vol;
             if (panChanged) lastSyncedRemotePan_[static_cast<size_t>(i)] = pan;

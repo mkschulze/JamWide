@@ -214,7 +214,8 @@ void JamWideJuceEditor::mouseDown(const juce::MouseEvent& e)
             && dynamic_cast<juce::Button*>(e.eventComponent) == nullptr
             && dynamic_cast<juce::Slider*>(e.eventComponent) == nullptr
             && dynamic_cast<juce::ComboBox*>(e.eventComponent) == nullptr
-            && dynamic_cast<VbFader*>(e.eventComponent) == nullptr)
+            && dynamic_cast<VbFader*>(e.eventComponent) == nullptr
+            && dynamic_cast<BeatBar*>(e.eventComponent) == nullptr)
         {
             chatPanel.focusChatInput();
         }

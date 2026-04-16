@@ -35,6 +35,7 @@ Requirements for OSC remote control and VDO.Ninja video companion.
 - [ ] **VID-10**: User can see which VDO.Ninja streams map to which NINJAM users (roster discovery)
 - [ ] **VID-11**: User can control video features (open, close, mode switch, popout) via OSC
 - [ ] **VID-12**: User can select a bandwidth-aware video profile (mobile/balanced/desktop)
+- [ ] **VID-13**: User's video buffering uses measured latency probe (instamode channel) for accurate audio-video sync, falling back to BPM/BPI calculation when no probe is available
 
 ### MIDI Remote Control
 
@@ -93,11 +94,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VID-10 | Phase 12 | Pending |
 | VID-11 | Phase 13 | Pending |
 | VID-12 | Phase 12 | Pending |
+| VID-13 | Phase 14.2 | Pending |
 | MIDI-01 | Phase 14 | Complete |
 
 **Coverage:**
-- v1.1 requirements: 24 total
-- Mapped to phases: 24
+- v1.1 requirements: 25 total
+- Mapped to phases: 25
 - Unmapped: 0
 
 ---

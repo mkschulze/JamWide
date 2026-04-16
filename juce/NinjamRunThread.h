@@ -35,6 +35,7 @@ private:
     void handleUserInfoChange(NJClient* client);
     void updateRemoteVuLevels(NJClient* client);
     void detectBpmBpiChanges(NJClient* client);
+    void pollInstamodeDelay(NJClient* client);  // Phase 14.2: consume measurement, broadcast to VideoCompanion
     void updateSessionAndVuSnapshot(NJClient* client);
 
     JamWideJuceProcessor& processor;

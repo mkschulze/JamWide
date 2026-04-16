@@ -47,6 +47,7 @@ struct SessionSnapshot
     juce::String push;
     int wsPort = 0;
     int cachedDelayMs = 0;
+    juce::String cachedSyncMode;  // Phase 14.2: "measured" or "calculated"
 };
 
 class VideoCompanion
@@ -84,6 +85,12 @@ public:
     /// Also called internally on initial client connection via sendConfigToClient.
     /// Guard: no-op if !isActive() or no wsServer_, or if bpm/bpi are invalid (<=0 or NaN).
     void broadcastBufferDelay(float bpm, int bpi);
+
+    /// Phase 14.2 (D-11, D-12): Broadcast measured delay from instamode probe.
+    /// Measured delay overrides calculated delay (three-tier: manual > measured > calculated).
+    /// Includes syncMode:"measured" in the JSON for companion footer display.
+    /// Call from run thread (marshals internally). No-op if !isActive().
+    void broadcastMeasuredDelay(int measuredDelayMs);
 
     /// Called from message thread (timerCallback) on each beat position change.
     /// Broadcasts {"type":"beatHeartbeat","beat":N,"bpi":N,"interval":N} to all
@@ -179,6 +186,7 @@ private:
     juce::String currentPassword_;       // Stored for password derivation, never sent over WebSocket
     juce::String currentDerivedPassword_; // SHA-256 derived VDO.Ninja password, used in URL fragment
     int cachedDelayMs_ = 0;              // Last computed buffer delay, sent to new WS clients
+    juce::String cachedSyncMode_;        // "measured" or "calculated" -- sent to new WS clients on connect
     int lastBroadcastBeat_ = -1;         // Change detection for beat heartbeat
 
     // Cached roster with resolved stream IDs (for OSC popout lookup).

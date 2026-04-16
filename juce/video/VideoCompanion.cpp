@@ -209,7 +209,7 @@ bool VideoCompanion::launchCompanion(const juce::String& serverAddr,
     // CR-01 fix: Snapshot session config before starting WS server.
     // The IXWebSocket callback fires on its own thread; passing a value snapshot
     // avoids a data race on currentRoom_, currentPush_, wsPort_, cachedDelayMs_.
-    SessionSnapshot snap { currentRoom_, currentPush_, wsPort_, cachedDelayMs_ };
+    SessionSnapshot snap { currentRoom_, currentPush_, wsPort_, cachedDelayMs_, cachedSyncMode_ };
 
     if (!startWebSocketServer(snap))
     {
@@ -387,7 +387,11 @@ void VideoCompanion::sendConfigToClient(ix::WebSocket& client, const SessionSnap
     if (snap.cachedDelayMs > 0)
     {
         juce::String delayJson = "{\"type\":\"bufferDelay\",\"delayMs\":"
-                                 + juce::String(snap.cachedDelayMs) + "}";
+                                 + juce::String(snap.cachedDelayMs)
+                                 + (snap.cachedSyncMode.isNotEmpty()
+                                    ? ",\"syncMode\":\"" + snap.cachedSyncMode + "\""
+                                    : juce::String())
+                                 + "}";
         client.send(delayJson.toStdString());
     }
 }
@@ -470,13 +474,41 @@ void VideoCompanion::broadcastBufferDelay(float bpm, int bpi)
     int computed = static_cast<int>((60.0 / static_cast<double>(bpm)) * bpi * 1000.0);
     if (computed <= 0) return;
 
-    // D-04: {"type":"bufferDelay","delayMs":N}
+    // D-04: {"type":"bufferDelay","delayMs":N,"syncMode":"calculated"}
     juce::String json = "{\"type\":\"bufferDelay\",\"delayMs\":"
-                        + juce::String(computed) + "}";
+                        + juce::String(computed)
+                        + ",\"syncMode\":\"calculated\"}";
 
     std::lock_guard<std::mutex> lock(wsMutex_);
     if (!wsServer_) return;
     cachedDelayMs_ = computed;
+    cachedSyncMode_ = "calculated";
+    auto clients = wsServer_->getClients();
+    for (auto& client : clients)
+    {
+        if (client->getReadyState() != ix::ReadyState::Open)
+            continue;
+        client->send(json.toStdString());
+    }
+}
+
+// ── Measured Delay Broadcast (Phase 14.2, D-11, D-12) ────────────────────
+
+void VideoCompanion::broadcastMeasuredDelay(int measuredDelayMs)
+{
+    if (measuredDelayMs <= 0) return;
+    if (!isActive()) return;
+
+    // D-11: measured overrides calculated. Store so new WS clients get it.
+    // D-12: include syncMode so companion displays "Sync: measured (Xms)"
+    juce::String json = "{\"type\":\"bufferDelay\",\"delayMs\":"
+                        + juce::String(measuredDelayMs)
+                        + ",\"syncMode\":\"measured\"}";
+
+    std::lock_guard<std::mutex> lock(wsMutex_);
+    if (!wsServer_) return;
+    cachedDelayMs_ = measuredDelayMs;
+    cachedSyncMode_ = "measured";
     auto clients = wsServer_->getClients();
     for (auto& client : clients)
     {

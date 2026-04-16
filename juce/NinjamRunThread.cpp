@@ -9,6 +9,7 @@
 #include "jnetlib/util.h"
 
 #include <chrono>
+#include <cstring>
 #include <mutex>
 #include <type_traits>
 #include <variant>
@@ -283,6 +284,14 @@ void NinjamRunThread::handleStatusChange(NJClient* client, int currentStatus)
         }
     }
 
+    // Phase 14.2: Reset measurement state when leaving OK status (disconnect/error).
+    // This allows re-measurement on the next connect session.
+    if (lastStatus_ == NJClient::NJC_STATUS_OK && currentStatus != NJClient::NJC_STATUS_OK)
+    {
+        client->resetInstaMeasurement();
+        processor.instaMeasurementBroadcast.store(false, std::memory_order_relaxed);
+    }
+
     lastStatus_ = currentStatus;
 
     // BPM/BPI suppression window: after a fresh OK transition,
@@ -338,6 +347,43 @@ void NinjamRunThread::handleStatusChange(NJClient* client, int currentStatus)
             client->config_remote_autochan_nch = (rm > 0) ? 32 : 0;
             // Set metronome to last bus (per D-11)
             client->SetMetronomeChannel(32);
+
+            // Phase 14.2 (D-01): Instatalk channel (instamode voice talkback + latency probe).
+            // Channel index 4 (after 4 local audio channels 0-3).
+            // flags=0x02: instamode encoding (64-byte blocks, 128-byte prebuffer on receiver).
+            // src_channel=0 (mono input 0 -- actual audio only flows during PTT).
+            // bitrate=64 kbps (low bandwidth, voice-quality Vorbis).
+            // broadcasting=true (always active -- sends silence when PTT off).
+            // NOTE: Channel 4 is a system channel, NOT shown in local channel strip UI.
+            // ChannelStripArea only renders channels 0-3 (hardcoded loop range).
+            client->SetLocalChannelInfo(4, "Instatalk",
+                true, 0,        // setsrcch=true, srcch=0 (mono input 0)
+                true, 64,       // setbitrate=true, bitrate=64 kbps
+                true, true,     // setbcast=true, broadcast=true (always transmitting)
+                false, 0,       // setoutch=false (not used)
+                true, 0x02);    // setflags=true, flags=0x02 (instamode)
+
+            // Phase 14.2 (D-02, D-03): PTT audio processor -- zeroes buffer when PTT not held.
+            // SetLocalChannelProcessor takes a C function pointer (void (*)(float*, int, void*)).
+            // A non-capturing lambda decays to a function pointer, which is the correct pattern.
+            // The void* inst pointer must remain valid for the lifetime of the channel.
+            // JamWideJuceProcessor outlives NJClient (processor owns client via unique_ptr),
+            // so &processor is safe as the inst pointer.
+            client->SetLocalChannelProcessor(4,
+                [](float* buf, int ns, void* inst) {
+                    auto* proc = static_cast<JamWideJuceProcessor*>(inst);
+                    if (!proc->pttActive.load(std::memory_order_relaxed))
+                        memset(buf, 0, static_cast<size_t>(ns) * sizeof(float));
+                    // When pttActive is true, buf passes through unchanged (voice audio).
+                    // Vorbis encoder encodes silence as near-zero data (~200 bytes/sec at 64kbps).
+                },
+                &processor);
+
+            // Reset measurement state for new session (allows re-measurement per review concern #5).
+            client->resetInstaMeasurement();
+            processor.instaMeasurementBroadcast.store(false, std::memory_order_relaxed);
+
+            client->NotifyServerOfChannelChange();
         }
     }
 }
@@ -472,6 +518,43 @@ void NinjamRunThread::detectBpmBpiChanges(NJClient* client)
     }
 }
 
+void NinjamRunThread::pollInstamodeDelay(NJClient* client)
+{
+    // D-06: Single measurement, use immediately.
+    // D-08: Automatic -- no user action needed.
+    // State machine: read MEASURED state, transition to CONSUMED, broadcast delay.
+    // Re-measurement: allowed on reconnect (reset in handleStatusChange) and
+    // when video activates after connect (instaMeasurementBroadcast cleared below).
+
+    if (processor.instaMeasurementBroadcast.load(std::memory_order_relaxed))
+        return;  // Already broadcast this session
+
+    int state = client->insta_meas_state_.load(std::memory_order_acquire);
+    if (state != NJClient::kInstaMeasured)
+        return;  // Not yet measured (still IDLE or INSTA_CAPTURED)
+
+    int64_t tInsta = client->insta_t_insta_ms_.load(std::memory_order_acquire);
+    int64_t tInterval = client->insta_t_interval_ms_.load(std::memory_order_acquire);
+
+    if (tInsta <= 0 || tInterval <= 0 || tInterval <= tInsta)
+    {
+        // Invalid measurement (negative delay or zero timestamps).
+        // Reset to IDLE to allow a new measurement attempt (addresses review concern #5).
+        client->resetInstaMeasurement();
+        return;
+    }
+
+    int measuredDelayMs = static_cast<int>(tInterval - tInsta);
+
+    // D-07: Trust unconditionally -- no sanity check against BPM/BPI calc.
+    // Transition: MEASURED -> CONSUMED
+    client->insta_meas_state_.store(NJClient::kInstaConsumed, std::memory_order_release);
+    processor.instaMeasurementBroadcast.store(true, std::memory_order_relaxed);
+
+    if (processor.videoCompanion && processor.videoCompanion->isActive())
+        processor.videoCompanion->broadcastMeasuredDelay(measuredDelayMs);
+}
+
 void NinjamRunThread::updateSessionAndVuSnapshot(NJClient* client)
 {
     // Session tracking (SYNC-03) -- expose interval count and elapsed time
@@ -554,6 +637,7 @@ void NinjamRunThread::run()
             handleUserInfoChange(client);
             updateRemoteVuLevels(client);
             detectBpmBpiChanges(client);
+            pollInstamodeDelay(client);          // Phase 14.2: consume measurement
             updateSessionAndVuSnapshot(client);
         }
 

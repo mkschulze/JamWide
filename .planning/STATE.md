@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: OSC + Video
 status: executing
-stopped_at: Completed 14-03-PLAN.md
-last_updated: "2026-04-15T17:33:08.835Z"
-last_activity: 2026-04-15
+stopped_at: Completed 14.2-01-PLAN.md
+last_updated: "2026-04-16T12:57:55.455Z"
+last_activity: 2026-04-16
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 7
-  total_plans: 17
-  completed_plans: 16
-  percent: 94
+  total_plans: 19
+  completed_plans: 17
+  percent: 89
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-05)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Phase 14 — midi-remote-control
+**Current focus:** Phase 14.2 — instamode-video-sync
 
 ## Current Position
 
-Phase: 14 (midi-remote-control) — EXECUTING
-Plan: 3 of 3
+Phase: 14.2 (instamode-video-sync) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-04-15
+Last activity: 2026-04-16
 
 Progress: [..........] 0% (v1.1 milestone)
 
@@ -54,6 +54,7 @@ Progress: [..........] 0% (v1.1 milestone)
 *Updated after each plan completion*
 | Phase 14 P02 | 788 | 2 tasks | 19 files |
 | Phase 14 P03 | 601 | 2 tasks | 2 files |
+| Phase 14.2 P01 | 957 | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,7 @@ Recent decisions affecting current work:
 - [Phase 14]: Green/mint MIDI Learn feedback instead of yellow to avoid solo button color conflict
 - [Phase 14]: Note On/Off MIDI mapping support added beyond original CC-only plan scope
 - [Phase 14]: APVTS centralization: MidiMapper timerCallback is sole APVTS-to-NJClient bridge for remote group controls; OscServer and ChannelStripArea update APVTS only
+- [Phase 14.2]: Measurement state machine consolidated in NJClient (single owner); RemoteUser* pointer comparison for identity; syncMode JSON field for three-tier delay priority
 
 ### Pending Todos
 
@@ -99,6 +101,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-15T17:33:08.829Z
-Stopped at: Completed 14-03-PLAN.md
+Last session: 2026-04-16T12:57:55.450Z
+Stopped at: Completed 14.2-01-PLAN.md
 Resume file: None

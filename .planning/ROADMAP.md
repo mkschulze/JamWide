@@ -172,7 +172,7 @@ Plans:
   8. Falls back to BPM/BPI calculation if no instamode measurement is available (no remote JamWide users with Instatalk)
 **Plans**: 2 plans
 Plans:
-- [ ] 14.2-01-PLAN.md — Plugin-side: Instatalk channel setup (ch 4, flags=0x02), PTT silence callback, NJClient measurement atomics (t_insta/t_interval hooks in mixInChannel/on_new_interval), RemoteChannelInfo.flags, VideoCompanion broadcastMeasuredDelay + syncMode in broadcastBufferDelay, run-thread polling
+- [x] 14.2-01-PLAN.md — Plugin-side: Instatalk channel setup (ch 4, flags=0x02), PTT silence callback, NJClient measurement atomics (t_insta/t_interval hooks in mixInChannel/on_new_interval), RemoteChannelInfo.flags, VideoCompanion broadcastMeasuredDelay + syncMode in broadcastBufferDelay, run-thread polling
 - [ ] 14.2-02-PLAN.md — Companion-side: BufferDelayMessage syncMode field, three-tier delay display (measured/calculated/manual), syncing overlay with fade-out, updated video-sync tests, new instamode-sync tests, human verification checkpoint
 **Reference**: `.planning/references/INSTAMODE-VIDEO-SYNC-DESIGN.md`
 
@@ -269,7 +269,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 13. Video Display Modes and OSC Integration | v1.1 | 2/2 | Complete    | 2026-04-07 |
 | 14. MIDI Remote Control | v1.1 | 3/3 | Complete   | 2026-04-15 |
 | 14.1 Audio Prelisten | v1.1 | 1/2 | In Progress|  |
-| 14.2 Instamode Video Sync | v1.1 | 0/2 | Not started | - |
+| 14.2 Instamode Video Sync | v1.1 | 1/2 | In Progress|  |
 | 15. Connection Encryption | v1.2 | 2/2 | Complete    | 2026-04-11 |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |

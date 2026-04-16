@@ -19,6 +19,7 @@ import {
   getSavedEffect,
   saveEffect,
   setLastAutoDelay,
+  showSyncingOverlay,
   initDelayControls,
   updateFooterDelayStatus,
   renderRosterStrip,
@@ -233,9 +234,16 @@ const callbacks: WsCallbacks = {
   },
 
   onBufferDelay(msg) {
-    console.log('VideoSync: plugin sent bufferDelay:', msg.delayMs, 'ms');
-    setLastAutoDelay(msg.delayMs);
+    console.log('VideoSync: plugin sent bufferDelay:', msg.delayMs, 'ms',
+      msg.syncMode ? `(${msg.syncMode})` : '');
+    setLastAutoDelay(msg.delayMs, msg.syncMode);
     updateFooterDelayStatus();
+    // D-09: show sync overlay when measured delay arrives.
+    // Only for 'measured' mode -- calculated mode doesn't need a visible sync phase
+    // because it's a theoretical estimate, not a probe-triggered calibration.
+    if (msg.syncMode === 'measured' && msg.delayMs > 0) {
+      showSyncingOverlay(msg.delayMs);
+    }
   },
 
   onBeatHeartbeat(msg) {

@@ -99,9 +99,9 @@ describe('Video Sync Dual-State Delay Model (VID-08)', () => {
       expect(getDelayDisplayText()).toBe('--');
     });
 
-    it('returns "8.0s (auto)" when activeDelayMs=8000, auto mode', () => {
+    it('returns "8.0s (calculated)" when activeDelayMs=8000, calculated mode', () => {
       setLastAutoDelay(8000);
-      expect(getDelayDisplayText()).toBe('8.0s (auto)');
+      expect(getDelayDisplayText()).toBe('8.0s (calculated)');
     });
 
     it('returns "0.0s (manual) No delay" when activeDelayMs=0, manual mode', () => {
@@ -114,9 +114,9 @@ describe('Video Sync Dual-State Delay Model (VID-08)', () => {
       expect(getDelayDisplayText()).toBe('5.0s (manual)');
     });
 
-    it('returns "0.0s (auto) No delay" when activeDelayMs=0, auto mode', () => {
+    it('returns "0.0s (calculated) No delay" when activeDelayMs=0, calculated mode', () => {
       setLastAutoDelay(0);
-      expect(getDelayDisplayText()).toBe('0.0s (auto) No delay');
+      expect(getDelayDisplayText()).toBe('0.0s (calculated) No delay');
     });
   });
 

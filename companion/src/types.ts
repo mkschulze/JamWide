@@ -22,6 +22,7 @@ export interface RosterMessage {
 export interface BufferDelayMessage {
   type: 'bufferDelay';
   delayMs: number;
+  syncMode?: 'measured' | 'calculated';
 }
 
 export interface PopoutMessage {
@@ -39,6 +40,8 @@ export interface BeatHeartbeatMessage {
 export interface DeactivateMessage {
   type: 'deactivate';
 }
+
+export type SyncMode = 'measured' | 'calculated' | 'manual';
 
 export type PluginMessage = ConfigMessage | RosterMessage | BufferDelayMessage | PopoutMessage | BeatHeartbeatMessage | DeactivateMessage;
 

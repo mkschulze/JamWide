@@ -232,18 +232,30 @@ const VDO_NINJA_ORIGIN = 'https://vdo.ninja';
 let lastAutoDelayMs: number | null = null;
 let activeDelayMs: number | null = null;
 let manualMode = false;
+// Phase 14.2 (D-12): Track the last auto sync mode separately from manual mode.
+// This preserves the mode label so switchToAuto can restore it correctly.
+// Addresses review concern: separate lastAutoSyncMode from manualMode.
+let lastAutoSyncMode: 'measured' | 'calculated' = 'calculated';
 
 /** Called when plugin sends bufferDelay message. Always updates lastAutoDelayMs.
  *  In auto mode, also updates activeDelayMs and sends to iframe.
- *  In manual mode, silently tracks the plugin value for later switchToAuto(). */
-export function setLastAutoDelay(delayMs: number): void {
+ *  In manual mode, silently tracks the plugin value for later switchToAuto().
+ *  syncMode is runtime-validated: only 'measured' | 'calculated' accepted (T-14.2-06). */
+export function setLastAutoDelay(delayMs: number, syncMode?: 'measured' | 'calculated'): void {
   lastAutoDelayMs = delayMs;
+  // Runtime validation: only accept known values (addresses review concern #3).
+  // Unknown or absent syncMode defaults to 'calculated' for backward compatibility (D-13).
+  if (syncMode === 'measured' || syncMode === 'calculated') {
+    lastAutoSyncMode = syncMode;
+  }
+  // else: keep current lastAutoSyncMode (defaults to 'calculated' on init/reset)
   if (!manualMode) {
     activeDelayMs = delayMs;
-    console.log('VideoSync: auto delay applied:', delayMs, 'ms');
+    console.log('VideoSync: auto delay applied:', delayMs, 'ms', syncMode ? `(${syncMode})` : '');
     sendBufferDelayToIframe(delayMs);
   } else {
-    console.log('VideoSync: auto delay updated:', delayMs, 'ms (manual mode, not applied)');
+    console.log('VideoSync: auto delay updated:', delayMs, 'ms (manual mode, not applied)',
+      syncMode ? `(${syncMode})` : '');
   }
 }
 
@@ -280,13 +292,23 @@ export function isManualMode(): boolean {
   return manualMode;
 }
 
-/** Get formatted display text for the current delay state. */
+/** Get the last auto sync mode (measured or calculated). */
+export function getLastAutoSyncMode(): 'measured' | 'calculated' {
+  return lastAutoSyncMode;
+}
+
+/** Get formatted display text for the current delay state.
+ *  Three-tier display: manual > measured > calculated (D-11, D-12). */
 export function getDelayDisplayText(): string {
   if (activeDelayMs === null) return '--';
-  const mode = manualMode ? 'manual' : 'auto';
   const seconds = (activeDelayMs / 1000).toFixed(1);
-  if (activeDelayMs === 0) return `${seconds}s (${mode}) No delay`;
-  return `${seconds}s (${mode})`;
+  if (manualMode) {
+    if (activeDelayMs === 0) return `${seconds}s (manual) No delay`;
+    return `${seconds}s (manual)`;
+  }
+  // Auto mode: display the specific sync mode (measured or calculated)
+  if (activeDelayMs === 0) return `${seconds}s (${lastAutoSyncMode}) No delay`;
+  return `${seconds}s (${lastAutoSyncMode})`;
 }
 
 function sendBufferDelayToIframe(delayMs: number): void {
@@ -312,6 +334,42 @@ export function resetDelayState(): void {
   lastAutoDelayMs = null;
   activeDelayMs = null;
   manualMode = false;
+  lastAutoSyncMode = 'calculated';
+}
+
+/** D-09: Show a black syncing overlay over the video area.
+ *  Overlay fades out after delayMs + 500ms grace period.
+ *  Only one overlay exists at a time -- calling again replaces the existing one
+ *  (addresses review concern: repeated measured update behavior).
+ *  NOTE: Single overlay covers entire video area because VDO.Ninja iframe is
+ *  cross-origin (cannot position per-tile overlays). All tiles share the same
+ *  measured delay, so global overlay is functionally equivalent. */
+export function showSyncingOverlay(delayMs: number): void {
+  // Remove any existing overlay first (replace semantics for repeated updates)
+  hideSyncingOverlay();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'sync-overlay';
+  overlay.style.cssText = 'position:absolute;inset:0;background:#000;'
+    + 'transition:opacity 0.8s ease;opacity:1;pointer-events:none;z-index:10;'
+    + 'display:flex;align-items:center;justify-content:center;color:#888;font-size:14px;';
+  overlay.textContent = 'Syncing video\u2026';
+
+  const mainArea = document.getElementById('main-area');
+  if (mainArea) {
+    mainArea.style.position = 'relative';
+    mainArea.appendChild(overlay);
+    // Fade out after buffer fills (delayMs + 500ms grace)
+    setTimeout(() => {
+      overlay.style.opacity = '0';
+      setTimeout(() => overlay.remove(), 900);  // remove after CSS transition completes
+    }, delayMs + 500);
+  }
+}
+
+/** Remove the syncing overlay immediately. */
+export function hideSyncingOverlay(): void {
+  document.getElementById('sync-overlay')?.remove();
 }
 
 // Legacy aliases for backward compatibility with existing tests

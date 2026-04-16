@@ -168,6 +168,9 @@ void JamWideJuceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
 void JamWideJuceProcessor::releaseResources()
 {
+    // Phase 14.2: Reset broadcast guard so measurement can re-trigger on next session
+    instaMeasurementBroadcast.store(false, std::memory_order_relaxed);
+
     // Stop and destroy the NinjamRun thread cleanly
     if (runThread)
     {

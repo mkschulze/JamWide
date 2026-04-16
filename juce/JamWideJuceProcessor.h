@@ -41,6 +41,8 @@ class NinjamRunThread;
 //
 // 3. AUDIO THREAD (processBlock)
 //    - Reads/writes NJClient audio buffers (AudioProc called without clientLock)
+//    - Reads: pttActive (for Instatalk PTT callback via SetLocalChannelProcessor)
+//    - Note: Measurement atomics (t_insta, t_interval) live on NJClient, not Processor
 //    - Does NOT touch any UI state
 //
 // RULES:
@@ -163,6 +165,13 @@ public:
     std::atomic<bool>  prelisten_mode{false};
     std::atomic<float> prelisten_volume{0.7f};
     std::atomic<float> savedMetronomeVolume_{0.5f}; // saved before prelisten mutes it
+
+    // -- Phase 14.2: PTT + measurement broadcast guard (VID-13) --
+    // pttActive: message thread writes (PTT button/key), audio thread reads (via SetLocalChannelProcessor callback)
+    // instaMeasurementBroadcast: run thread sets true after broadcasting measured delay to VideoCompanion
+    // These are the ONLY Phase 14.2 atomics on the Processor. All measurement state lives in NJClient.
+    std::atomic<bool> pttActive{false};
+    std::atomic<bool> instaMeasurementBroadcast{false};
 
     // MIDI standalone device persistence (stable identifiers per review feedback)
     juce::String midiInputDeviceId;

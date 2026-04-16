@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: OSC + Video
-status: executing
-stopped_at: Completed 14.2-01-PLAN.md
-last_updated: "2026-04-16T12:57:55.455Z"
+status: verifying
+stopped_at: Completed 14.2-02-PLAN.md Task 1, awaiting human-verify checkpoint Task 2
+last_updated: "2026-04-16T13:04:48.003Z"
 last_activity: 2026-04-16
 progress:
   total_phases: 9
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 19
-  completed_plans: 17
-  percent: 89
+  completed_plans: 18
+  percent: 95
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 
 Phase: 14.2 (instamode-video-sync) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-16
 
 Progress: [..........] 0% (v1.1 milestone)
@@ -55,6 +55,7 @@ Progress: [..........] 0% (v1.1 milestone)
 | Phase 14 P02 | 788 | 2 tasks | 19 files |
 | Phase 14 P03 | 601 | 2 tasks | 2 files |
 | Phase 14.2 P01 | 957 | 2 tasks | 8 files |
+| Phase 14.2 P02 | 221 | 1 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,7 @@ Recent decisions affecting current work:
 - [Phase 14]: Note On/Off MIDI mapping support added beyond original CC-only plan scope
 - [Phase 14]: APVTS centralization: MidiMapper timerCallback is sole APVTS-to-NJClient bridge for remote group controls; OscServer and ChannelStripArea update APVTS only
 - [Phase 14.2]: Measurement state machine consolidated in NJClient (single owner); RemoteUser* pointer comparison for identity; syncMode JSON field for three-tier delay priority
+- [Phase 14.2]: Global overlay over #main-area instead of per-tile: VDO.Ninja iframe is cross-origin, per-tile positioning impossible
 
 ### Pending Todos
 
@@ -101,6 +103,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-16T12:57:55.450Z
-Stopped at: Completed 14.2-01-PLAN.md
+Last session: 2026-04-16T13:04:47.998Z
+Stopped at: Completed 14.2-02-PLAN.md Task 1, awaiting human-verify checkpoint Task 2
 Resume file: None

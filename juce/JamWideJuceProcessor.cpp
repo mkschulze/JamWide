@@ -51,19 +51,15 @@ JamWideJuceProcessor::JamWideJuceProcessor()
     // that may call getClient()). Does NOT start automatically -- user enables via dialog.
     oscServer = std::make_unique<OscServer>(*this);
 
-    // Video companion (created after NJClient, same ownership pattern as OscServer)
-    videoCompanion = std::make_unique<jamwide::VideoCompanion>(*this);
-
     // MIDI mapper (created after NJClient and OscServer, same ownership pattern)
     midiMapper = std::make_unique<MidiMapper>(*this);
 }
 
 JamWideJuceProcessor::~JamWideJuceProcessor()
 {
-    // Order matters: midiMapper stops timer, videoCompanion stops WS server,
-    // oscServer stops before runThread, runThread stops before client.
+    // Order matters: midiMapper stops timer, oscServer stops before runThread,
+    // runThread stops before client.
     midiMapper.reset();
-    videoCompanion.reset();
     oscServer.reset();
     runThread.reset();
     client.reset();
@@ -168,9 +164,6 @@ void JamWideJuceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
 void JamWideJuceProcessor::releaseResources()
 {
-    // Phase 14.2: Reset broadcast guard so measurement can re-trigger on next session
-    instaMeasurementBroadcast.store(false, std::memory_order_relaxed);
-
     // Stop and destroy the NinjamRun thread cleanly
     if (runThread)
     {

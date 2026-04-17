@@ -127,13 +127,6 @@ if(JAMWIDE_BUILD_TESTS)
     target_compile_definitions(njclient PRIVATE JAMWIDE_BUILD_TESTS=1)
 endif()
 
-# ── IXWebSocket (WebSocket server for video companion, per D-12) ──
-set(USE_TLS OFF CACHE BOOL "" FORCE)
-set(USE_ZLIB OFF CACHE BOOL "" FORCE)
-set(USE_WS OFF CACHE BOOL "" FORCE)
-set(IXWEBSOCKET_INSTALL OFF CACHE BOOL "" FORCE)
-add_subdirectory(libs/ixwebsocket EXCLUDE_FROM_ALL)
-
 # ── JUCE Plugin Targets ──
 if(JAMWIDE_BUILD_JUCE)
     add_subdirectory(libs/juce EXCLUDE_FROM_ALL)
@@ -182,17 +175,8 @@ if(JAMWIDE_BUILD_JUCE)
         juce/midi/MidiLearnManager.cpp
         juce/midi/MidiStatusDot.cpp
         juce/midi/MidiConfigDialog.cpp
-        juce/video/VideoCompanion.cpp
-        juce/video/VideoPrivacyDialog.cpp
         src/net/server_list.cpp
     )
-
-    # BrowserDetect: macOS uses .mm, Windows/Linux uses .cpp
-    if(APPLE)
-        target_sources(JamWideJuce PRIVATE juce/video/BrowserDetect_mac.mm)
-    else()
-        target_sources(JamWideJuce PRIVATE juce/video/BrowserDetect_win.cpp)
-    endif()
 
     target_compile_definitions(JamWideJuce PUBLIC
         JUCE_WEB_BROWSER=0
@@ -210,7 +194,6 @@ if(JAMWIDE_BUILD_JUCE)
     target_link_libraries(JamWideJuce
         PRIVATE
             njclient
-            ixwebsocket
             juce::juce_audio_utils
             juce::juce_opengl
             juce::juce_gui_extra
@@ -346,9 +329,5 @@ if(JAMWIDE_BUILD_TESTS)
     )
     target_link_libraries(test_encryption PRIVATE njclient)
     add_test(NAME encryption COMMAND test_encryption)
-
-    add_executable(test_video_sync tests/test_video_sync.cpp)
-    target_include_directories(test_video_sync PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    add_test(NAME video_sync COMMAND test_video_sync)
 
 endif()

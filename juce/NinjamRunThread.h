@@ -35,8 +35,6 @@ private:
     void handleUserInfoChange(NJClient* client);
     void updateRemoteVuLevels(NJClient* client);
     void detectBpmBpiChanges(NJClient* client);
-    void syncInstatalkBroadcast(NJClient* client);  // Phase 14.2: PTT → Instatalk broadcasting
-    void pollInstamodeDelay(NJClient* client);      // Phase 14.2: consume measurement, broadcast to VideoCompanion
     void updateSessionAndVuSnapshot(NJClient* client);
 
     JamWideJuceProcessor& processor;
@@ -50,10 +48,6 @@ private:
     // OK, silently track values for ~2.5s without emitting chat messages.
     // After the window expires, normal change detection resumes.
     juce::int64 suppressBpmBpiUntilMs_ = 0;
-
-    // Phase 14.2: track PTT state to toggle Instatalk broadcasting
-    bool lastInstatalkPtt_ = false;
-    juce::int64 probeDeadlineMs_ = 0;  // probe phase timeout (0 = not set)
 
     // Prelisten connection metadata (stored from PrelistenCommand for event emission)
     std::string prelistenHost_;

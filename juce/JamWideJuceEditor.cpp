@@ -2,9 +2,6 @@
 #include "core/njclient.h"
 #include "threading/ui_event.h"
 #include "threading/ui_command.h"
-#include "video/BrowserDetect.h"
-#include "video/VideoCompanion.h"
-
 #include <variant>
 
 JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
@@ -101,47 +98,6 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
     addChildComponent(licenseDialog);
     licenseDialog.onResponse = [this](bool accepted) { handleLicenseResponse(accepted); };
 
-    // Video privacy dialog (hidden by default)
-    addChildComponent(videoPrivacyDialog);
-    videoPrivacyDialog.onResponse = [this](bool accepted) {
-        if (accepted) {
-            if (processorRef.videoCompanion) {
-                bool launched = processorRef.videoCompanion->launchCompanion(
-                    connectionBar.getServerAddress(),
-                    connectionBar.getUsername(),
-                    connectionBar.getPassword());
-                if (launched) {
-                    connectionBar.setVideoActive(true);
-                } else {
-                    // Addresses review concern #8: port bind failure.
-                    // launchCompanion returned false -- WS server failed to start.
-                    // Button stays inactive. Log for debugging.
-                    DBG("VideoCompanion: launch failed (WebSocket server could not start)");
-                }
-            }
-        }
-    };
-
-    // Wire video button click (D-01 through D-07)
-    connectionBar.onVideoClicked = [this]() {
-        if (!processorRef.videoCompanion) return;
-
-        // D-04 + review concern #12: If already active, re-open companion page only.
-        // No modal shown. No server restart. Just call relaunchBrowser().
-        // Addresses review concern #13: privacy modal ONLY on first activation per session.
-        if (processorRef.videoCompanion->isActive()) {
-            processorRef.videoCompanion->relaunchBrowser();
-            return;
-        }
-
-        // D-05, D-06: Show privacy modal on every new activation.
-        // D-07 + review concern #5: Browser detection is best-effort advisory.
-        // If detection fails, defaults to true (assume Chromium = skip warning).
-        // Warning is shown but NEVER blocks launch.
-        bool showBrowserWarning = !jamwide::isDefaultBrowserChromium();
-        videoPrivacyDialog.show(showBrowserWarning);
-    };
-
     // Restore state if already connected (editor recreated while session active).
     // HasUserInfoChanged() is destructive — the flag was consumed before the old
     // editor was destroyed, so no UserInfoChangedEvent will fire. We must
@@ -164,11 +120,6 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
                     channelStripArea.refreshFromUsers(usersCopy);
             }
             prevPollStatus_ = NJClient::NJC_STATUS_OK;
-
-            // Restore video button state if videoCompanion is active (editor recreated mid-session)
-            if (processorRef.videoCompanion && processorRef.videoCompanion->isActive()) {
-                connectionBar.setVideoActive(true);
-            }
         }
     }
 
@@ -209,7 +160,6 @@ void JamWideJuceEditor::mouseDown(const juce::MouseEvent& e)
             && chatSidebarVisible
             && !serverBrowser.isVisible()
             && !licenseDialog.isVisible()
-            && !videoPrivacyDialog.isVisible()
             && dynamic_cast<juce::TextEditor*>(e.eventComponent) == nullptr
             && dynamic_cast<juce::Button*>(e.eventComponent) == nullptr
             && dynamic_cast<juce::Slider*>(e.eventComponent) == nullptr
@@ -288,7 +238,6 @@ void JamWideJuceEditor::resized()
     // Overlays: full editor bounds
     serverBrowser.setBounds(getLocalBounds());
     licenseDialog.setBounds(getLocalBounds());
-    videoPrivacyDialog.setBounds(getLocalBounds());
 }
 
 void JamWideJuceEditor::timerCallback()
@@ -308,13 +257,6 @@ void JamWideJuceEditor::timerCallback()
     int iPos = processorRef.uiSnapshot.interval_position.load(std::memory_order_relaxed);
     int iLen = processorRef.uiSnapshot.interval_length.load(std::memory_order_relaxed);
     beatBar.update(bpi, beat, iPos, iLen);
-
-    // Broadcast beat position to video companion page for sync indicator
-    if (processorRef.videoCompanion && processorRef.videoCompanion->isActive())
-    {
-        int intervalCount = processorRef.uiSnapshot.interval_count.load(std::memory_order_relaxed);
-        processorRef.videoCompanion->broadcastBeatHeartbeat(beat, bpi, intervalCount);
-    }
 
     // Update BeatBar BPM for label area display
     beatBar.setBpm(processorRef.uiSnapshot.bpm.load(std::memory_order_relaxed));
@@ -400,26 +342,10 @@ void JamWideJuceEditor::drainEvents()
             else if constexpr (std::is_same_v<T, jamwide::BpmChangedEvent>)
             {
                 beatBar.triggerFlash();
-                // D-01, D-02: Forward BPM change to VideoCompanion for buffer delay update.
-                // Source is session state change (NJClient event), not editor visibility,
-                // so this works for hidden/minimized plugin and standalone mode.
-                if (processorRef.videoCompanion && processorRef.videoCompanion->isActive())
-                {
-                    float bpm = e.newBpm;
-                    int bpi = processorRef.uiSnapshot.bpi.load(std::memory_order_relaxed);
-                    processorRef.videoCompanion->broadcastBufferDelay(bpm, bpi);
-                }
             }
             else if constexpr (std::is_same_v<T, jamwide::BpiChangedEvent>)
             {
                 beatBar.triggerFlash();
-                // D-01, D-02: Forward BPI change to VideoCompanion for buffer delay update.
-                if (processorRef.videoCompanion && processorRef.videoCompanion->isActive())
-                {
-                    float bpm = processorRef.uiSnapshot.bpm.load(std::memory_order_relaxed);
-                    int bpi = e.newBpi;
-                    processorRef.videoCompanion->broadcastBufferDelay(bpm, bpi);
-                }
             }
             else if constexpr (std::is_same_v<T, jamwide::SyncStateChangedEvent>)
             {

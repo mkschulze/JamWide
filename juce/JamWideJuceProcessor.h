@@ -13,7 +13,6 @@
 #include "ui/ChatMessageModel.h"
 #include "core/njclient.h"  // For RemoteUserInfo
 #include "osc/OscServer.h"
-#include "video/VideoCompanion.h"
 #include "midi/MidiMapper.h"
 #include "midi/MidiLearnManager.h"
 
@@ -100,9 +99,6 @@ public:
     std::unique_ptr<MidiMapper> midiMapper;
     MidiLearnManager midiLearnManager;
 
-    // Video companion (owned by processor, UI accesses via reference)
-    std::unique_ptr<jamwide::VideoCompanion> videoCompanion;
-
     juce::AudioProcessorValueTreeState apvts;
     jamwide::SpscRing<jamwide::UiCommand, 256> cmd_queue;
 
@@ -165,13 +161,6 @@ public:
     std::atomic<bool>  prelisten_mode{false};
     std::atomic<float> prelisten_volume{0.7f};
     std::atomic<float> savedMetronomeVolume_{0.5f}; // saved before prelisten mutes it
-
-    // -- Phase 14.2: PTT + measurement broadcast guard (VID-13) --
-    // pttActive: message thread writes (PTT button/key), audio thread reads (via SetLocalChannelProcessor callback)
-    // instaMeasurementBroadcast: run thread sets true after broadcasting measured delay to VideoCompanion
-    // These are the ONLY Phase 14.2 atomics on the Processor. All measurement state lives in NJClient.
-    std::atomic<bool> pttActive{false};
-    std::atomic<bool> instaMeasurementBroadcast{false};
 
     // MIDI standalone device persistence (stable identifiers per review feedback)
     juce::String midiInputDeviceId;

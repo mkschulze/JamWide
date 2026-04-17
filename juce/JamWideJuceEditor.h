@@ -9,7 +9,6 @@
 #include "ui/SessionInfoStrip.h"
 #include "ui/ServerBrowserOverlay.h"
 #include "ui/LicenseDialog.h"
-#include "video/VideoPrivacyDialog.h"
 
 class JamWideJuceEditor : public juce::AudioProcessorEditor,
                            private juce::Timer
@@ -49,7 +48,6 @@ private:
 
     ServerBrowserOverlay serverBrowser;
     LicenseDialog licenseDialog;
-    VideoPrivacyDialog videoPrivacyDialog;
 
     // Custom arrow button — TextButton truncates to "..." at 16px width
     struct ChatToggleButton : public juce::Component
@@ -99,10 +97,6 @@ private:
     bool infoStripVisible = true;
     int prevPollStatus_ = -1;  // REVIEW FIX: member, not static
 
-    // 1030 accommodates the widened Connect/Disconnect button (105px) and
-    // Video button (54px) so "Disconnect" and "Video" both fit at the default
-    // plugin size without the right-side Fit/Video/Sync/Route/Vorbis cluster
-    // crowding the status label.
     static constexpr int kBaseWidth = 1030;
     static constexpr int kBaseHeight = 700;
     static constexpr int kConnectionBarHeight = 44;

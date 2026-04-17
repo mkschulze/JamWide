@@ -353,13 +353,15 @@ void NinjamRunThread::handleStatusChange(NJClient* client, int currentStatus)
             // flags=0x02: instamode encoding (64-byte blocks, 128-byte prebuffer on receiver).
             // src_channel=0 (mono input 0 -- actual audio only flows during PTT).
             // bitrate=64 kbps (low bandwidth, voice-quality Vorbis).
-            // broadcasting=true (always active -- sends silence when PTT off).
+            // broadcasting=true on connect for automatic probe measurement.
+            // syncInstatalkBroadcast() switches to PTT-driven after measurement completes,
+            // avoiding continuous Vorbis encoding of silence (CPU spike fix).
             // NOTE: Channel 4 is a system channel, NOT shown in local channel strip UI.
             // ChannelStripArea only renders channels 0-3 (hardcoded loop range).
             client->SetLocalChannelInfo(4, "Instatalk",
                 true, 0,        // setsrcch=true, srcch=0 (mono input 0)
                 true, 64,       // setbitrate=true, bitrate=64 kbps
-                true, true,     // setbcast=true, broadcast=true (always transmitting)
+                true, true,     // setbcast=true, broadcast=true (probe on connect)
                 false, 0,       // setoutch=false (not used)
                 true, 0x02);    // setflags=true, flags=0x02 (instamode)
 
@@ -375,9 +377,9 @@ void NinjamRunThread::handleStatusChange(NJClient* client, int currentStatus)
                     if (!proc->pttActive.load(std::memory_order_relaxed))
                         memset(buf, 0, static_cast<size_t>(ns) * sizeof(float));
                     // When pttActive is true, buf passes through unchanged (voice audio).
-                    // Vorbis encoder encodes silence as near-zero data (~200 bytes/sec at 64kbps).
                 },
                 &processor);
+            lastInstatalkPtt_ = true;  // matches initial broadcasting=true (probe phase)
 
             // Reset measurement state for new session (allows re-measurement per review concern #5).
             client->resetInstaMeasurement();
@@ -518,6 +520,28 @@ void NinjamRunThread::detectBpmBpiChanges(NJClient* client)
     }
 }
 
+void NinjamRunThread::syncInstatalkBroadcast(NJClient* client)
+{
+    // Two-phase Instatalk broadcasting:
+    // 1) Probe phase: broadcasting=true on connect, sends silence for automatic measurement.
+    // 2) PTT phase: after measurement completes, broadcasting tracks PTT state only.
+    // This avoids continuous Vorbis encoding of silence (which caused CPU spikes
+    // at every interval boundary) while still allowing automatic probe measurement.
+    bool measured = processor.instaMeasurementBroadcast.load(std::memory_order_relaxed);
+    bool want = measured
+        ? processor.pttActive.load(std::memory_order_relaxed)   // PTT-driven
+        : true;                                                  // probe: always on
+
+    if (want != lastInstatalkPtt_)
+    {
+        lastInstatalkPtt_ = want;
+        client->SetLocalChannelInfo(4, nullptr,
+            false, 0, false, 0,
+            true, want,     // toggle broadcasting
+            false, 0, false, 0);
+    }
+}
+
 void NinjamRunThread::pollInstamodeDelay(NJClient* client)
 {
     // D-06: Single measurement, use immediately.
@@ -637,7 +661,8 @@ void NinjamRunThread::run()
             handleUserInfoChange(client);
             updateRemoteVuLevels(client);
             detectBpmBpiChanges(client);
-            pollInstamodeDelay(client);          // Phase 14.2: consume measurement
+            syncInstatalkBroadcast(client);       // Phase 14.2: PTT → broadcasting
+            pollInstamodeDelay(client);           // Phase 14.2: consume measurement
             updateSessionAndVuSnapshot(client);
         }
 

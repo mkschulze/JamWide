@@ -53,6 +53,7 @@ private:
 
     // Phase 14.2: track PTT state to toggle Instatalk broadcasting
     bool lastInstatalkPtt_ = false;
+    juce::int64 probeDeadlineMs_ = 0;  // probe phase timeout (0 = not set)
 
     // Prelisten connection metadata (stored from PrelistenCommand for event emission)
     std::string prelistenHost_;

@@ -380,6 +380,7 @@ void NinjamRunThread::handleStatusChange(NJClient* client, int currentStatus)
                 },
                 &processor);
             lastInstatalkPtt_ = true;  // matches initial broadcasting=true (probe phase)
+            probeDeadlineMs_ = juce::Time::currentTimeMillis() + 30000;  // 30s probe window
 
             // Reset measurement state for new session (allows re-measurement per review concern #5).
             client->resetInstaMeasurement();
@@ -528,7 +529,9 @@ void NinjamRunThread::syncInstatalkBroadcast(NJClient* client)
     // This avoids continuous Vorbis encoding of silence (which caused CPU spikes
     // at every interval boundary) while still allowing automatic probe measurement.
     bool measured = processor.instaMeasurementBroadcast.load(std::memory_order_relaxed);
-    bool want = measured
+    bool probeExpired = probeDeadlineMs_ > 0
+        && juce::Time::currentTimeMillis() > probeDeadlineMs_;
+    bool want = (measured || probeExpired)
         ? processor.pttActive.load(std::memory_order_relaxed)   // PTT-driven
         : true;                                                  // probe: always on
 

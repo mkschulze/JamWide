@@ -26,16 +26,9 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <chrono>
 #include "njclient.h"
 #include "mpb.h"
 
-static int64_t currentMillis()
-{
-    using namespace std::chrono;
-    return duration_cast<milliseconds>(
-        steady_clock::now().time_since_epoch()).count();
-}
 #include "crypto/nj_crypto.h"
 #include "../wdl/pcmfmtcvt.h"
 #include "../wdl/wavwrite.h"
@@ -2467,17 +2460,6 @@ void NJClient::mixInChannel(RemoteUser *user, int chanidx,
         writeUserChanLog("v",user,userchan,chanidx);
       }
 
-      // Phase 14.2: capture t_insta when instamode data first mixed for a remote user.
-      // State machine transition: IDLE -> INSTA_CAPTURED.
-      // Identity: store RemoteUser* so t_interval can verify same-user match.
-      // Only capture once per measurement cycle (state must be IDLE).
-      if (userchan->ds
-          && insta_meas_state_.load(std::memory_order_relaxed) == kInstaMeasIdle)
-      {
-          insta_meas_user_ptr_.store(reinterpret_cast<uintptr_t>(user), std::memory_order_relaxed);
-          insta_t_insta_ms_.store(currentMillis(), std::memory_order_release);
-          insta_meas_state_.store(kInstaCapured, std::memory_order_release);
-      }
     }
     if (!chan || !chan->decode_codec || (!chan->decode_fp&&!chan->decode_buf))
     {
@@ -2751,16 +2733,6 @@ void NJClient::on_new_interval()
         {
           chan->ds->applyOverlap(&fade_state);
           writeUserChanLog("",user,chan,ch);
-
-          // Phase 14.2: capture t_interval when measured user's regular channel ds advances.
-          // State machine transition: INSTA_CAPTURED -> MEASURED.
-          // Verify same user by comparing RemoteUser* pointer.
-          if (insta_meas_state_.load(std::memory_order_relaxed) == kInstaCapured
-              && reinterpret_cast<uintptr_t>(user) == insta_meas_user_ptr_.load(std::memory_order_relaxed))
-          {
-              insta_t_interval_ms_.store(currentMillis(), std::memory_order_release);
-              insta_meas_state_.store(kInstaMeasured, std::memory_order_release);
-          }
         }
       }
     }

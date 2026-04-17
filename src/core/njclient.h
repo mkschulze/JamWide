@@ -257,25 +257,6 @@ public:
   void (*ChatMessage_Callback)(void *userData, NJClient *inst, const char **parms, int nparms);
   void *ChatMessage_User;
 
-  // -- Phase 14.2: Instamode latency measurement (VID-13) --
-  // State machine: IDLE -> INSTA_CAPTURED -> MEASURED -> CONSUMED
-  // All state lives HERE in NJClient (single owner).
-  // Audio thread writes; run thread reads.
-  enum InstaMeasState : int { kInstaMeasIdle = 0, kInstaCapured = 1, kInstaMeasured = 2, kInstaConsumed = 3 };
-
-  std::atomic<int>       insta_meas_state_{kInstaMeasIdle};
-  std::atomic<int64_t>   insta_t_insta_ms_{0};     // wall-clock ms: first instamode data mixed
-  std::atomic<int64_t>   insta_t_interval_ms_{0};  // wall-clock ms: regular channel ds advance
-  std::atomic<uintptr_t> insta_meas_user_ptr_{0};  // RemoteUser* identity for cross-timestamp matching
-
-  void resetInstaMeasurement()
-  {
-      insta_meas_state_.store(kInstaMeasIdle, std::memory_order_relaxed);
-      insta_t_insta_ms_.store(0, std::memory_order_relaxed);
-      insta_t_interval_ms_.store(0, std::memory_order_relaxed);
-      insta_meas_user_ptr_.store(0, std::memory_order_relaxed);
-  }
-
   // set these if you want to mix multiple channels into the output channel
   // return 0 if you want the default behavior
   int (*ChannelMixer)(void *userData, float **inbuf, int in_offset, int innch, int chidx, float *outbuf, int len);

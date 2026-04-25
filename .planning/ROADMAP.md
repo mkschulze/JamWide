@@ -181,6 +181,7 @@ Plans:
 **Milestone Goal:** Harden JamWide with connection encryption, modern Opus codec, resilient networking, and production-grade testing infrastructure.
 
 - [x] **Phase 15: Connection Encryption** -- AES-256-CBC end-to-end encryption for credentials and audio, backward-compatible with unencrypted NINJAM servers (completed 2026-04-11)
+- [ ] **Phase 15.1: RT-Safety Hardening** -- Audit and remove mutex acquisitions, heap deallocations, and file I/O from the JUCE audio callback path; SPSC-queue migration of NJClient audio-thread state (proactive; symptomatic CPU spike already mitigated in 14.2)
 - [ ] **Phase 16: Opus Codec Integration** -- Native libopus with automatic bitrate adaptation, packet loss concealment, and mixed-codec capability negotiation
 - [ ] **Phase 17: Network Resilience** -- Exponential backoff reconnection (1s-30s), per-peer adaptive jitter buffer, graceful degradation on network loss
 - [ ] **Phase 18: Testing Infrastructure** -- Stress tests (1000x create/destroy, 10 concurrent instances), documented shutdown sequence, CI-gated test pipeline
@@ -201,6 +202,19 @@ Plans:
 - [x] 15-01-PLAN.md — Crypto module (TDD): nj_crypto.h/.cpp with AES-256-CBC encrypt/decrypt via OpenSSL EVP, SHA-256 key derivation, test-only IV injection API, 15+ unit tests (round-trip, known-vector, size overhead, zero-length, tamper), CMake OpenSSL linkage
 - [x] 15-02-PLAN.md — Protocol integration: redesigned auth flow (server advertises encryption in AUTH_CHALLENGE, client encrypts AUTH_USER credentials), Net_Connection encrypt-on-send/decrypt-on-receive hooks, downgrade detection, CI OpenSSL setup for all platforms
 **Reference**: AES-256-CBC with OpenSSL EVP, SHA-256 key derivation from password, random IV per message, server_caps/client_caps/flag capability negotiation
+
+### Phase 15.1: RT-Safety Hardening
+**Goal**: The JUCE audio callback path is free of mutex acquisitions, heap deallocations, and file I/O — eliminating the latent CPU-spike-on-interval class of bug at the architectural level
+**Depends on**: Phase 15 (encryption stable; landed before audio-path refactor)
+**Scope**: Audit `processBlock` → `AudioProc` → `on_new_interval` / `process_samples` / `mixInChannel`; remove all CRITICAL / HIGH RT-safety violations the `realtime-audio-reviewer` agent reports.
+**Success Criteria** (what must be TRUE):
+  1. ThreadSanitizer build of the test binaries (`./scripts/build.sh --tests` with `-fsanitize=thread`) passes a NINJAM session simulation with peer churn at interval boundaries.
+  2. Re-running the `realtime-audio-reviewer` agent on `src/core/njclient.cpp` and `juce/JamWideJuceProcessor.cpp` reports zero CRITICAL findings on the audio path.
+  3. Manual UAT on a populated NINJAM server (3+ peers) shows no audible audio glitches and no CPU spike pattern at the interval period in Activity Monitor's CPU history.
+  4. The `m_users_cs` and `m_locchan_cs` mutexes are no longer acquired from `AudioProc` or any function it calls.
+  5. `writeLog` / `writeUserChanLog` / the `JAMWIDE_DEV_BUILD` `fopen` block at `njclient.cpp:2133` are removed from the audio path.
+**Plans**: TBD by planner after the audit (16-AUDIT.md drives the work breakdown)
+**Reference**: SPSC queues via `src/threading/spsc_ring.h`, JUCE `AbstractFifo` as fallback. Auditor agent at `.claude/agents/realtime-audio-reviewer.md`. Bug-investigation context in `.planning/phases/15.1-rt-safety-hardening/15.1-CONTEXT.md`. Historically-related fixes in commits `9cd23c0` and `9fa0d32` (Instatalk-specific spike — already shipped, not undone).
 
 ### Phase 16: Opus Codec Integration
 **Goal**: Users get low-latency, high-quality audio with automatic bitrate adaptation and packet loss resilience
@@ -271,6 +285,7 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 14.1 Audio Prelisten | v1.1 | 1/2 | In Progress|  |
 | 14.2 Instamode Video Sync | v1.1 | 2/2 | Complete   | 2026-04-16 |
 | 15. Connection Encryption | v1.2 | 2/2 | Complete    | 2026-04-11 |
+| 15.1. RT-Safety Hardening | v1.2 | 0/0 | Context gathered | - |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |
 | 18. Testing Infrastructure | v1.2 | 0/0 | Not started | - |

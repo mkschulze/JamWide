@@ -3140,20 +3140,34 @@ void NJClient::on_new_interval()
     auto& lcm = m_locchan_mirror[ch];
     if (!lcm.active) continue;
     if (ch >= m_max_localch && !(lcm.flags & 2)) continue;
-    // Plain regular-mode channel (not LL, not session). Push the legacy
-    // pair of boundary markers at every interval boundary.
+    // Regular (non-LL, non-session) channel: reconcile the audio-thread-cached
+    // bcast_active flag against the run-thread-supplied bcast each interval,
+    // exactly mirroring the legacy state machine that lived under m_locchan_cs
+    // (15.1-07b restoration of broadcast — bug-fix on top of the initial port,
+    // which dropped the state-transition logic). drainBroadcastBlocks forwards
+    // these markers into legacy lc->m_bq.AddBlock on the run thread.
     if (!(lcm.flags & (4|2)))
     {
-      // legacy: lc->m_bq.AddBlock(0, 0.0, NULL, 0)  — boundary marker
-      pushBlockRecord(lcm.block_q, m_block_queue_drops,
-                      0, 0.0, nullptr, 0, 0);
-      // legacy: lc->m_bq.AddBlock(0, -1.0, NULL, -1) — broadcast-stop marker.
-      // We encode the legacy len==-1 distinction with startpos==-1.0;
-      // drainBroadcastBlocks recognizes that pattern (sample_count==0 AND
-      // attr==0 AND startpos==-1.0) and forwards as
-      // m_bq.AddBlock(0, -1.0, NULL, -1).
-      pushBlockRecord(lcm.block_q, m_block_queue_drops,
-                      0, -1.0, nullptr, 0, 0);
+      if (lcm.bcast_active)
+      {
+        // Currently broadcasting → emit interval-boundary marker.
+        // legacy: lc->m_bq.AddBlock(0, 0.0, NULL, 0)
+        pushBlockRecord(lcm.block_q, m_block_queue_drops,
+                        0, 0.0, nullptr, 0, 0);
+      }
+
+      const bool wasact = lcm.bcast_active;
+      lcm.bcast_active = lcm.bcast;  // pick up user-requested broadcast state
+
+      if (wasact && !lcm.bcast_active)
+      {
+        // Transitioned active→inactive → emit broadcast-stop marker.
+        // legacy: lc->m_bq.AddBlock(0, -1.0, NULL, -1) — drainBroadcastBlocks
+        // recognizes sample_count==0 + startpos==-1.0 and forwards as
+        // AddBlock(0, -1.0, NULL, -1).
+        pushBlockRecord(lcm.block_q, m_block_queue_drops,
+                        0, -1.0, nullptr, 0, 0);
+      }
     }
   }
   // 15.1-06 CR-02: m_locchan_cs.Leave removed; mirror was used above.

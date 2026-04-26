@@ -382,4 +382,15 @@ if(JAMWIDE_BUILD_TESTS)
     )
     add_test(NAME spsc_state_updates COMMAND test_spsc_state_updates)
 
+    # 15.1-05 deferred-delete: 256-burst push + drain stress + 50 Hz audio-rate
+    # producer/consumer + overflow-counter mechanism (Codex M-8). Pure-C++ (no
+    # NJClient link). Designed to also run cleanly under -fsanitize=thread
+    # (--tsan build, JAMWIDE_TSAN=ON).
+    add_executable(test_deferred_delete tests/test_deferred_delete.cpp)
+    target_include_directories(test_deferred_delete PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME deferred_delete COMMAND test_deferred_delete)
+
 endif()

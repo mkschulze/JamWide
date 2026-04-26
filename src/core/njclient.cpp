@@ -649,10 +649,11 @@ void NJClient::_reinit()
 
   m_in_auth=0;
 
-  m_bpm=120;
-  m_bpi=32;
+  // 15.1-02 CR-03: m_bpm/m_bpi/m_beatinfo_updated are atomic; relaxed init from owning thread.
+  m_bpm.store(120, std::memory_order_relaxed);
+  m_bpi.store(32, std::memory_order_relaxed);
 
-  m_beatinfo_updated=1;
+  m_beatinfo_updated.store(1, std::memory_order_relaxed);
 
   m_audio_enable=0;
   m_debug_logged_remote=false;
@@ -660,7 +661,8 @@ void NJClient::_reinit()
   m_active_bpm=120;
   m_active_bpi=32;
   m_interval_length=1000;
-  m_interval_pos=-1;
+  // 15.1-02: m_interval_pos is std::atomic<int>; relaxed init from owning thread.
+  m_interval_pos.store(-1, std::memory_order_relaxed);
   m_metronome_pos=0.0;
   m_metronome_state=0;
   m_metronome_tmp=0;
@@ -751,18 +753,26 @@ NJClient::~NJClient()
 
 void NJClient::updateBPMinfo(int bpm, int bpi)
 {
-  m_misc_cs.Enter();
-  m_bpm=bpm;
-  m_bpi=bpi;
-  m_beatinfo_updated=1;
-  m_misc_cs.Leave();
+  // 15.1-02 CR-03: edge-triggered publish (see semantics in njclient.h).
+  // Writer's last store wins; intermediate publishes between reader runs are coalesced.
+  // No mutex acquisition — m_misc_cs no longer needed for this publication.
+  m_bpm.store(bpm, std::memory_order_relaxed);
+  m_bpi.store(bpi, std::memory_order_relaxed);
+  m_beatinfo_updated.store(1, std::memory_order_release);
 }
 
 
 void NJClient::GetPosition(int *pos, int *length)  // positions in samples
 {
   if (length) *length=m_interval_length;
-  if (pos && (*pos=m_interval_pos)<0) *pos=0;
+  // 15.1-02 (AUDIT line 421): m_interval_pos is atomic; relaxed read closes the
+  // previously-undefined-behavior UI-thread/audio-thread race.
+  if (pos)
+  {
+    int p = m_interval_pos.load(std::memory_order_relaxed);
+    if (p < 0) p = 0;
+    *pos = p;
+  }
 }
 
 unsigned int NJClient::GetSessionPosition()// returns milliseconds
@@ -819,36 +829,46 @@ void NJClient::AudioProc(float **inbuf, int innch, float **outbuf, int outnch, i
 
   while (len > 0)
   {
-    int x=m_interval_length-m_interval_pos;
-    if (!x || m_interval_pos < 0)
+    // 15.1-02: same-thread (audio) relaxed load; no synchronization needed
+    // because the writer is also the audio thread (processBlock) per H header SetIntervalPosition.
+    int interval_pos = m_interval_pos.load(std::memory_order_relaxed);
+    int x=m_interval_length-interval_pos;
+    if (!x || interval_pos < 0)
     {
-      m_misc_cs.Enter();
-      if (m_beatinfo_updated)
+      // 15.1-02 CR-03: edge-triggered consume (see semantics in njclient.h).
+      // Acquire-load synchronizes with updateBPMinfo's release-store; subsequent relaxed
+      // loads see whatever the writer most recently published. m_misc_cs is no longer
+      // acquired on the audio thread.
+      if (m_beatinfo_updated.load(std::memory_order_acquire))
       {
-        double v=(double)m_bpm*(1.0/60.0);
+        const int bpm = m_bpm.load(std::memory_order_relaxed);
+        const int bpi = m_bpi.load(std::memory_order_relaxed);
+
+        double v=(double)bpm*(1.0/60.0);
         // beats per second
 
         // (beats/interval) / (beats/sec)
-        v = (double) m_bpi / v;
+        v = (double) bpi / v;
 
         // seconds/interval
 
         // samples/interval
         v *= (double) srate;
 
-        m_beatinfo_updated=0;
+        // Edge-clear: another publish may have raced past; we will see it next interval.
+        m_beatinfo_updated.store(0, std::memory_order_relaxed);
         m_interval_length = (int)v;
         //m_interval_length-=m_interval_length%1152;//hack
-        m_active_bpm=m_bpm;
-        m_active_bpi=m_bpi;
+        m_active_bpm = bpm;
+        m_active_bpi = bpi;
         m_metronome_interval=(int) ((double)m_interval_length / (double)m_active_bpi);
       }
-      m_misc_cs.Leave();
 
       // new buffer time
       on_new_interval();
 
-      m_interval_pos=0;
+      m_interval_pos.store(0, std::memory_order_relaxed);
+      interval_pos = 0;
       x=m_interval_length;
     }
 
@@ -856,7 +876,7 @@ void NJClient::AudioProc(float **inbuf, int innch, float **outbuf, int outnch, i
 
     process_samples(inbuf,innch,outbuf,outnch,x,srate,offs,0,isPlaying,isSeek,cursessionpos);
 
-    m_interval_pos+=x;
+    m_interval_pos.store(interval_pos + x, std::memory_order_relaxed);
     offs += x;
     len -= x;
 
@@ -2255,7 +2275,8 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
       if (m_metronome_pos <= 0.0)
       {
         m_metronome_state=1;
-        m_metronome_tmp=(m_interval_pos+x)<m_metronome_interval;
+        // 15.1-02: relaxed load; same-thread reader (process_samples runs on audio thread).
+        m_metronome_tmp=(m_interval_pos.load(std::memory_order_relaxed)+x)<m_metronome_interval;
         m_metronome_pos += (double)m_metronome_interval;
       }
       m_metronome_pos-=1.0;

@@ -153,6 +153,38 @@ public:
   // Lock-free status access for audio thread
   std::atomic<int> cached_status{NJC_STATUS_DISCONNECTED};
 
+  // 15.1-02 CR-03: atomic publish/consume of beat-info from run thread to audio thread.
+  //
+  // PUBLICATION PROTOCOL (edge-triggered, best-effort — Codex review L-10):
+  //   Writer (run thread, updateBPMinfo):
+  //     1. m_bpm.store(latest, relaxed)
+  //     2. m_bpi.store(latest, relaxed)
+  //     3. m_beatinfo_updated.store(1, release)   <-- synchronizes with reader's acquire
+  //   Reader (audio thread, AudioProc):
+  //     1. if (m_beatinfo_updated.load(acquire)) {
+  //          int bpm = m_bpm.load(relaxed);
+  //          int bpi = m_bpi.load(relaxed);
+  //          m_beatinfo_updated.store(0, relaxed);  // edge-clear; another publish may have raced past
+  //          ... apply bpm/bpi ...
+  //        }
+  //
+  // The reader sees the LATEST published payload, not every intermediate one. If the writer
+  // publishes 5 times between two reader runs, the reader's single observation will see the
+  // 5th (most recent) bpm/bpi and miss the 1st-4th. This is correct: BPM/BPI are config
+  // values, only the most recent matters; on_new_interval recomputes interval state from
+  // whatever the reader observed.
+  //
+  // This is NOT a last-value latch protocol (which would buffer every intermediate value);
+  // it is an edge-triggered "something has changed, here is the current state" signal.
+  std::atomic<int> m_beatinfo_updated{0};
+  std::atomic<int> m_bpm{0};
+  std::atomic<int> m_bpi{0};
+
+  // 15.1-02 (AUDIT line 421): m_interval_pos was racing between processBlock writer and GetPosition reader.
+  // Promoted to std::atomic<int>; processBlock writer uses store(relaxed); GetPosition reader uses
+  // load(relaxed). AudioProc same-thread reads/writes also use relaxed.
+  std::atomic<int> m_interval_pos{0};
+
   void SetWorkDir(char *path);
   const char *GetWorkDir() { return m_workdir.Get(); }
 
@@ -163,8 +195,9 @@ public:
   int GetBPI() { return m_active_bpi; }
   void GetPosition(int *pos, int *length);  // positions in samples
   // Set interval position for DAW sync offset alignment (Phase 7 — SYNC-02).
-  // Safe: only called from processBlock (audio thread), same thread as AudioProc.
-  void SetIntervalPosition(int pos) { m_interval_pos = pos; }
+  // Called from processBlock (audio thread). 15.1-02: m_interval_pos is now atomic;
+  // relaxed store is sufficient because no other state's visibility depends on it.
+  void SetIntervalPosition(int pos) { m_interval_pos.store(pos, std::memory_order_relaxed); }
   int GetLoopCount() { return m_loopcnt; }
   unsigned int GetSessionPosition(); // returns milliseconds
 
@@ -321,8 +354,8 @@ protected:
   unsigned char m_auth_challenge[8] = {};  // saved for encryption key derivation (Phase 15)
 
   int m_in_auth;
-  int m_bpm,m_bpi;
-  int m_beatinfo_updated;
+  // 15.1-02: m_bpm, m_bpi, m_beatinfo_updated promoted to std::atomic<int>
+  // (declared above near cached_status). Removed from this block.
   int m_audio_enable;
   int m_srate;
   int m_userinfochange;
@@ -334,7 +367,8 @@ protected:
   int m_loopcnt;
   int m_active_bpm, m_active_bpi;
   int m_interval_length;
-  int m_interval_pos, m_metronome_state, m_metronome_tmp,m_metronome_interval;
+  // 15.1-02 (AUDIT line 421): m_interval_pos promoted to std::atomic<int> (declared above).
+  int m_metronome_state, m_metronome_tmp,m_metronome_interval;
   double m_metronome_pos;
 
   int m_metro_chidx, m_remote_chanoffs, m_local_chanoffs;

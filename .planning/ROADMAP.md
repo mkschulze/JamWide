@@ -217,7 +217,7 @@ Plans:
 Plans:
 - [x] 15.1-01 — Auditor pass (committed `d2db893`; produced `15.1-AUDIT.md` with 21 findings: 12 CRITICAL, 4 HIGH, 3 MEDIUM, 2 LOW)
 - [x] 15.1-02-atomic-promotion-PLAN.md — m_misc_cs / BPM / BPI / m_interval_pos atomic promotion (CR-03; documents `m_beatinfo_updated` edge-trigger semantics per L-10) — completed 2026-04-26 (commits ff45da8, 1fbcdc7; SUMMARY at 15.1-02-SUMMARY.md)
-- [ ] 15.1-03-eliminate-audio-path-logging-PLAN.md — remove writeLog / writeUserChanLog / JAMWIDE_DEV_BUILD fopen from audio path (CR-04, H-01, H-02, L-02)
+- [x] 15.1-03-eliminate-audio-path-logging-PLAN.md — remove writeLog / writeUserChanLog / JAMWIDE_DEV_BUILD fopen from audio path (CR-04, H-01, H-02, L-02) — completed 2026-04-26 (commit bec421e; SUMMARY at 15.1-03-SUMMARY.md). writeUserChanLog body+declaration deleted entirely per Codex per-plan delta; m_debug_logged_remote field also removed; writeLog API survives for non-RT callers.
 - [ ] 15.1-04-spsc-infrastructure-PLAN.md — SPSC payloads.h (FINAL Wave-0 payloads incl. DecodeArmRequest), `--tsan` flag, JAMWIDE_TSAN option, primitive unit tests, `MAX_BLOCK_SAMPLES` contract
 - [ ] 15.1-05-deferred-delete-PLAN.md — DecodeState* deferred-delete SPSC for all 7 audio-thread delete sites (CR-05, CR-06, CR-07) + overflow counter accessor
 - [ ] 15.1-06-locchan-cs-snapshot-PLAN.md — m_locchan_cs replaced with audio-thread mirror + LocalChannelUpdate SPSC + Local_Channel deferred-free with generation gate (CR-02)

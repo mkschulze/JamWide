@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Security & Quality
 status: in_progress
-stopped_at: Completed 15.1-02-atomic-promotion-PLAN.md (CR-03 closed, m_interval_pos race closed, edge-triggered semantics documented per L-10, test_njclient_atomics scaffolded with 4 sub-tests)
-last_updated: "2026-04-26T14:42:51.000Z"
+stopped_at: Completed 15.1-03-eliminate-audio-path-logging-PLAN.md (CR-04, H-01, H-02, L-02 closed; writeLog/writeUserChanLog/fopen all gone from audio path; writeUserChanLog body+declaration deleted per Codex per-plan delta)
+last_updated: "2026-04-26T15:30:00.000Z"
 last_activity: 2026-04-26
 progress:
   total_phases: 10
   completed_phases: 9
   total_plans: 30
-  completed_plans: 20
+  completed_plans: 21
   percent: 90
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 ## Current Position
 
 Phase: 15.1 (rt-safety-hardening) — IN PROGRESS (Wave 1 underway)
-Plan: 2 of 11 (15.1-01 audit done; 15.1-02 atomic-promotion done; 15.1-03..10 remaining; 07 split into 07a/07b/07c)
-Status: 15.1-02 complete — m_misc_cs eliminated from audio thread, m_bpm/m_bpi/m_beatinfo_updated/m_interval_pos atomic-promoted, edge-triggered best-effort semantics documented per Codex L-10, test_njclient_atomics scaffold passes 4/4 sub-tests. Next Wave-1 plans: 15.1-03 (eliminate audio-path logging), 15.1-04 (SPSC infrastructure + --tsan flag).
+Plan: 3 of 11 (15.1-01 audit done; 15.1-02 atomic-promotion done; 15.1-03 audio-path-logging done; 15.1-04..10 remaining; 07 split into 07a/07b/07c)
+Status: 15.1-03 complete — writeLog/writeUserChanLog/fopen all eliminated from audio path (CR-04, H-01, H-02, L-02 closed). writeUserChanLog body+declaration fully deleted per Codex per-plan delta — no [[maybe_unused]] inert code retained. m_debug_logged_remote member removed. writeLog API itself survives for non-RT callers (Disconnect/sessionlog/chat/local/localsessionlog). Next Wave-1 plans: 15.1-04 (SPSC infrastructure + --tsan flag).
 Last activity: 2026-04-26
 
-Progress: [##........] 18% (v1.2 milestone — 2 of 11 sub-plans complete)
+Progress: [###.......] 27% (v1.2 milestone — 3 of 11 sub-plans complete)
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [##........] 18% (v1.2 milestone — 2 of 11 sub-plans complete)
 | Phase 14.2 P01 | 957 | 2 tasks | 8 files |
 | Phase 14.2 P02 | 221 | 2 tasks | 5 files |
 | Phase 15.1 P02 | 578 | 2 tasks | 5 files |
+| Phase 15.1 P03 | 120 | 1 task  | 2 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,8 @@ Recent decisions affecting current work:
 - [Phase 14.2]: Global overlay over #main-area instead of per-tile: VDO.Ninja iframe is cross-origin, per-tile positioning impossible
 - [Phase 15.1-02]: m_beatinfo_updated publication is edge-triggered best-effort (NOT last-value latch) — writer's last store wins, reader sees latest payload, intermediate updates dropped by design (BPM/BPI are config values; only most recent matters). Documented in njclient.h header comment per Codex L-10.
 - [Phase 15.1-02]: AudioProc m_interval_pos uses local-cache pattern (load once, store once back) to clarify same-thread relaxed semantics and minimize atomic ops; m_misc_cs eliminated entirely from audio thread.
+- [Phase 15.1-03]: writeUserChanLog body+declaration deleted entirely (not [[maybe_unused]]'d, not #if 0'd) per Codex per-plan delta — no inert dead code retained; restoration would require an SPSC-mediated logging path, never an in-place audio-thread call.
+- [Phase 15.1-03]: guidtostr() retained against the plan's L-02 cleanup instruction because grep audit showed 6 non-audio-path callers (sessionlog, localsessionlog, makeFilenameFromGuid, chat-write paths). Audit's "becomes irrelevant" wording referred to audio-thread reachability only.
 
 ### Pending Todos
 
@@ -106,6 +109,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-26T14:42:51.000Z
-Stopped at: Completed 15.1-02-PLAN.md (CR-03 closed, m_interval_pos race closed, edge-triggered semantics documented per Codex L-10, test_njclient_atomics 4/4 passing). Next Wave-1 plans: 15.1-03 (audio-path logging removal) and 15.1-04 (SPSC infrastructure + --tsan flag).
+Last session: 2026-04-26T15:30:00.000Z
+Stopped at: Completed 15.1-03-PLAN.md (CR-04, H-01, H-02, L-02 closed; writeLog/writeUserChanLog/fopen all gone from audio path; writeUserChanLog body+declaration deleted entirely per Codex per-plan delta; writeLog API survives for non-RT callers). Next Wave-1 plan: 15.1-04 (SPSC infrastructure + --tsan flag).
 Resume file: None

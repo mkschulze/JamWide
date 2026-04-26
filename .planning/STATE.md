@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Security & Quality
 status: in_progress
-stopped_at: Completed 15.1-04-spsc-infrastructure-PLAN.md (Wave 0 finalized — payload shapes locked per Codex M-9; MAX_BLOCK_SAMPLES contract documented per M-7; HIGH-2 escape-hatch grep gate clean; HIGH-3 deferred-free capacity constants in place; --tsan flag + JAMWIDE_TSAN option wired with macOS codesign skip; SPSC roundtrip + concurrent stress tests pass under TSan with zero reports)
-last_updated: "2026-04-26T17:30:00.000Z"
+stopped_at: Completed 15.1-05-deferred-delete-PLAN.md (Wave 2 first plan — all 7 audio-thread DecodeState delete sites replaced with SPSC try_push to m_deferred_delete_q; drainDeferredDelete wired into NinjamRunThread::run() at 20ms cadence + graceful-shutdown drain; m_deferred_delete_overflows counter exposed via GetDeferredDeleteOverflowCount() per Codex M-8 phase-close gate; test_deferred_delete 3/3 PASSED under both Release and TSan with zero ThreadSanitizer reports)
+last_updated: "2026-04-26T15:46:40.000Z"
 last_activity: 2026-04-26
 progress:
   total_phases: 10
   completed_phases: 9
   total_plans: 30
-  completed_plans: 22
-  percent: 93
+  completed_plans: 23
+  percent: 96
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 
 ## Current Position
 
-Phase: 15.1 (rt-safety-hardening) — IN PROGRESS (Wave 1 complete; Wave 2 next)
-Plan: 4 of 11 (15.1-01 audit done; 15.1-02 atomic-promotion done; 15.1-03 audio-path-logging done; 15.1-04 SPSC infrastructure done; 15.1-05..10 remaining; 07 split into 07a/07b/07c)
-Status: 15.1-04 complete — Wave 0 SPSC infrastructure landed. src/threading/spsc_payloads.h finalized with all payload shapes (Codex M-9 stability claim recorded; downstream plans 15.1-05/06/07a/07b/07c/08/09 must NOT mutate this header). MAX_BLOCK_SAMPLES = 2048 contract documented for SetMaxAudioBlockSize enforcement in 15.1-08 (Codex M-7). No raw-pointer escape hatches in any payload (Codex HIGH-2 grep gate clean). HIGH-3 deferred-free capacity constants (REMOTE_USER_DEFERRED_DELETE_CAPACITY=64, LOCAL_CHANNEL_DEFERRED_DELETE_CAPACITY=32) declared. --tsan flag wired in scripts/build.sh, JAMWIDE_TSAN CMake option added with macOS codesign skip. tests/test_spsc_state_updates.cpp: 10/10 PASSED under TSan with zero ThreadSanitizer reports (5930ms wall on concurrent BlockRecord stress). Next plan: 15.1-05 (DecodeState* deferred-delete SPSC integration — first audio-thread-touching plan).
+Phase: 15.1 (rt-safety-hardening) — IN PROGRESS (Wave 1 + 15.1-05 complete; Wave 2 in progress)
+Plan: 5 of 11 (15.1-01 audit done; 15.1-02 atomic-promotion done; 15.1-03 audio-path-logging done; 15.1-04 SPSC infrastructure done; 15.1-05 deferred-delete done; 15.1-06..10 remaining; 07 split into 07a/07b/07c)
+Status: 15.1-05 complete — first audio-thread-mutating plan landed. All 7 audio-thread DecodeState delete sites identified by AUDIT CR-05/06/07 (mixInChannel sites originally at lines 2404, 2414, 2447, 2467, 2667; on_new_interval sites originally at 2742, 2745) replaced with `deferDecodeStateDelete` helper that try_pushes onto NJClient::m_deferred_delete_q (SpscRing<DecodeState*, DEFERRED_DELETE_CAPACITY=256>). Pointer-shuffle ordering preserved at sites 4, 5, 7 per RESEARCH § "Subtle note for the planner" (capture-first, then advance the slot, then defer-delete). drainDeferredDelete wired into NinjamRunThread::run() inside the 20ms ScopedLock block (drains LAST per drain-order rule) AND once after the run-loop exits for graceful shutdown. Codex M-8 overflow counter (m_deferred_delete_overflows std::atomic<uint64_t>) exposed via public GetDeferredDeleteOverflowCount() accessor — 15.1-10 phase verification will assert == 0 post-UAT (non-zero == architectural defect, queue undersized for workload). On overflow, the audio thread leaks the pointer for one tick AND increments the counter (RT-safety > memory hygiene). tests/test_deferred_delete.cpp added: 3 cases (256-burst push+drain, 50Hz audio-rate producer/20ms consumer, Codex M-8 overflow counter mechanism); 3/3 PASSED under both Release (build-test/) and TSan (build-tsan/) with zero ThreadSanitizer reports. JamWideJuce_Standalone build green. test_njclient_atomics + test_spsc_state_updates regression tests still pass. Next plan: 15.1-06 (m_locchan_cs snapshot replacement, CR-02).
 Last activity: 2026-04-26
 
-Progress: [####......] 36% (v1.2 milestone — 4 of 11 sub-plans complete)
+Progress: [#####.....] 45% (v1.2 milestone — 5 of 11 sub-plans complete)
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [####......] 36% (v1.2 milestone — 4 of 11 sub-plans complete)
 | Phase 15.1 P02 | 578 | 2 tasks | 5 files |
 | Phase 15.1 P03 | 120 | 1 task  | 2 files |
 | Phase 15.1 P04 | ~1500 | 3 tasks | 4 files |
+| Phase 15.1 P05 | 478 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,10 @@ Recent decisions affecting current work:
 - [Phase 15.1-04]: MAX_BLOCK_SAMPLES = 2048 contract is documented at the source (spsc_payloads.h docstring). NJClient::SetMaxAudioBlockSize (15.1-08) MUST assert maxSamplesPerBlock <= MAX_BLOCK_SAMPLES at prepareToPlay time; per-callsite BlockRecord producers (15.1-07b) MUST defensively bounds-check. Two-layer enforcement closes Codex M-7.
 - [Phase 15.1-04]: Single TSan target (--tsan flag → build-tsan/, JAMWIDE_TSAN=ON) covers BOTH NJClient core unit tests AND the JUCE callback boundary. macOS codesign block gated `if(APPLE AND NOT JAMWIDE_TSAN)` per RESEARCH macOS caveat #1 — TSan injects a runtime not covered by ad-hoc codesigning, leading to launch failure on macOS without this gate.
 - [Phase 15.1-04]: scripts/build.sh was untracked at session start; added to git index as part of this plan. The script is the canonical local build entrypoint (referenced from CLAUDE.md memory).
+- [Phase 15.1-05]: All 7 audio-thread DecodeState delete sites factored through a single static helper (deferDecodeStateDelete) that performs the try_push + overflow-counter bump + null-out pattern. Plan's `<action>` block specified the helper verbatim; the literal `m_deferred_delete_q.try_push` grep in the acceptance criteria was looking for the inlined form, but the helper-factored approach is what the plan prescribes and 7 sites do call it. Functionally identical to 7 inline try_pushes.
+- [Phase 15.1-05]: Pointer-shuffle ordering at llmode advance sites (mixInChannel sites 4, 5; on_new_interval site 7) preserved per RESEARCH § "Subtle note for the planner" — capture old pointer FIRST into a local, advance the slot (chan->ds = next_ds[0]; next_ds[0] = next_ds[1]; ...), THEN defer-delete the captured pointer. Audio thread retains exclusive ownership during the shuffle; only the orphaned old pointer crosses the SPSC.
+- [Phase 15.1-05]: Codex M-8 fallback semantics — when try_push returns false, the audio thread DOES NOT delete (would block on codec/file teardown). It bumps m_deferred_delete_overflows and proceeds. Counter being observable at phase close (15.1-10 asserts == 0) makes silent overflow a phase-failing condition, not a tolerable transient. RT-safety > memory hygiene at the audio callback boundary is the locked architectural choice.
+- [Phase 15.1-05]: Run-thread drain is two-stage — in-loop after updateSessionAndVuSnapshot at 20ms cadence (drained LAST per RESEARCH § "Drain order"), AND post-loop graceful-shutdown drain after the while(!threadShouldExit()) exits to prevent leaks on disconnect.
 
 ### Pending Todos
 
@@ -115,6 +120,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-26T17:30:00.000Z
-Stopped at: Completed 15.1-04-PLAN.md (Wave 0 SPSC infrastructure landed). spsc_payloads.h FINALIZED with all payload variants + PODs + capacity constants per Codex M-9 / M-7 / HIGH-2 / HIGH-3. tests/test_spsc_state_updates.cpp passes 10/10 under TSan with zero ThreadSanitizer reports. --tsan flag + JAMWIDE_TSAN option + macOS codesign skip wired. Next plan: 15.1-05 (DecodeState* deferred-delete SPSC integration — first audio-thread-touching plan; closes CR-05/06/07).
+Last session: 2026-04-26T15:46:40.000Z
+Stopped at: Completed 15.1-05-deferred-delete-PLAN.md. All 7 audio-thread DecodeState delete sites (CR-05/06/07) now defer onto NJClient::m_deferred_delete_q (256-slot SpscRing<DecodeState*>); drainDeferredDelete runs at 20ms run-thread cadence + once at graceful shutdown; Codex M-8 overflow counter (m_deferred_delete_overflows) exposed via GetDeferredDeleteOverflowCount() for 15.1-10 phase-close gate. test_deferred_delete 3/3 PASSED under both Release and TSan with zero ThreadSanitizer reports. JamWideJuce_Standalone build green. Next plan: 15.1-06 (m_locchan_cs snapshot replacement, CR-02 — second audio-thread-mutating plan).
 Resume file: None

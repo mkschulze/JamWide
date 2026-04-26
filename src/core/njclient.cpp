@@ -656,7 +656,8 @@ void NJClient::_reinit()
   m_beatinfo_updated.store(1, std::memory_order_relaxed);
 
   m_audio_enable=0;
-  m_debug_logged_remote=false;
+  // 15.1-03 H-01: m_debug_logged_remote member deleted; was the one-shot gate for the
+  // removed JAMWIDE_DEV_BUILD audio-path fopen block.
 
   m_active_bpm=120;
   m_active_bpi=32;
@@ -897,7 +898,7 @@ void NJClient::Disconnect()
   m_user.Set("");
   m_pass.Set("");
   memset(m_auth_challenge, 0, 8);  // scrub saved challenge (Phase 15)
-  m_debug_logged_remote=false;
+  // 15.1-03 H-01: m_debug_logged_remote field deleted (see _reinit comment).
   delete m_netcon;
   m_netcon=0;
 
@@ -2142,23 +2143,9 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
   {
     // mix in all active (subscribed) channels
     m_users_cs.Enter();
-    if (!m_debug_logged_remote && m_remoteusers.GetSize() > 0)
-    {
-      m_debug_logged_remote = true;
-      RemoteUser *user = m_remoteusers.Get(0);
-      int mask = user ? user->chanpresentmask : 0;
-      int out_idx = user ? user->channels[0].out_chan_index : -1;
-      int flags = user ? user->channels[0].flags : 0;
-#ifdef JAMWIDE_DEV_BUILD
-      FILE* lf = fopen("/tmp/jamwide.log", "a");
-      if (lf)
-      {
-        fprintf(lf, "[NJClient][AudioProc] users=%d mask=0x%x out_idx=%d flags=%d\n",
-                m_remoteusers.GetSize(), mask, out_idx, flags);
-        fclose(lf);
-      }
-#endif
-    }
+    // 15.1-03 H-01: JAMWIDE_DEV_BUILD fopen("/tmp/jamwide.log") block removed unconditionally
+    // (also removes the surrounding `if (!m_debug_logged_remote ...)` gate which existed only
+    // to one-shot that dev-build log; m_debug_logged_remote field deleted from the class).
     for (u = 0; u < m_remoteusers.GetSize(); u ++)
     {
       RemoteUser *user=m_remoteusers.Get(u);
@@ -2485,7 +2472,7 @@ void NJClient::mixInChannel(RemoteUser *user, int chanidx,
       if (userchan->ds)
       {
         userchan->ds->applyOverlap(&fade_state);
-        writeUserChanLog("v",user,userchan,chanidx);
+        // 15.1-03 H-02: writeUserChanLog removed from audio path.
       }
 
       // Phase 14.2: capture t_insta when instamode data first mixed for a remote user.
@@ -2684,8 +2671,7 @@ void NJClient::mixInChannel(RemoteUser *user, int chanidx,
     if (userchan->ds)
     {
       userchan->ds->applyOverlap(&fade_state);
-      if (llmode)
-        writeUserChanLog("v",user,userchan,chanidx);
+      // 15.1-03 H-02: writeUserChanLog removed from audio path.
     }
     if (sessionmode || (chan && chan->decode_codec && (chan->decode_fp||chan->decode_buf)))
       mixInChannel(user,chanidx,muted,vol,pan,outbuf,out_channel,len-len_out,srate,outnch,offs+len_out,vudecay,
@@ -2693,25 +2679,17 @@ void NJClient::mixInChannel(RemoteUser *user, int chanidx,
   }
 }
 
-void NJClient::writeUserChanLog(const char *lbl, RemoteUser *user, RemoteUser_Channel *chan, int ch)
-{
-  char guidstr[64];
-  if (!chan || !chan->ds) return;
-
-  guidtostr(chan->ds->guid,guidstr);
-  char tmp[1024],tmp2[1024],*p;
-  lstrcpyn_safe(p=tmp,user->name.Get(),sizeof(tmp));
-  while (*p) { if (*p == '\"') *p = '\''; p++; }
-
-  lstrcpyn_safe(p=tmp2,chan->name.Get(),sizeof(tmp2));
-  while (*p) { if (*p == '\"') *p = '\''; p++; }
-  writeLog("user %s \"%s\" %d%s \"%s\"\n",guidstr,tmp,ch,lbl,tmp2);
-}
+// 15.1-03 H-02 (Codex per-plan delta): writeUserChanLog body removed entirely.
+// All audio-thread callers were deleted in this plan; no non-audio callers existed,
+// so retaining the body as dead code (or as `[[maybe_unused]]`) would mislead future
+// maintainers. If a future need arises for per-user-channel logging, route through an
+// SPSC-mediated logging path (RESEARCH § Open Questions #3) — do NOT restore in-place
+// audio-path call. The declaration is also removed from src/core/njclient.h.
 
 void NJClient::on_new_interval()
 {
   m_loopcnt++;
-  writeLog("interval %d %.2f %d\n",m_loopcnt,GetActualBPM(),m_active_bpi);
+  // 15.1-03 CR-04: writeLog removed from audio path; was diagnostic noise per CONTEXT D-03.
 
   m_metronome_pos=0.0;
 
@@ -2771,7 +2749,7 @@ void NJClient::on_new_interval()
         if (chan->ds)
         {
           chan->ds->applyOverlap(&fade_state);
-          writeUserChanLog("",user,chan,ch);
+          // 15.1-03 H-02: writeUserChanLog removed from audio path.
 
           // Phase 14.2: capture t_interval when measured user's regular channel ds advances.
           // State machine transition: INSTA_CAPTURED -> MEASURED.

@@ -334,7 +334,9 @@ protected:
   void updateBPMinfo(int bpm, int bpi);
   void process_samples(float **inbuf, int innch, float **outbuf, int outnch, int len, int srate, int offset, int justmonitor, bool isPlaying, bool isSeek, double cursessionpos);
   void on_new_interval();
-  void writeUserChanLog(const char *lbl, RemoteUser *user, RemoteUser_Channel *chan, int chanidx);
+  // 15.1-03 H-02 (Codex per-plan delta): writeUserChanLog declaration removed.
+  // All audio-thread callers eliminated; body deleted in njclient.cpp. Restore via
+  // SPSC-mediated logging path if future need arises — do NOT add an in-place audio call.
 
   void writeLog(const char *fmt, ...);
 
@@ -360,7 +362,8 @@ protected:
   int m_srate;
   int m_userinfochange;
   int m_issoloactive;
-  bool m_debug_logged_remote;
+  // 15.1-03 H-01: m_debug_logged_remote member removed; gated the deleted
+  // JAMWIDE_DEV_BUILD audio-path fopen block.
 
   unsigned int m_session_pos_ms,m_session_pos_samples; // samples just keeps track of any samples lost to precision errors
 

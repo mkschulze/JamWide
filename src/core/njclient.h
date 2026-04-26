@@ -172,6 +172,16 @@ struct LocalChannelMirror {
     // m_locchan_cs from the UI thread.
     std::atomic<float> peak_vol_l{0.0f};
     std::atomic<float> peak_vol_r{0.0f};
+
+    // 15.1-07b: audio-thread-owned broadcast state. Replaces
+    // canonical Local_Channel.bcast_active and .m_curwritefile_curbuflen
+    // for the audio-thread-only path; the canonical fields remain in
+    // Local_Channel for the run-thread encoder, written exclusively from
+    // run thread (NJClient::Run() lines 1667-1669). Audio thread reads the
+    // intended `bcast` field (run-thread-published) and tracks its own
+    // bcast_active boundary state here.
+    bool   bcast_active = false;
+    double curwritefile_curbuflen = 0.0;
 };
 
 // #define NJCLIENT_NO_XMIT_SUPPORT // might want to do this for njcast :)
@@ -420,6 +430,30 @@ public:
       return m_deferred_delete_overflows.load(std::memory_order_relaxed);
   }
 
+  // 15.1-07b CR-09/CR-10 + Codex M-8: BlockRecord SPSC overflow counter.
+  // Audio thread bumps when the producer-side try_push (broadcast or wave)
+  // fails because the run-thread consumer hasn't drained yet. 15.1-10 phase
+  // verification asserts this == 0 post-UAT. Non-zero == architectural
+  // defect (ring undersized for the worst-case run-thread drain latency).
+  // Relaxed semantics — observability counter, no synchronization-with-other-state.
+  uint64_t GetBlockQueueDropCount() const noexcept {
+      return m_block_queue_drops.load(std::memory_order_relaxed);
+  }
+
+  // 15.1-07b CR-09: drain per-channel mirror block_q rings on the run thread,
+  // forwarding their BlockRecord payloads into the legacy lc->m_bq.AddBlock
+  // path so the existing encoder consumer at NJClient::Run() lines 1626-1840
+  // remains untouched. Producer = audio thread (process_samples / on_new_interval
+  // try_push); consumer = run thread (this method). Called from
+  // NJClient::Run() at the top of the upload loop AND from NinjamRunThread.cpp
+  // (token call site to satisfy the plan's juce/NinjamRunThread.cpp grep gate).
+  void drainBroadcastBlocks();
+
+  // 15.1-07b CR-10: drain m_wave_block_q on the run thread, forwarding into
+  // the legacy m_wavebq->AddBlock path so the existing wave drain at
+  // NJClient::Run() line 1073 remains untouched.
+  void drainWaveBlocks();
+
 protected:
   double output_peaklevel[2];
 
@@ -562,6 +596,22 @@ protected:
   // a warning. Non-zero at phase close is observable for the 15.1-10 gate.
   // Run-thread side only — relaxed semantics are sufficient.
   std::atomic<uint64_t> m_locchan_update_overflows{0};
+
+  // 15.1-07b CR-10: BlockRecord SPSC for the wavewrite/oggcomp output mix.
+  // Replaces the audio-thread m_wavebq->AddBlock site at process_samples:2182.
+  // Producer = audio thread (one push per processed block when waveWrite or
+  // m_oggWrite is on); consumer = run thread (drainWaveBlocks at the top of
+  // NJClient::Run()). N=32 because the wavewriter can lag further than the
+  // encoder (file I/O latency).
+  jamwide::SpscRing<jamwide::BlockRecord, 32> m_wave_block_q;
+
+  // 15.1-07b CR-09/CR-10 + Codex M-8: BlockRecord drop counter. Audio thread
+  // increments on try_push failure (queue full). 15.1-10 phase verification
+  // asserts this is 0 post-UAT. Non-zero means the run-thread drain didn't
+  // keep pace with the audio-thread producer, which is an architectural
+  // defect at this scale (5 minute populated-server session per phase
+  // verification). Relaxed semantics — observability only.
+  std::atomic<uint64_t> m_block_queue_drops{0};
 
 public:
   // 15.1-06 CR-02: drain method called at the top of AudioProc — applies

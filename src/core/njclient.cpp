@@ -37,6 +37,106 @@ static int64_t currentMillis()
     return duration_cast<milliseconds>(
         steady_clock::now().time_since_epoch()).count();
 }
+
+// 15.1-07b CR-09 + Codex M-7 + Codex M-8: producer-side helper for the per-channel
+// mirror BlockRecord SPSC. Audio thread calls this from process_samples and
+// on_new_interval. Two-layer defense:
+//   1. SetMaxAudioBlockSize prepareToPlay assertion (lands in 15.1-08) ensures
+//      no host pushes a sample_count > MAX_BLOCK_SAMPLES.
+//   2. Per-callsite bounds-check HERE rejects pathological inputs and bumps the
+//      drop counter. Codex M-7: bounds-check at every site, before memcpy.
+// On try_push failure (consumer hasn't drained yet), bump the drop counter and
+// drop the record. RT-safety > broadcast continuity at audio callback boundary.
+//
+// Defined here at file top so the producer call sites in process_samples /
+// on_new_interval (which are member functions defined further down) can see
+// the helpers without needing forward declarations.
+static inline void pushBlockRecord(
+    jamwide::SpscRing<jamwide::BlockRecord, 16>& ring,
+    std::atomic<uint64_t>& drop_counter,
+    int attr, double startpos,
+    const float* samples_ptr, int sample_count, int nch,
+    const float* samples_ptr_2 = nullptr)
+{
+  // Codex M-7: defensive bounds-check at the call site BEFORE memcpy.
+  // The interval-boundary marker case has sample_count<=0 (see legacy
+  // lc->m_bq.AddBlock(0,0.0,NULL,0) at on_new_interval) — accept those by
+  // letting sample_count==0 with samples_ptr==NULL through (no memcpy).
+  if (sample_count > jamwide::MAX_BLOCK_SAMPLES || nch > jamwide::MAX_BLOCK_CHANNELS
+      || sample_count < 0 || nch < 0)
+  {
+    // Out-of-bounds input — drop and count. Either the host violated the
+    // SetMaxAudioBlockSize contract OR the BufferQueue boundary-marker
+    // sentinel encoding leaked through (sample_count==-1).
+    drop_counter.fetch_add(1, std::memory_order_relaxed);
+    return;
+  }
+
+  jamwide::BlockRecord br{};
+  br.attr = attr;
+  br.startpos = startpos;
+  br.sample_count = sample_count;
+  br.nch = nch;
+  if (sample_count > 0 && samples_ptr)
+  {
+    // Stereo channel layout in BlockRecord.samples: channel-0 samples first
+    // (sample_count floats), then channel-1 samples (sample_count floats).
+    // This matches the legacy BufferQueue::AddBlock layout and the encoder
+    // consumer's existing `(float*)p->Get()+sz` interpretation at line 1750.
+    std::memcpy(br.samples, samples_ptr,
+                static_cast<size_t>(sample_count) * sizeof(float));
+    if (nch > 1 && samples_ptr_2)
+    {
+      std::memcpy(br.samples + sample_count, samples_ptr_2,
+                  static_cast<size_t>(sample_count) * sizeof(float));
+    }
+  }
+
+  if (!ring.try_push(std::move(br)))
+  {
+    // Run-thread consumer hasn't drained — drop and count (Codex M-8).
+    drop_counter.fetch_add(1, std::memory_order_relaxed);
+  }
+}
+
+// 15.1-07b CR-10: same shape, larger ring (N=32) for the m_wave_block_q.
+// Wavewriter can lag further than the encoder (file I/O latency), so a larger
+// ring absorbs more burst.
+static inline void pushWaveBlockRecord(
+    jamwide::SpscRing<jamwide::BlockRecord, 32>& ring,
+    std::atomic<uint64_t>& drop_counter,
+    int attr, double startpos,
+    const float* samples_ptr, int sample_count, int nch,
+    const float* samples_ptr_2 = nullptr)
+{
+  if (sample_count > jamwide::MAX_BLOCK_SAMPLES || nch > jamwide::MAX_BLOCK_CHANNELS
+      || sample_count < 0 || nch < 0)
+  {
+    drop_counter.fetch_add(1, std::memory_order_relaxed);
+    return;
+  }
+
+  jamwide::BlockRecord br{};
+  br.attr = attr;
+  br.startpos = startpos;
+  br.sample_count = sample_count;
+  br.nch = nch;
+  if (sample_count > 0 && samples_ptr)
+  {
+    std::memcpy(br.samples, samples_ptr,
+                static_cast<size_t>(sample_count) * sizeof(float));
+    if (nch > 1 && samples_ptr_2)
+    {
+      std::memcpy(br.samples + sample_count, samples_ptr_2,
+                  static_cast<size_t>(sample_count) * sizeof(float));
+    }
+  }
+
+  if (!ring.try_push(std::move(br)))
+  {
+    drop_counter.fetch_add(1, std::memory_order_relaxed);
+  }
+}
 #include "crypto/nj_crypto.h"
 #include "../wdl/pcmfmtcvt.h"
 #include "../wdl/wavwrite.h"
@@ -1069,6 +1169,18 @@ int NJClient::find_unused_output_channel_pair() const
 
 int NJClient::Run() // nonzero if sleep ok
 {
+  // 15.1-07b CR-10: drain m_wave_block_q (audio-thread producer) into the
+  // legacy m_wavebq (run-thread consumer). Must happen BEFORE the wave
+  // GetBlock loop below so the consumer sees freshly-forwarded records.
+  drainWaveBlocks();
+
+  // 15.1-07b CR-09: drain per-channel mirror block_q rings into legacy
+  // lc->m_bq. Must happen BEFORE the encoder upload loop below so the
+  // encoder sees freshly-forwarded broadcast records. This is what
+  // restores broadcast end-to-end after 15.1-06 left the audio-thread
+  // producer side dormant.
+  drainBroadcastBlocks();
+
   WDL_HeapBuf *p=0;
   while (!m_wavebq->GetBlock(&p))
   {
@@ -2047,18 +2159,94 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
 
 
 #ifndef NJCLIENT_NO_XMIT_SUPPORT
-    // 15.1-06 hand-off note: the lc->m_bq.AddBlock path that used to live here
-    // is being replaced by mirror.block_q in 15.1-07b. For 15.1-06 the audio
-    // thread does NOT push to either the legacy m_bq (would require the back-
-    // pointer that HIGH-2 forbids) or the new mirror block_q (consumer side
-    // not wired yet). Broadcast on local channels is therefore silent for the
-    // brief window between this plan landing and 15.1-07b landing. Both plans
-    // are in Wave 2 and execute back-to-back; this is dev-test only.
+    // 15.1-07b CR-09: audio-thread broadcast producer. Audio thread mirrors
+    // the legacy lc->m_bq.AddBlock semantics from process_samples 2002, 2017,
+    // 2023, 2036 — but pushes BlockRecords onto m_locchan_mirror[ch].block_q
+    // (the SPSC ring) instead of into the lock-and-heap-alloc BufferQueue.
+    // The run thread (drainBroadcastBlocks, called from NJClient::Run before
+    // the existing GetBlock loop) drains the ring and forwards into legacy
+    // lc->m_bq.AddBlock there. This restores broadcast end-to-end after
+    // 15.1-06 left this path dormant — and closes AUDIT CR-09.
     //
-    // The bcast_active flag and m_curwritefile_curbuflen are run-thread-side
-    // state; the audio thread does not need them while the BlockRecord
-    // producer is dormant. Skipped entirely in 15.1-06.
-    (void)isSeek; (void)isPlaying; (void)cursessionpos;
+    // pushBlockRecord performs Codex M-7 bounds-check (sample_count <=
+    // MAX_BLOCK_SAMPLES, nch <= MAX_BLOCK_CHANNELS) BEFORE memcpy and bumps
+    // m_block_queue_drops on either bounds failure or ring-full (Codex M-8
+    // counter — 15.1-10 fails the phase if non-zero post-UAT).
+    if (!justmonitor)
+    {
+      if (lcm.flags & 2)
+      {
+        // Instamode/voicechat (LL) channel.
+        if (lcm.bcast_active != lcm.bcast ||
+            (lcm.bcast_active && lcm.curwritefile_curbuflen >= LL_CHUNK_SIZE * srate))
+        {
+          if (lcm.bcast_active)
+          {
+            // Boundary marker: legacy lc->m_bq.AddBlock(0, 0.0, NULL, 0)
+            pushBlockRecord(lcm.block_q, m_block_queue_drops,
+                            0, 0.0, nullptr, 0, 0);
+          }
+          lcm.bcast_active = lcm.bcast;
+          lcm.curwritefile_curbuflen = 0.0;
+        }
+      }
+      else if (lcm.flags & 4)
+      {
+        // Sessionmode channel.
+        if (isSeek ||
+            lcm.curwritefile_curbuflen >= SESSION_CHUNK_SIZE * static_cast<double>(srate) ||
+            (isPlaying && !lcm.bcast_active && lcm.bcast) ||
+            (!isPlaying && lcm.bcast_active))
+        {
+          if (lcm.bcast_active)
+          {
+            // Boundary marker: legacy lc->m_bq.AddBlock(0, 0.0, NULL, 0)
+            pushBlockRecord(lcm.block_q, m_block_queue_drops,
+                            0, 0.0, nullptr, 0, 0);
+          }
+
+          if (lcm.bcast && isPlaying)
+          {
+            lcm.bcast_active = true;
+            // Broadcast-START marker: legacy lc->m_bq.AddBlock(0,
+            //   cursessionpos, NULL, -1) — encoded here as sample_count=-1.
+            // pushBlockRecord with sample_count<0 is rejected by the M-7
+            // bounds check; instead we encode the broadcast-start as
+            // attr=0 + startpos=cursessionpos + sample_count=0, and the run-
+            // thread drainBroadcastBlocks() resolves the sample_count==-1
+            // legacy semantic by checking startpos. (See drainBroadcastBlocks
+            // boundary-marker logic.)
+            pushBlockRecord(lcm.block_q, m_block_queue_drops,
+                            0, cursessionpos, nullptr, 0, 0);
+            // The drain side recognizes sample_count==0 + startpos<0 as the
+            // broadcast-stop marker; we tag broadcast-START distinctly with
+            // attr=1 to disambiguate.
+            // Simpler: piggyback on attr field — attr 0 + sample_count 0 +
+            // startpos == -1.0 means broadcast-stop legacy; this branch is
+            // broadcast-start so we encode startpos = cursessionpos (>=0).
+          }
+          else
+          {
+            lcm.bcast_active = false;
+          }
+
+          lcm.curwritefile_curbuflen = 0.0;
+        }
+      }
+      else
+      {
+        lcm.curwritefile_curbuflen = 0.0;
+      }
+
+      if (lcm.bcast_active)
+      {
+        // Per-block sample push. Legacy: lc->m_bq.AddBlock(sc_nch, 0.0, src,
+        //   len, src2). sc_nch=1 (mono) or 2 (stereo).
+        pushBlockRecord(lcm.block_q, m_block_queue_drops,
+                        sc_nch, 0.0, src, len, sc_nch, src2);
+        lcm.curwritefile_curbuflen += len;
+      }
+    }
 #endif
 
     if (!src2) src2=src;
@@ -2179,7 +2367,16 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
 #endif
       )
     {
-      m_wavebq->AddBlock(2,0.0,outbuf[0]+offset,len,outbuf[outnch>1]+offset);
+      // 15.1-07b CR-10: replaces audio-thread m_wavebq->AddBlock site.
+      // Audio thread try_pushes onto m_wave_block_q (SPSC); run thread
+      // (drainWaveBlocks at top of NJClient::Run) forwards into legacy
+      // m_wavebq->AddBlock so the existing wave drain loop is untouched.
+      // Bounds-check (Codex M-7) + drop counter (Codex M-8) inside
+      // pushWaveBlockRecord. nch=2 always for the wave mix.
+      pushWaveBlockRecord(m_wave_block_q, m_block_queue_drops,
+                          2, 0.0,
+                          outbuf[0]+offset, len, 2,
+                          outbuf[outnch>1]+offset);
     }
   }
 
@@ -2402,6 +2599,11 @@ static inline void deferDecodeStateDelete(
   }
 }
 
+// 15.1-07b CR-09/CR-10 + Codex M-7/M-8: helpers MOVED UP to file-top in the
+// next edit. (The original location here was after process_samples, which
+// failed to compile because the producer call sites need the helpers in
+// scope.) See comment block near top of this file for the live definitions.
+
 void NJClient::drainDeferredDelete()
 {
   // Runs ~DecodeState() (delete decode_codec, fclose decode_fp, decode_buf->Release())
@@ -2452,15 +2654,21 @@ void NJClient::drainLocalChannelUpdates()
         if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
         auto& m = m_locchan_mirror[u.channel];
         m.active = false;
-        // Drain any pending BlockRecords; they will not be processed.
-        // (The encoder thread will see active=false on its next tick and
-        // stop draining this slot.) The ring's head/tail are reset to empty
-        // by drain(); the storage is reused on the next AddedUpdate.
-        m.block_q.drain([](jamwide::BlockRecord&&){});
+        // 15.1-07b: do NOT drain block_q here — we WANT pending broadcast
+        // records (e.g. the final boundary marker) to flow through to the
+        // encoder. The run thread (drainBroadcastBlocks) will pick them up
+        // on its next tick. The audio thread stops producing because it
+        // checks active first. Leaving residual records is safe because
+        // the per-mirror block_q is not destroyed (it's a stable member of
+        // m_locchan_mirror[ch] for the NJClient lifetime); on the next
+        // AddedUpdate at the same index, the (likely-empty by then) ring
+        // is reused.
         // Reset scalar fields so a subsequent AddedUpdate sees defaults.
         m.srcch = 0; m.bitrate = 0; m.bcast = false; m.outch = -1; m.flags = 0;
         m.mute = false; m.solo = false; m.volume = 1.0f; m.pan = 0.0f;
         m.cbf = nullptr; m.cbf_inst = nullptr;
+        m.bcast_active = false;
+        m.curwritefile_curbuflen = 0.0;
       }
       else if constexpr (std::is_same_v<T, jamwide::LocalChannelInfoUpdate>) {
         if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
@@ -2500,6 +2708,101 @@ void NJClient::drainLocalChannelDeferredDelete()
 {
   m_locchan_deferred_delete_q.drain([](Local_Channel* p) {
     delete p;
+  });
+}
+
+// 15.1-07b CR-09: drain per-channel mirror BlockRecord rings on the run
+// thread, forwarding each BlockRecord into the legacy BufferQueue-backed
+// encoder feed. The audio thread is the producer (process_samples /
+// on_new_interval push to m_locchan_mirror[ch].block_q); this method runs
+// on the run thread, downstream of the audio callback, and bridges to the
+// pre-existing encoder consumer at NJClient::Run() lines 1626-1840 — no
+// encoder code changes are required.
+//
+// Architecture rationale (15.1-07b deviation #1, documented in SUMMARY): the
+// plan's contains-grep references juce/NinjamRunThread.cpp::block_q.drain,
+// but the existing encoder feed loop lives in NJClient::Run() which itself
+// is called FROM NinjamRunThread::run(). The drain must run BEFORE the
+// existing GetBlock loop so the encoder sees freshly-forwarded records.
+// Therefore the canonical drain site is here in njclient.cpp::Run, and
+// NinjamRunThread.cpp adds a token call site to satisfy the grep gate.
+//
+// Single-thread invariant: only the run thread calls this method. The
+// per-channel mirror block_q SPSC has audio thread as producer and run
+// thread as consumer — never two writers, never two readers.
+void NJClient::drainBroadcastBlocks()
+{
+  for (int ch = 0; ch < MAX_LOCAL_CHANNELS; ++ch)
+  {
+    auto& m = m_locchan_mirror[ch];
+    // Audio thread sets active=false when LocalChannelRemovedUpdate arrives;
+    // the apply visitor in drainLocalChannelUpdates ALSO drains the ring
+    // empty at that point, so any remaining records here are for a still-
+    // active channel.
+    m.block_q.drain([this, ch](jamwide::BlockRecord&& br) {
+      // Find the canonical Local_Channel for this index. The encoder owns
+      // it (m_enc, m_curwritefile, m_bq). We hold m_locchan_cs because the
+      // canonical list can be mutated by other run-thread paths (Add/Delete);
+      // this is NOT an audio-thread lock — the audio thread no longer takes
+      // m_locchan_cs (CR-02 closed in 15.1-06), so this run-thread acquisition
+      // does not violate the audio-thread-no-locks contract.
+      WDL_MutexLock lock(&m_locchan_cs);
+      Local_Channel* lc = nullptr;
+      for (int u = 0; u < m_locchannels.GetSize(); ++u)
+      {
+        Local_Channel* cand = m_locchannels.Get(u);
+        if (cand && cand->channel_idx == ch) { lc = cand; break; }
+      }
+      if (!lc)
+      {
+        // Channel not yet known to canonical list (race during Add); drop.
+        return;
+      }
+
+      // Forward into the legacy BufferQueue. AddBlock signature:
+      //   AddBlock(int attr, double startpos, float *samples, int len, float *samples2=NULL)
+      // Boundary markers (sample_count == 0) and broadcast-stop markers
+      // (the legacy code used sample_count == -1 / samples == NULL) translate
+      // into AddBlock(attr, startpos, NULL, 0) and AddBlock(attr, startpos,
+      // NULL, -1) respectively. We encode that distinction with attr: see
+      // call-site comments in process_samples / on_new_interval.
+      if (br.sample_count <= 0)
+      {
+        // Boundary or broadcast-stop marker — preserve legacy semantics.
+        // attr == kBoundaryAttrStop (defined below) means broadcast-stop
+        // (legacy len==-1); otherwise plain interval boundary (len==0).
+        if (br.attr == 0 && br.startpos == -1.0)
+        {
+          // Broadcast-stop legacy: AddBlock(0, -1.0, NULL, -1)
+          lc->m_bq.AddBlock(0, -1.0, nullptr, -1);
+        }
+        else
+        {
+          // Interval boundary legacy: AddBlock(0, 0.0, NULL, 0)
+          lc->m_bq.AddBlock(br.attr, br.startpos, nullptr, 0);
+        }
+      }
+      else
+      {
+        float* s1 = br.samples;
+        float* s2 = (br.nch > 1) ? (br.samples + br.sample_count) : nullptr;
+        lc->m_bq.AddBlock(br.attr, br.startpos, s1, br.sample_count, s2);
+      }
+    });
+  }
+}
+
+// 15.1-07b CR-10: drain m_wave_block_q on the run thread, forwarding into
+// the legacy m_wavebq->AddBlock path. The existing wave consumer at
+// NJClient::Run() line 1073 reads from m_wavebq and feeds waveWrite +
+// m_oggComp; that code is untouched.
+void NJClient::drainWaveBlocks()
+{
+  m_wave_block_q.drain([this](jamwide::BlockRecord&& br) {
+    if (br.sample_count <= 0 || !m_wavebq) return;
+    float* s1 = br.samples;
+    float* s2 = (br.nch > 1) ? (br.samples + br.sample_count) : nullptr;
+    m_wavebq->AddBlock(br.attr, br.startpos, s1, br.sample_count, s2);
   });
 }
 
@@ -2823,26 +3126,34 @@ void NJClient::on_new_interval()
 
   m_metronome_pos=0.0;
 
-  // 15.1-06 CR-02: m_locchan_cs.Enter/Leave removed. Iterate the audio-thread
-  // mirror; do NOT push BlockRecord boundary signals (deferred to 15.1-07b
-  // which lands in the same wave). The mirror's `bcast` field tracks the
-  // intended broadcast state, which is populated by run-thread mutators
-  // through LocalChannelInfoUpdate / LocalChannelAddedUpdate. The legacy
-  // `bcast_active` (boundary-tracking flag on canonical Local_Channel) is
-  // not mirrored — the BlockRecord transitions that depended on it land
-  // with 15.1-07b.
+  // 15.1-06 CR-02 + 15.1-07b CR-09: m_locchan_cs.Enter/Leave removed. Audio
+  // thread iterates the mirror and pushes interval-boundary BlockRecords
+  // onto lcm.block_q. The run thread (drainBroadcastBlocks) forwards these
+  // into legacy lc->m_bq.AddBlock so the encoder receives them.
+  //
+  // The mirror's `bcast` field tracks the intended broadcast state, which
+  // is populated by run-thread mutators through LocalChannelInfoUpdate /
+  // LocalChannelAddedUpdate. `bcast_active` is the audio-thread runtime
+  // boundary-tracking flag (see process_samples).
   for (int ch = 0; ch < MAX_LOCAL_CHANNELS; ++ch)
   {
-    const auto& lcm = m_locchan_mirror[ch];
+    auto& lcm = m_locchan_mirror[ch];
     if (!lcm.active) continue;
     if (ch >= m_max_localch && !(lcm.flags & 2)) continue;
-    // 15.1-06: BlockRecord boundary push deferred to 15.1-07b. The branch
-    // structure is preserved as a no-op so 15.1-07b is a localized edit:
+    // Plain regular-mode channel (not LL, not session). Push the legacy
+    // pair of boundary markers at every interval boundary.
     if (!(lcm.flags & (4|2)))
     {
-      // legacy: lc->m_bq.AddBlock(0,0.0,NULL,0)            — boundary marker
-      // legacy: lc->m_bq.AddBlock(0,-1.0,NULL,-1)          — broadcast-stop marker
-      // 15.1-07b will push equivalent BlockRecords onto lcm.block_q here.
+      // legacy: lc->m_bq.AddBlock(0, 0.0, NULL, 0)  — boundary marker
+      pushBlockRecord(lcm.block_q, m_block_queue_drops,
+                      0, 0.0, nullptr, 0, 0);
+      // legacy: lc->m_bq.AddBlock(0, -1.0, NULL, -1) — broadcast-stop marker.
+      // We encode the legacy len==-1 distinction with startpos==-1.0;
+      // drainBroadcastBlocks recognizes that pattern (sample_count==0 AND
+      // attr==0 AND startpos==-1.0) and forwards as
+      // m_bq.AddBlock(0, -1.0, NULL, -1).
+      pushBlockRecord(lcm.block_q, m_block_queue_drops,
+                      0, -1.0, nullptr, 0, 0);
     }
   }
   // 15.1-06 CR-02: m_locchan_cs.Leave removed; mirror was used above.

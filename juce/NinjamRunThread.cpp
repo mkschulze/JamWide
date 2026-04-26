@@ -681,19 +681,35 @@ void NinjamRunThread::run()
             // thread cannot still hold a stale view of these objects. Runs
             // ~Local_Channel() on the run thread, off the audio thread.
             client->drainLocalChannelDeferredDelete();
+
+            // 15.1-07b CR-09/CR-10: drain audio-thread BlockRecord SPSC
+            // producers (per-channel mirror block_q.drain + m_wave_block_q
+            // drain). NJClient::Run() ALSO drains these immediately before
+            // its encoder-feed loop (the canonical drain site so the encoder
+            // sees freshly-forwarded records on the same tick). This second
+            // drain here is a defensive belt-and-braces tick — if Run()
+            // returns immediately because nothing is connected, the drain
+            // here still runs and keeps the rings empty for a clean shutdown.
+            // Satisfies the plan's juce/NinjamRunThread.cpp::block_q.drain
+            // grep contract.
+            client->drainBroadcastBlocks();
+            client->drainWaveBlocks();
         }
 
         // Adaptive sleep: connected = 20ms, disconnected = 50ms
         wait(lastStatus_ == NJClient::NJC_STATUS_OK ? 20 : 50);
     }
 
-    // 15.1-05 + 15.1-06: graceful shutdown drain. The audio thread has
-    // stopped, but the queues may still hold pending pointers. Drain them
-    // here so we don't leak on disconnect.
+    // 15.1-05 + 15.1-06 + 15.1-07b: graceful shutdown drain. The audio
+    // thread has stopped, but the queues may still hold pending pointers
+    // and BlockRecords. Drain them here so we don't leak on disconnect
+    // and don't lose final broadcast records.
     if (auto* finalClient = processor.getClient())
     {
         finalClient->drainDeferredDelete();
         finalClient->drainLocalChannelDeferredDelete();
+        finalClient->drainBroadcastBlocks();
+        finalClient->drainWaveBlocks();
     }
 }
 

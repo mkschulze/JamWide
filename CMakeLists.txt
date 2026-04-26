@@ -403,4 +403,14 @@ if(JAMWIDE_BUILD_TESTS)
     )
     add_test(NAME local_channel_mirror COMMAND test_local_channel_mirror)
 
+    # 15.1-07b BlockRecord SPSC: fill/drain integrity, overflow counter,
+    # Codex M-7 bounds-check exercise. Pure-C++ (no NJClient link).
+    # Designed to run cleanly under -fsanitize=thread.
+    add_executable(test_block_queue_spsc tests/test_block_queue_spsc.cpp)
+    target_include_directories(test_block_queue_spsc PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME block_queue_spsc COMMAND test_block_queue_spsc)
+
 endif()

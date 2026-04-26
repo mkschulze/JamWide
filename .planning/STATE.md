@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Security & Quality
-status: ready_to_execute
-stopped_at: Phase 15.1 replanned post-Codex review (11 plans 02-10 incl. 07a/07b/07c split, plan-checker passed all 12 Codex-driven checks, ready for /gsd-execute-phase 15.1)
-last_updated: "2026-04-26T13:30:00.000Z"
+status: in_progress
+stopped_at: Completed 15.1-02-atomic-promotion-PLAN.md (CR-03 closed, m_interval_pos race closed, edge-triggered semantics documented per L-10, test_njclient_atomics scaffolded with 4 sub-tests)
+last_updated: "2026-04-26T14:42:51.000Z"
 last_activity: 2026-04-26
 progress:
   total_phases: 10
   completed_phases: 9
   total_plans: 30
-  completed_plans: 19
-  percent: 87
+  completed_plans: 20
+  percent: 90
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 
 ## Current Position
 
-Phase: 15.1 (rt-safety-hardening) — READY TO EXECUTE (revised post-Codex review)
-Plan: 0 of 11 (15.1-01 audit done; 15.1-02..10 planned, 07 split into 07a/07b/07c)
-Status: Plans revised after Codex cross-AI review; plan-checker passed all 12 Codex-driven checks; next: /gsd-execute-phase 15.1 picks up Wave 1 (15.1-02, 15.1-03, 15.1-04)
+Phase: 15.1 (rt-safety-hardening) — IN PROGRESS (Wave 1 underway)
+Plan: 2 of 11 (15.1-01 audit done; 15.1-02 atomic-promotion done; 15.1-03..10 remaining; 07 split into 07a/07b/07c)
+Status: 15.1-02 complete — m_misc_cs eliminated from audio thread, m_bpm/m_bpi/m_beatinfo_updated/m_interval_pos atomic-promoted, edge-triggered best-effort semantics documented per Codex L-10, test_njclient_atomics scaffold passes 4/4 sub-tests. Next Wave-1 plans: 15.1-03 (eliminate audio-path logging), 15.1-04 (SPSC infrastructure + --tsan flag).
 Last activity: 2026-04-26
 
-Progress: [#.........] 9% (v1.2 milestone — 1 of 11 sub-plans complete)
+Progress: [##........] 18% (v1.2 milestone — 2 of 11 sub-plans complete)
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [#.........] 9% (v1.2 milestone — 1 of 11 sub-plans complete)
 | Phase 14 P03 | 601 | 2 tasks | 2 files |
 | Phase 14.2 P01 | 957 | 2 tasks | 8 files |
 | Phase 14.2 P02 | 221 | 2 tasks | 5 files |
+| Phase 15.1 P02 | 578 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,8 @@ Recent decisions affecting current work:
 - [Phase 14]: APVTS centralization: MidiMapper timerCallback is sole APVTS-to-NJClient bridge for remote group controls; OscServer and ChannelStripArea update APVTS only
 - [Phase 14.2]: Measurement state machine consolidated in NJClient (single owner); RemoteUser* pointer comparison for identity; syncMode JSON field for three-tier delay priority
 - [Phase 14.2]: Global overlay over #main-area instead of per-tile: VDO.Ninja iframe is cross-origin, per-tile positioning impossible
+- [Phase 15.1-02]: m_beatinfo_updated publication is edge-triggered best-effort (NOT last-value latch) — writer's last store wins, reader sees latest payload, intermediate updates dropped by design (BPM/BPI are config values; only most recent matters). Documented in njclient.h header comment per Codex L-10.
+- [Phase 15.1-02]: AudioProc m_interval_pos uses local-cache pattern (load once, store once back) to clarify same-thread relaxed semantics and minimize atomic ops; m_misc_cs eliminated entirely from audio thread.
 
 ### Pending Todos
 
@@ -103,6 +106,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-16T13:04:47.998Z
-Stopped at: Completed 14.2-02-PLAN.md (all tasks, human-verify approved)
+Last session: 2026-04-26T14:42:51.000Z
+Stopped at: Completed 15.1-02-PLAN.md (CR-03 closed, m_interval_pos race closed, edge-triggered semantics documented per Codex L-10, test_njclient_atomics 4/4 passing). Next Wave-1 plans: 15.1-03 (audio-path logging removal) and 15.1-04 (SPSC infrastructure + --tsan flag).
 Resume file: None

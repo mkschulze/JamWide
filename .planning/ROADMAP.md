@@ -216,7 +216,7 @@ Plans:
 **Plans**: 11 plans (15.1-01 audit done as `d2db893`; 15.1-02 through 15.1-10 below — revised post-Codex review, old 15.1-07 split into 07a/07b/07c)
 Plans:
 - [x] 15.1-01 — Auditor pass (committed `d2db893`; produced `15.1-AUDIT.md` with 21 findings: 12 CRITICAL, 4 HIGH, 3 MEDIUM, 2 LOW)
-- [ ] 15.1-02-atomic-promotion-PLAN.md — m_misc_cs / BPM / BPI / m_interval_pos atomic promotion (CR-03; documents `m_beatinfo_updated` edge-trigger semantics per L-10)
+- [x] 15.1-02-atomic-promotion-PLAN.md — m_misc_cs / BPM / BPI / m_interval_pos atomic promotion (CR-03; documents `m_beatinfo_updated` edge-trigger semantics per L-10) — completed 2026-04-26 (commits ff45da8, 1fbcdc7; SUMMARY at 15.1-02-SUMMARY.md)
 - [ ] 15.1-03-eliminate-audio-path-logging-PLAN.md — remove writeLog / writeUserChanLog / JAMWIDE_DEV_BUILD fopen from audio path (CR-04, H-01, H-02, L-02)
 - [ ] 15.1-04-spsc-infrastructure-PLAN.md — SPSC payloads.h (FINAL Wave-0 payloads incl. DecodeArmRequest), `--tsan` flag, JAMWIDE_TSAN option, primitive unit tests, `MAX_BLOCK_SAMPLES` contract
 - [ ] 15.1-05-deferred-delete-PLAN.md — DecodeState* deferred-delete SPSC for all 7 audio-thread delete sites (CR-05, CR-06, CR-07) + overflow counter accessor

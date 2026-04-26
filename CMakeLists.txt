@@ -29,6 +29,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(JAMWIDE_BUILD_TESTS "Build tests" OFF)
 option(JAMWIDE_DEV_BUILD "Enable development build with verbose logging" ON)
 option(JAMWIDE_BUILD_JUCE "Build JUCE plugin targets" ON)
+# 15.1-04: ThreadSanitizer build. When ON, codesign and hardened-runtime are
+# skipped (TSan injects a runtime library that ad-hoc codesigning does not
+# cover, per 15.1-RESEARCH macOS caveat #1). Wired up by scripts/build.sh --tsan.
+option(JAMWIDE_TSAN "Build with ThreadSanitizer (skips codesign and hardened runtime)" OFF)
 # Auto-increment build number on every build
 add_custom_target(jamwide-build-number ALL
     COMMAND ${CMAKE_COMMAND}
@@ -233,7 +237,11 @@ if(JAMWIDE_BUILD_JUCE)
     # - Dev builds: ad-hoc signing (default, no certificate needed)
     # - Release builds: Developer ID signing with hardened runtime
     #   cmake -DJAMWIDE_CODESIGN_IDENTITY="Developer ID Application: ..." -DJAMWIDE_HARDENED_RUNTIME=ON
-    if(APPLE)
+    # - 15.1-04: TSan builds skip codesign entirely (NOT JAMWIDE_TSAN guard
+    #   below) — TSan injects a runtime library that ad-hoc codesigning does
+    #   not cover, leading to launch failure on macOS. See 15.1-RESEARCH
+    #   macOS caveat #1.
+    if(APPLE AND NOT JAMWIDE_TSAN)
         set(JAMWIDE_CODESIGN_IDENTITY "-" CACHE STRING "Code signing identity (- = ad-hoc)")
         option(JAMWIDE_HARDENED_RUNTIME "Enable hardened runtime (required for notarization)" OFF)
 

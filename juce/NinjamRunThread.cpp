@@ -674,17 +674,27 @@ void NinjamRunThread::run()
             // log/state records that reference these states reach their
             // destination before the state goes away.
             client->drainDeferredDelete();
+
+            // 15.1-06 + Codex HIGH-3: drain deferred Local_Channel deletions.
+            // Pointers entered the queue only AFTER the audio thread bumped
+            // m_audio_drain_generation past the publish moment, so the audio
+            // thread cannot still hold a stale view of these objects. Runs
+            // ~Local_Channel() on the run thread, off the audio thread.
+            client->drainLocalChannelDeferredDelete();
         }
 
         // Adaptive sleep: connected = 20ms, disconnected = 50ms
         wait(lastStatus_ == NJClient::NJC_STATUS_OK ? 20 : 50);
     }
 
-    // 15.1-05: graceful shutdown drain. The audio thread has stopped, but
-    // the queue may still hold pending DecodeState* pointers. Drain them
-    // here so we don't leak DecodeStates on disconnect.
+    // 15.1-05 + 15.1-06: graceful shutdown drain. The audio thread has
+    // stopped, but the queues may still hold pending pointers. Drain them
+    // here so we don't leak on disconnect.
     if (auto* finalClient = processor.getClient())
+    {
         finalClient->drainDeferredDelete();
+        finalClient->drainLocalChannelDeferredDelete();
+    }
 }
 
 //==============================================================================

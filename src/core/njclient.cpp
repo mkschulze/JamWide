@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <chrono>
+#include <thread>  // 15.1-06 HIGH-3: std::this_thread::yield in DeleteLocalChannel gate
 #include "njclient.h"
 #include "mpb.h"
 
@@ -3196,17 +3197,26 @@ float NJClient::GetLocalChannelPeak(int ch, int whichch)
 
 void NJClient::DeleteLocalChannel(int ch)
 {
+  // 15.1-06 + Codex HIGH-3: deferred-free protocol for Local_Channel.
+  //
+  // Step 1 (under m_locchan_cs): remove the canonical Local_Channel from
+  // m_locchannels but DO NOT delete yet. Capture the pointer for deferred
+  // deletion.
+  Local_Channel* victim = nullptr;
+  bool was_solo = false;
   m_locchan_cs.Enter();
   int x;
-  int turd=0;
   for (x = 0; x < m_locchannels.GetSize() && m_locchannels.Get(x)->channel_idx!=ch; x ++);
   if (x < m_locchannels.GetSize())
   {
-    bool spoo=m_locchannels.Get(x)->solo;
-    delete m_locchannels.Get(x);
-    m_locchannels.Delete(x);
+    victim = m_locchannels.Get(x);
+    was_solo = victim->solo;
+    // Detach from m_locchannels list. Pass `false` to WDL_PtrList::Delete so
+    // the callee does NOT call delete on the pointer — we own the deferred
+    // delete now.
+    m_locchannels.Delete(x, false);
 
-    if (spoo)
+    if (was_solo)
     {
       for (x = 0; x < m_locchannels.GetSize(); x ++)
       {
@@ -3215,11 +3225,64 @@ void NJClient::DeleteLocalChannel(int ch)
       if (x == m_locchannels.GetSize())
         m_issoloactive&=~2;
     }
-    turd++;
   }
   m_locchan_cs.Leave();
 
-  if (turd) NotifyServerOfChannelChange();
+  if (!victim) return;  // not found — nothing more to do
+
+  // Step 2: publish LocalChannelRemovedUpdate. Audio thread will see this
+  // and clear m_locchan_mirror[ch].active on its next AudioProc drain. Note
+  // the publish-target generation is captured BEFORE the publish so we can
+  // detect when the audio thread has observed it.
+  const uint64_t publish_gen_target =
+      m_audio_drain_generation.load(std::memory_order_acquire) + 1;
+  if (!m_locchan_update_q.try_push(jamwide::LocalChannelUpdate{
+          jamwide::LocalChannelRemovedUpdate{ch}}))
+  {
+    // Worst-case: the SPSC is full. Bump counter, log, AND DO NOT free —
+    // the audio thread cannot have observed this remove. Leak instead.
+    // (15.1-10 phase verification asserts this counter == 0; non-zero is
+    // a defect, not a tolerable transient.)
+    m_locchan_update_overflows.fetch_add(1, std::memory_order_relaxed);
+    writeLog("ERROR: m_locchan_update_q full on DeleteLocalChannel(%d); leaking Local_Channel to preserve mirror integrity\n", ch);
+    return;
+  }
+
+  // Step 3: wait for the audio thread to drain at least once after the
+  // publish (release-store on m_audio_drain_generation in AudioProc
+  // synchronizes with our acquire-load here). DeleteLocalChannel runs on
+  // the UI thread; 200ms is well below user-perception threshold for a
+  // delete-button latency. If the audio thread is stuck for > 200ms,
+  // there is a deeper problem; we leak rather than risk UAF.
+  const auto deadline = std::chrono::steady_clock::now()
+                      + std::chrono::milliseconds(200);
+  while (m_audio_drain_generation.load(std::memory_order_acquire) < publish_gen_target)
+  {
+    if (std::chrono::steady_clock::now() > deadline)
+    {
+      writeLog("WARNING: Local_Channel deferred-free generation gate timed out (ch=%d)\n", ch);
+      // Audio thread did not advance past the publish in 200 ms. We could
+      // wait longer or proceed unsafely. Choose: leak the canonical pointer
+      // (still detached from m_locchannels; nothing in NJClient touches it
+      // anymore). On user-visible reconnect this orphan eventually goes
+      // away when NJClient is destroyed. RT-safety > memory hygiene.
+      if (was_solo) NotifyServerOfChannelChange();
+      return;
+    }
+    std::this_thread::yield();
+  }
+
+  // Step 4: enqueue for deferred delete. Run thread drains the queue at
+  // every 20ms tick and once at shutdown (NinjamRunThread::run()).
+  if (!m_locchan_deferred_delete_q.try_push(victim))
+  {
+    // Extremely unlikely (capacity 32, peak rate ~1 delete per UI tick).
+    // If it happens, leak (we cannot delete here safely — the run-thread
+    // drain hasn't run yet to make space).
+    writeLog("WARNING: m_locchan_deferred_delete_q full (ch=%d); leaking Local_Channel\n", ch);
+  }
+
+  NotifyServerOfChannelChange();
 }
 
 void NJClient::SetLocalChannelProcessor(int ch, void (*cbf)(float *, int ns, void *), void *inst)

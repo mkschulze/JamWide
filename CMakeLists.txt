@@ -393,4 +393,14 @@ if(JAMWIDE_BUILD_TESTS)
     )
     add_test(NAME deferred_delete COMMAND test_deferred_delete)
 
+    # 15.1-06 LocalChannelMirror: concurrent mutation/apply + HIGH-2 (no
+    # lc_ptr) + HIGH-3 (generation-gate deferred-free) coverage. Pure-C++
+    # (no NJClient link). Designed to run cleanly under -fsanitize=thread.
+    add_executable(test_local_channel_mirror tests/test_local_channel_mirror.cpp)
+    target_include_directories(test_local_channel_mirror PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME local_channel_mirror COMMAND test_local_channel_mirror)
+
 endif()

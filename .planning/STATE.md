@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Security & Quality
 status: in_progress
-stopped_at: Completed 15.1-03-eliminate-audio-path-logging-PLAN.md (CR-04, H-01, H-02, L-02 closed; writeLog/writeUserChanLog/fopen all gone from audio path; writeUserChanLog body+declaration deleted per Codex per-plan delta)
-last_updated: "2026-04-26T15:30:00.000Z"
+stopped_at: Completed 15.1-04-spsc-infrastructure-PLAN.md (Wave 0 finalized — payload shapes locked per Codex M-9; MAX_BLOCK_SAMPLES contract documented per M-7; HIGH-2 escape-hatch grep gate clean; HIGH-3 deferred-free capacity constants in place; --tsan flag + JAMWIDE_TSAN option wired with macOS codesign skip; SPSC roundtrip + concurrent stress tests pass under TSan with zero reports)
+last_updated: "2026-04-26T17:30:00.000Z"
 last_activity: 2026-04-26
 progress:
   total_phases: 10
   completed_phases: 9
   total_plans: 30
-  completed_plans: 21
-  percent: 90
+  completed_plans: 22
+  percent: 93
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 
 ## Current Position
 
-Phase: 15.1 (rt-safety-hardening) — IN PROGRESS (Wave 1 underway)
-Plan: 3 of 11 (15.1-01 audit done; 15.1-02 atomic-promotion done; 15.1-03 audio-path-logging done; 15.1-04..10 remaining; 07 split into 07a/07b/07c)
-Status: 15.1-03 complete — writeLog/writeUserChanLog/fopen all eliminated from audio path (CR-04, H-01, H-02, L-02 closed). writeUserChanLog body+declaration fully deleted per Codex per-plan delta — no [[maybe_unused]] inert code retained. m_debug_logged_remote member removed. writeLog API itself survives for non-RT callers (Disconnect/sessionlog/chat/local/localsessionlog). Next Wave-1 plans: 15.1-04 (SPSC infrastructure + --tsan flag).
+Phase: 15.1 (rt-safety-hardening) — IN PROGRESS (Wave 1 complete; Wave 2 next)
+Plan: 4 of 11 (15.1-01 audit done; 15.1-02 atomic-promotion done; 15.1-03 audio-path-logging done; 15.1-04 SPSC infrastructure done; 15.1-05..10 remaining; 07 split into 07a/07b/07c)
+Status: 15.1-04 complete — Wave 0 SPSC infrastructure landed. src/threading/spsc_payloads.h finalized with all payload shapes (Codex M-9 stability claim recorded; downstream plans 15.1-05/06/07a/07b/07c/08/09 must NOT mutate this header). MAX_BLOCK_SAMPLES = 2048 contract documented for SetMaxAudioBlockSize enforcement in 15.1-08 (Codex M-7). No raw-pointer escape hatches in any payload (Codex HIGH-2 grep gate clean). HIGH-3 deferred-free capacity constants (REMOTE_USER_DEFERRED_DELETE_CAPACITY=64, LOCAL_CHANNEL_DEFERRED_DELETE_CAPACITY=32) declared. --tsan flag wired in scripts/build.sh, JAMWIDE_TSAN CMake option added with macOS codesign skip. tests/test_spsc_state_updates.cpp: 10/10 PASSED under TSan with zero ThreadSanitizer reports (5930ms wall on concurrent BlockRecord stress). Next plan: 15.1-05 (DecodeState* deferred-delete SPSC integration — first audio-thread-touching plan).
 Last activity: 2026-04-26
 
-Progress: [###.......] 27% (v1.2 milestone — 3 of 11 sub-plans complete)
+Progress: [####......] 36% (v1.2 milestone — 4 of 11 sub-plans complete)
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [###.......] 27% (v1.2 milestone — 3 of 11 sub-plans complete)
 | Phase 14.2 P02 | 221 | 2 tasks | 5 files |
 | Phase 15.1 P02 | 578 | 2 tasks | 5 files |
 | Phase 15.1 P03 | 120 | 1 task  | 2 files |
+| Phase 15.1 P04 | ~1500 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,11 @@ Recent decisions affecting current work:
 - [Phase 15.1-02]: AudioProc m_interval_pos uses local-cache pattern (load once, store once back) to clarify same-thread relaxed semantics and minimize atomic ops; m_misc_cs eliminated entirely from audio thread.
 - [Phase 15.1-03]: writeUserChanLog body+declaration deleted entirely (not [[maybe_unused]]'d, not #if 0'd) per Codex per-plan delta — no inert dead code retained; restoration would require an SPSC-mediated logging path, never an in-place audio-thread call.
 - [Phase 15.1-03]: guidtostr() retained against the plan's L-02 cleanup instruction because grep audit showed 6 non-audio-path callers (sessionlog, localsessionlog, makeFilenameFromGuid, chat-write paths). Audit's "becomes irrelevant" wording referred to audio-thread reachability only.
+- [Phase 15.1-04]: src/threading/spsc_payloads.h is FINAL after Wave 0. No subsequent plan (15.1-05/06/07a/07b/07c/08/09) modifies this header. DecodeArmRequest landed at Wave 0 (not deferred to 15.1-09); LocalChannelAddedUpdate carries the FULL field set (mute/solo/volume/pan + srcch/bitrate/bcast/outch/flags) so 15.1-06 doesn't extend it. Codex M-9 stability claim recorded.
+- [Phase 15.1-04]: Codex HIGH-2 architectural choice — NO raw-pointer escape hatches in any payload. Mirrors are populated by VALUE through the variant-mutation streams. Only pointers crossing thread boundaries are ownership-transfer (DecodeState handover via PeerNextDsUpdate) and deferred-free transports for canonical objects whose audio-thread observation has provably ceased (HIGH-3 generation-gated lifetime contract — implementation in 15.1-06 / 15.1-07a).
+- [Phase 15.1-04]: MAX_BLOCK_SAMPLES = 2048 contract is documented at the source (spsc_payloads.h docstring). NJClient::SetMaxAudioBlockSize (15.1-08) MUST assert maxSamplesPerBlock <= MAX_BLOCK_SAMPLES at prepareToPlay time; per-callsite BlockRecord producers (15.1-07b) MUST defensively bounds-check. Two-layer enforcement closes Codex M-7.
+- [Phase 15.1-04]: Single TSan target (--tsan flag → build-tsan/, JAMWIDE_TSAN=ON) covers BOTH NJClient core unit tests AND the JUCE callback boundary. macOS codesign block gated `if(APPLE AND NOT JAMWIDE_TSAN)` per RESEARCH macOS caveat #1 — TSan injects a runtime not covered by ad-hoc codesigning, leading to launch failure on macOS without this gate.
+- [Phase 15.1-04]: scripts/build.sh was untracked at session start; added to git index as part of this plan. The script is the canonical local build entrypoint (referenced from CLAUDE.md memory).
 
 ### Pending Todos
 
@@ -109,6 +115,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-26T15:30:00.000Z
-Stopped at: Completed 15.1-03-PLAN.md (CR-04, H-01, H-02, L-02 closed; writeLog/writeUserChanLog/fopen all gone from audio path; writeUserChanLog body+declaration deleted entirely per Codex per-plan delta; writeLog API survives for non-RT callers). Next Wave-1 plan: 15.1-04 (SPSC infrastructure + --tsan flag).
+Last session: 2026-04-26T17:30:00.000Z
+Stopped at: Completed 15.1-04-PLAN.md (Wave 0 SPSC infrastructure landed). spsc_payloads.h FINALIZED with all payload variants + PODs + capacity constants per Codex M-9 / M-7 / HIGH-2 / HIGH-3. tests/test_spsc_state_updates.cpp passes 10/10 under TSan with zero ThreadSanitizer reports. --tsan flag + JAMWIDE_TSAN option + macOS codesign skip wired. Next plan: 15.1-05 (DecodeState* deferred-delete SPSC integration — first audio-thread-touching plan; closes CR-05/06/07).
 Resume file: None

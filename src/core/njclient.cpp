@@ -1736,6 +1736,16 @@ int NJClient::Run() // nonzero if sleep ok
   }
 
 #ifndef NJCLIENT_NO_XMIT_SUPPORT
+  // 15.1-07b post-UAT crash fix (build 254): guard the encoder loop. The body
+  // calls m_netcon->Send(...) at multiple sites (lines 1788, 1895, 1901, 1943,
+  // 1948 in this function) — Disconnect() deletes m_netcon (njclient.cpp:1016)
+  // but does NOT remove Local_Channel objects from m_locchannels. If
+  // drainBroadcastBlocks were to forward stale post-Disconnect records into
+  // lc->m_bq, the loop body would crash. drainBroadcastBlocks now drains
+  // empty when m_netcon is null (see that method above), but this guard is
+  // belt-and-braces for any other path that might leave records in lc->m_bq.
+  if (m_netcon)
+  {
   int u;
   for (u = 0; u < m_locchannels.GetSize(); u ++)
   {
@@ -2004,6 +2014,7 @@ int NJClient::Run() // nonzero if sleep ok
       }
     }
   }
+  } // closes `if (m_netcon)` — 15.1-07b post-UAT encoder-loop crash guard
 #endif
 
   // Update cached status for lock-free audio thread access
@@ -2732,6 +2743,31 @@ void NJClient::drainLocalChannelDeferredDelete()
 // thread as consumer — never two writers, never two readers.
 void NJClient::drainBroadcastBlocks()
 {
+  // 15.1-07b post-UAT crash fix (build 254): if Disconnect() has torn down
+  // m_netcon (line 1016), forwarding pre-Disconnect audio-thread BlockRecords
+  // into lc->m_bq.AddBlock would refill the just-cleared queue with stale
+  // blocks. The encoder loop in NJClient::Run (line 1738+) then pops those
+  // blocks and calls m_netcon->Send(...) at line 1788/1895/1901/1943/1948
+  // — m_netcon is NULL → null deref → DAW crash on Disconnect.
+  //
+  // Fix: drain-and-discard all per-channel rings when not connected. The
+  // audio thread can keep producing into mirror.block_q (it doesn't gate on
+  // connection state); the run thread simply discards records destined for
+  // a dead encoder. We bump m_block_queue_drops so 15.1-10 phase verification
+  // still surfaces this as observable (these are records that didn't reach
+  // the encoder — the counter accurately reflects that).
+  if (!m_netcon)
+  {
+    for (int ch = 0; ch < MAX_LOCAL_CHANNELS; ++ch)
+    {
+      auto& m = m_locchan_mirror[ch];
+      m.block_q.drain([this](jamwide::BlockRecord&&) {
+        m_block_queue_drops.fetch_add(1, std::memory_order_relaxed);
+      });
+    }
+    return;
+  }
+
   for (int ch = 0; ch < MAX_LOCAL_CHANNELS; ++ch)
   {
     auto& m = m_locchan_mirror[ch];

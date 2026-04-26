@@ -81,6 +81,10 @@
 
 #include "netmsg.h"
 
+// 15.1-05 CR-05/06/07: deferred-delete SPSC infrastructure (Wave 0 finalized in 15.1-04).
+#include "../threading/spsc_ring.h"
+#include "../threading/spsc_payloads.h"
+
 
 class I_NJEncoder;
 class RemoteDownload;
@@ -324,6 +328,19 @@ public:
 
   int find_unused_output_channel_pair() const;
 
+  // 15.1-05 CR-05/06/07: deferred-delete drain. Called by run thread
+  // (NinjamRunThread::run) at 20ms cadence and once at shutdown. Drains
+  // the deferred-delete SPSC queue and runs ~DecodeState() on each pointer
+  // off the audio thread.
+  void drainDeferredDelete();
+
+  // 15.1-05 + Codex M-8: phase-close verification reads this. MUST be 0
+  // after UAT. Non-zero == architectural defect (queue undersized for
+  // workload). 15.1-10 phase verification asserts this counter == 0.
+  uint64_t GetDeferredDeleteOverflowCount() const noexcept {
+      return m_deferred_delete_overflows.load(std::memory_order_relaxed);
+  }
+
 protected:
   double output_peaklevel[2];
 
@@ -392,6 +409,19 @@ protected:
   WDL_PtrList<RemoteDownload> m_downloads;
 
   WDL_HeapBuf tmpblock;
+
+  // 15.1-05 CR-05/06/07: deferred-delete queue. Audio thread try_pushes
+  // DecodeState*; run thread drainDeferredDelete() pops and runs ~DecodeState()
+  // off-thread. Capacity 256 absorbs a worst-case interval-boundary burst
+  // (peers x channels x 2 next_ds slots) per spsc_payloads.h DEFERRED_DELETE_CAPACITY.
+  jamwide::SpscRing<DecodeState*, jamwide::DEFERRED_DELETE_CAPACITY> m_deferred_delete_q;
+
+  // 15.1-05 + Codex M-8: overflow counter. Audio thread increments on try_push
+  // failure (queue full); 15.1-10 phase verification asserts this is 0 after UAT.
+  // Non-zero == architectural defect (queue undersized for workload). Relaxed
+  // semantics are sufficient — this is an observability counter, no synchronization
+  // dependency on it.
+  std::atomic<uint64_t> m_deferred_delete_overflows{0};
 };
 
 

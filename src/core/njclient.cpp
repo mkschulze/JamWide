@@ -2383,6 +2383,40 @@ static void mixFloatsNIOutput(float *src, int src_srate, int src_nch,  // length
 }
 
 
+// 15.1-05 CR-05/06/07: defer DecodeState delete to the run thread (RT-safety).
+// On overflow we leak the pointer for one tick AND bump the overflow counter
+// (Codex M-8: 15.1-10 phase verification fails the phase if non-zero post-UAT).
+// Pointer is nulled out unconditionally so the caller's slot is safe to advance.
+static inline void deferDecodeStateDelete(
+    jamwide::SpscRing<DecodeState*, jamwide::DEFERRED_DELETE_CAPACITY>& q,
+    std::atomic<uint64_t>& overflow_counter,
+    DecodeState*& p)
+{
+  if (p)
+  {
+    if (!q.try_push(p))
+    {
+      // Queue full — calling delete here would block the audio thread on
+      // codec/file-handle teardown. Leak instead; run thread will drain on
+      // its next 20ms tick. RT-safety > memory hygiene.
+      // The counter increment makes this VISIBLE at phase close (Codex M-8).
+      overflow_counter.fetch_add(1, std::memory_order_relaxed);
+    }
+    p = nullptr;
+  }
+}
+
+void NJClient::drainDeferredDelete()
+{
+  // Runs ~DecodeState() (delete decode_codec, fclose decode_fp, decode_buf->Release())
+  // on the run thread, off the audio thread. Single-owner-at-a-time invariant per
+  // spsc_payloads.h: pointers in this queue have been removed from the audio thread's
+  // canonical slot, so no further audio-thread access is possible.
+  m_deferred_delete_q.drain([](DecodeState* p) {
+    delete p;
+  });
+}
+
 
 void NJClient::mixInChannel(RemoteUser *user, int chanidx,
                             bool muted, float vol, float pan, float **outbuf, int out_channel,
@@ -2401,8 +2435,8 @@ void NJClient::mixInChannel(RemoteUser *user, int chanidx,
   {
     if (!isPlaying)
     {
-      delete userchan->ds;
-      userchan->ds=0;
+      // 15.1-05 CR-05 (site 1/7): sessionmode + transport stopped
+      deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, userchan->ds);
       return;
     }
 
@@ -2411,8 +2445,8 @@ void NJClient::mixInChannel(RemoteUser *user, int chanidx,
       if (userchan->ds)
       {
         userchan->ds->calcOverlap(&fade_state);
-        delete userchan->ds;
-        userchan->ds=0;
+        // 15.1-05 CR-05 (site 2/7): sessionmode seek/exhaustion
+        deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, userchan->ds);
       }
 
       unsigned char guid[16];
@@ -2444,8 +2478,8 @@ void NJClient::mixInChannel(RemoteUser *user, int chanidx,
         }
         else
         {
-          delete userchan->ds;
-          userchan->ds=0;
+          // 15.1-05 CR-05 (site 3/7): start_decode failure rollback
+          deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, userchan->ds);
         }
       }
       else
@@ -2464,10 +2498,16 @@ void NJClient::mixInChannel(RemoteUser *user, int chanidx,
     if (llmode && userchan->next_ds[0])
     {
       if (userchan->ds) userchan->ds->calcOverlap(&fade_state);
-      delete userchan->ds;
+      // 15.1-05 CR-05 (site 4/7): llmode advance to next_ds[0]. Per RESEARCH
+      // § "Subtle note for the planner": capture old pointer FIRST, advance
+      // the slot (chan->ds = next_ds[0]), THEN defer-delete the captured old
+      // pointer. Audio thread retains exclusive ownership during the shuffle;
+      // only the now-orphaned old pointer crosses to the run thread.
+      DecodeState* old_ds = userchan->ds;
       chan = userchan->ds = userchan->next_ds[0];
       userchan->next_ds[0]=userchan->next_ds[1]; // advance queue
       userchan->next_ds[1]=0;
+      deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, old_ds);
 
       if (userchan->ds)
       {
@@ -2664,10 +2704,14 @@ void NJClient::mixInChannel(RemoteUser *user, int chanidx,
     // call again
     userchan->curds_lenleft=-10000.0;
     if (userchan->ds) userchan->ds->calcOverlap(&fade_state);
-    delete userchan->ds;
+    // 15.1-05 CR-05 (site 5/7): tail-recursion advance. Same pointer-shuffle
+    // ordering as site 4 — capture old pointer FIRST, advance the slot, THEN
+    // defer-delete (RESEARCH § "Subtle note for the planner").
+    DecodeState* old_ds = userchan->ds;
     chan = userchan->ds = userchan->next_ds[0];
     userchan->next_ds[0]=userchan->next_ds[1]; // advance queue
     userchan->next_ds[1]=0;
+    deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, old_ds);
     if (userchan->ds)
     {
       userchan->ds->applyOverlap(&fade_state);
@@ -2739,12 +2783,24 @@ void NJClient::on_new_interval()
         chan->dump_samples=0;
         overlapFadeState fade_state;
         if (chan->ds) chan->ds->calcOverlap(&fade_state);
-        delete chan->ds;
-        chan->ds=0;
-        if ((user->submask & user->chanpresentmask) & (1u<<ch)) chan->ds = chan->next_ds[0];
-        else delete chan->next_ds[0];
-        chan->next_ds[0]=chan->next_ds[1]; // advance queue
-        chan->next_ds[1]=0;
+        // 15.1-05 CR-06 (site 6/7): on_new_interval — replace chan->ds.
+        deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, chan->ds);
+        if ((user->submask & user->chanpresentmask) & (1u<<ch))
+        {
+          chan->ds = chan->next_ds[0];
+          chan->next_ds[0]=chan->next_ds[1]; // advance queue
+          chan->next_ds[1]=0;
+        }
+        else
+        {
+          // 15.1-05 CR-07 (site 7/7): on_new_interval — drop unsubscribed
+          // next_ds[0]. Capture pointer FIRST, advance the slot (next_ds[0]
+          // = next_ds[1]), THEN defer-delete the captured pointer.
+          DecodeState* old_next0 = chan->next_ds[0];
+          chan->next_ds[0]=chan->next_ds[1]; // advance queue
+          chan->next_ds[1]=0;
+          deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, old_next0);
+        }
 
         if (chan->ds)
         {

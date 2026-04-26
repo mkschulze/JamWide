@@ -667,11 +667,24 @@ void NinjamRunThread::run()
             syncInstatalkBroadcast(client);       // Phase 14.2: PTT → broadcasting
             pollInstamodeDelay(client);           // Phase 14.2: consume measurement
             updateSessionAndVuSnapshot(client);
+
+            // 15.1-05 CR-05/06/07: drain deferred-delete queue (DecodeState*
+            // pointers from audio thread). Runs ~DecodeState() off the audio
+            // thread. Drained LAST per RESEARCH § "Drain order" — any future
+            // log/state records that reference these states reach their
+            // destination before the state goes away.
+            client->drainDeferredDelete();
         }
 
         // Adaptive sleep: connected = 20ms, disconnected = 50ms
         wait(lastStatus_ == NJClient::NJC_STATUS_OK ? 20 : 50);
     }
+
+    // 15.1-05: graceful shutdown drain. The audio thread has stopped, but
+    // the queue may still hold pending DecodeState* pointers. Drain them
+    // here so we don't leak DecodeStates on disconnect.
+    if (auto* finalClient = processor.getClient())
+        finalClient->drainDeferredDelete();
 }
 
 //==============================================================================

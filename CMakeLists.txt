@@ -351,4 +351,14 @@ if(JAMWIDE_BUILD_TESTS)
     target_include_directories(test_video_sync PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_test(NAME video_sync COMMAND test_video_sync)
 
+    # 15.1-02 CR-03: TSan-targeted stress test for the release/acquire pattern in
+    # NJClient::updateBPMinfo / AudioProc, and Codex L-10 edge-triggered-semantics
+    # coverage. Pure-C++ (no NJClient link) — exercises the pattern in isolation.
+    add_executable(test_njclient_atomics tests/test_njclient_atomics.cpp)
+    target_include_directories(test_njclient_atomics PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME njclient_atomics COMMAND test_njclient_atomics)
+
 endif()

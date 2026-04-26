@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Security & Quality
 status: ready_to_execute
-stopped_at: Phase 15.1 planned (9 plans 02-10, plan-checker passed, ready for /gsd-execute-phase 15.1)
-last_updated: "2026-04-25T22:30:00.000Z"
-last_activity: 2026-04-25
+stopped_at: Phase 15.1 replanned post-Codex review (11 plans 02-10 incl. 07a/07b/07c split, plan-checker passed all 12 Codex-driven checks, ready for /gsd-execute-phase 15.1)
+last_updated: "2026-04-26T13:30:00.000Z"
+last_activity: 2026-04-26
 progress:
   total_phases: 10
   completed_phases: 9
-  total_plans: 28
+  total_plans: 30
   completed_plans: 19
-  percent: 90
+  percent: 87
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 
 ## Current Position
 
-Phase: 15.1 (rt-safety-hardening) — READY TO EXECUTE
-Plan: 0 of 9 (15.1-01 audit done; 15.1-02..10 planned)
-Status: Plans verified by plan-checker (zero blockers); next: /gsd-execute-phase 15.1 picks up Wave 1 (15.1-02, 15.1-03, 15.1-04)
-Last activity: 2026-04-25
+Phase: 15.1 (rt-safety-hardening) — READY TO EXECUTE (revised post-Codex review)
+Plan: 0 of 11 (15.1-01 audit done; 15.1-02..10 planned, 07 split into 07a/07b/07c)
+Status: Plans revised after Codex cross-AI review; plan-checker passed all 12 Codex-driven checks; next: /gsd-execute-phase 15.1 picks up Wave 1 (15.1-02, 15.1-03, 15.1-04)
+Last activity: 2026-04-26
 
-Progress: [#.........] 11% (v1.2 milestone — 1 of 9 sub-plans complete)
+Progress: [#.........] 9% (v1.2 milestone — 1 of 11 sub-plans complete)
 
 ## Performance Metrics
 

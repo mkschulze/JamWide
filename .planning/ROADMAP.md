@@ -213,18 +213,20 @@ Plans:
   3. Manual UAT on a populated NINJAM server (3+ peers) shows no audible audio glitches and no CPU spike pattern at the interval period in Activity Monitor's CPU history.
   4. The `m_users_cs` and `m_locchan_cs` mutexes are no longer acquired from `AudioProc` or any function it calls.
   5. `writeLog` / `writeUserChanLog` / the `JAMWIDE_DEV_BUILD` `fopen` block at `njclient.cpp:2133` are removed from the audio path.
-**Plans**: 9 plans (15.1-01 audit done as `d2db893`; 15.1-02 through 15.1-10 below)
+**Plans**: 11 plans (15.1-01 audit done as `d2db893`; 15.1-02 through 15.1-10 below — revised post-Codex review, old 15.1-07 split into 07a/07b/07c)
 Plans:
 - [x] 15.1-01 — Auditor pass (committed `d2db893`; produced `15.1-AUDIT.md` with 21 findings: 12 CRITICAL, 4 HIGH, 3 MEDIUM, 2 LOW)
-- [ ] 15.1-02-atomic-promotion-PLAN.md — m_misc_cs / BPM / BPI / m_interval_pos atomic promotion (CR-03)
+- [ ] 15.1-02-atomic-promotion-PLAN.md — m_misc_cs / BPM / BPI / m_interval_pos atomic promotion (CR-03; documents `m_beatinfo_updated` edge-trigger semantics per L-10)
 - [ ] 15.1-03-eliminate-audio-path-logging-PLAN.md — remove writeLog / writeUserChanLog / JAMWIDE_DEV_BUILD fopen from audio path (CR-04, H-01, H-02, L-02)
-- [ ] 15.1-04-spsc-infrastructure-PLAN.md — SPSC payloads.h, --tsan flag, JAMWIDE_TSAN option, primitive unit tests
-- [ ] 15.1-05-deferred-delete-PLAN.md — DecodeState* deferred-delete SPSC for all 7 audio-thread delete sites (CR-05, CR-06, CR-07)
-- [ ] 15.1-06-locchan-cs-snapshot-PLAN.md — m_locchan_cs replaced with audio-thread mirror + LocalChannelUpdate SPSC (CR-02)
-- [ ] 15.1-07-users-cs-snapshot-and-buffer-queues-PLAN.md — m_users_cs mirror + BufferQueue SPSC + DecodeMediaBuffer SPSC (CR-01, CR-09, CR-10, CR-12) — has human-verify checkpoint
-- [ ] 15.1-08-prealloc-hardening-PLAN.md — tmpblock + decoder Prealloc; M-03 jassert (M-01, M-02 reclassify, M-03, CR-11 mitigation)
-- [ ] 15.1-09-codec-call-site-integration-PLAN.md — start_decode + runDecode-fread off audio thread via run-thread arming (CR-08, H-04)
-- [ ] 15.1-10-phase-verification-PLAN.md — TSan ctest + auditor re-run + 30+ min UAT + goal-backward greps; produces 15.1-AUDIT-final.md and 15.1-VERIFICATION.md (has UAT human-verify checkpoint)
+- [ ] 15.1-04-spsc-infrastructure-PLAN.md — SPSC payloads.h (FINAL Wave-0 payloads incl. DecodeArmRequest), `--tsan` flag, JAMWIDE_TSAN option, primitive unit tests, `MAX_BLOCK_SAMPLES` contract
+- [ ] 15.1-05-deferred-delete-PLAN.md — DecodeState* deferred-delete SPSC for all 7 audio-thread delete sites (CR-05, CR-06, CR-07) + overflow counter accessor
+- [ ] 15.1-06-locchan-cs-snapshot-PLAN.md — m_locchan_cs replaced with audio-thread mirror + LocalChannelUpdate SPSC + Local_Channel deferred-free with generation gate (CR-02)
+- [ ] 15.1-07a-remote-user-mirror-PLAN.md — m_users_cs mirror + RemoteUser deferred-free with generation gate (CR-01) — has human-verify checkpoint
+- [ ] 15.1-07b-buffer-queue-PLAN.md — BlockRecord SPSC replacing BufferQueue (CR-09, CR-10) with `<5%` CPU perf-budget acceptance criterion
+- [ ] 15.1-07c-decode-media-buffer-PLAN.md — DecodeMediaBuffer SPSC backend (CR-12)
+- [ ] 15.1-08-prealloc-hardening-PLAN.md — tmpblock + decoder Prealloc; SetMaxAudioBlockSize throws (M-01, M-02 reclassify, M-03, CR-11 mitigation)
+- [ ] 15.1-09-codec-call-site-integration-PLAN.md — file-reader refill loop closes H-04 in steady state; start_decode arming via run-thread; ds->decode_fp = nullptr invariant on audio thread (CR-08, H-04)
+- [ ] 15.1-10-phase-verification-PLAN.md — 7 separated signals: TSan ctest (1a) + automated peer-churn simulation (1b) + manual standalone-callback UAT (1c) + auditor re-run + drop-counter gates + perf-budget + goal-backward greps; produces 15.1-AUDIT-final.md and 15.1-VERIFICATION.md (has UAT human-verify checkpoint)
 **Reference**: SPSC queues via `src/threading/spsc_ring.h`, JUCE `AbstractFifo` as fallback. Auditor agent at `.claude/agents/realtime-audio-reviewer.md`. Bug-investigation context in `.planning/phases/15.1-rt-safety-hardening/15.1-CONTEXT.md`. Historically-related fixes in commits `9cd23c0` and `9fa0d32` (Instatalk-specific spike — already shipped, not undone).
 
 ### Phase 16: Opus Codec Integration

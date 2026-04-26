@@ -361,4 +361,17 @@ if(JAMWIDE_BUILD_TESTS)
     )
     add_test(NAME njclient_atomics COMMAND test_njclient_atomics)
 
+    # 15.1-04 SPSC infrastructure: roundtrip + concurrent producer/consumer for
+    # every payload variant (RemoteUserUpdate, LocalChannelUpdate, BlockRecord,
+    # DecodeChunk, DecodeArmRequest, RemoteUser*/Local_Channel* deferred-free).
+    # Pure-C++ (no NJClient link) — exercises the SPSC primitive + payload
+    # contract in isolation. Designed to also run under -fsanitize=thread
+    # (--tsan build, JAMWIDE_TSAN=ON).
+    add_executable(test_spsc_state_updates tests/test_spsc_state_updates.cpp)
+    target_include_directories(test_spsc_state_updates PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME spsc_state_updates COMMAND test_spsc_state_updates)
+
 endif()

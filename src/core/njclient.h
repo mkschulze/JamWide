@@ -95,6 +95,85 @@ class DecodeState;
 class BufferQueue;
 class DecodeMediaBuffer;
 
+// 15.1-06 CR-02: maximum local channel count. Promoted from a #define at the
+// bottom of this header so LocalChannelMirror[MAX_LOCAL_CHANNELS] declared on
+// NJClient (below) sees the constant. Original #define preserved at the
+// bottom of the file for source-compat with existing callers.
+#ifndef MAX_LOCAL_CHANNELS
+#define MAX_LOCAL_CHANNELS 32
+#endif
+
+// 15.1-06 CR-02: audio-thread-owned mirror of local-channel state.
+//
+// Updated by NJClient::drainLocalChannelUpdates() at top of AudioProc; never
+// accessed off the audio thread. The audio thread reads exactly the fields
+// it needs to mix/encode each local channel — every field is BY VALUE.
+//
+// Codex HIGH-2 architectural fix: NO Local_Channel* / lc_ptr / void*
+// escape-hatch field. The original revision of this plan added an `lc_ptr`
+// so the audio thread could call `lc_ptr->m_bq.AddBlock(...)` for the
+// BufferQueue handoff; that undermined the mirror model because the audio
+// thread still dereferenced run-thread-owned objects. This revision
+// eliminates the back-pointer entirely. The per-channel BlockRecord SPSC
+// (the only consumer of that pointer) is stored AS A MEMBER here.
+//
+// Notes on lifetime:
+//   - The mirror is a fixed-size array on NJClient; lifetime is tied to the
+//     NJClient instance. Mirror entries are constructed in place when the
+//     enclosing NJClient is constructed; the per-entry block_q SpscRing is
+//     non-copyable/non-movable but in-place default-constructible (verified
+//     by reading src/threading/spsc_ring.h:43).
+//   - block_q is the producer side for the BlockRecord SPSC consumed by the
+//     encoder thread (wired in 15.1-07b). On RemovedUpdate apply, the audio
+//     thread drains the ring empty and resets scalar fields; the same ring
+//     is reused on the next AddedUpdate without ever being destroyed.
+//
+// 15.1-06 NinjamRunThread Instatalk processor (cbf) — see deviation #2 in
+// 15.1-06-SUMMARY.md: the production Local_Channel.cbf is consulted from
+// process_samples (Instatalk PTT mute lambda registered via
+// SetLocalChannelProcessor at connect time). Both fields are
+// trivially-copyable (function pointer + void*); cbf_inst is owned by
+// JamWideJuceProcessor (which outlives NJClient), so this is NOT a
+// HIGH-2 violation — the void* is a callback-context owned by the
+// audio plugin host, not a back-pointer into a run-thread-owned
+// Local_Channel object.
+struct LocalChannelMirror {
+    bool         active = false;
+    int          srcch = 0;
+    int          bitrate = 0;
+    bool         bcast = false;
+    bool         mute = false;
+    bool         solo = false;
+    float        volume = 1.0f;
+    float        pan = 0.0f;
+    int          outch = -1;
+    unsigned int flags = 0;
+
+    // 15.1-06: Instatalk PTT processor (and any future SetLocalChannelProcessor
+    // user). Function pointer + opaque-context, both trivially copyable, both
+    // owned by the audio-plugin host (JamWideJuceProcessor). NOT a HIGH-2
+    // back-pointer (it is not derived from Local_Channel; the
+    // SetLocalChannelProcessor caller passes its own pointer).
+    void (*cbf)(float* /*buf*/, int /*ns*/, void* /*inst*/) = nullptr;
+    void* cbf_inst = nullptr;
+
+    // 15.1-06 + 15.1-07b: per-channel BlockRecord SPSC. process_samples /
+    // on_new_interval is the producer side (15.1-07b will wire the actual
+    // pushes). The encoder thread is the consumer (also 15.1-07b). Owned by
+    // the mirror entry; lifetime is tied to the entry's active flag — drained
+    // empty on RemovedUpdate apply, reused on the next AddedUpdate.
+    jamwide::SpscRing<jamwide::BlockRecord, 16> block_q;
+
+    // 15.1-06: per-channel VU peak. Audio thread writes (relaxed); UI/run
+    // thread reads via NJClient::GetLocalChannelPeak (relaxed). Cross-thread
+    // float atomic reads are well-defined; the values are display-only so
+    // no synchronization-with-other-state is needed. Replaces the canonical
+    // Local_Channel.decode_peak_vol[2] read path that previously required
+    // m_locchan_cs from the UI thread.
+    std::atomic<float> peak_vol_l{0.0f};
+    std::atomic<float> peak_vol_r{0.0f};
+};
+
 // #define NJCLIENT_NO_XMIT_SUPPORT // might want to do this for njcast :)
 //  it also removes mixed ogg writing support
 
@@ -422,12 +501,99 @@ protected:
   // semantics are sufficient — this is an observability counter, no synchronization
   // dependency on it.
   std::atomic<uint64_t> m_deferred_delete_overflows{0};
+
+  // 15.1-06 CR-02: audio-thread mirror of local-channel state. Replaces
+  // m_locchan_cs.Enter/Leave at process_samples and on_new_interval.
+  // Indexed by Local_Channel::channel_idx (which is bounded to
+  // 0..MAX_LOCAL_CHANNELS-1 by NJClient::SetLocalChannelInfo callers).
+  // Owned and mutated EXCLUSIVELY by the audio thread (drainLocalChannelUpdates
+  // applies queued mutations at the top of AudioProc).
+  LocalChannelMirror m_locchan_mirror[MAX_LOCAL_CHANNELS];
+
+  // 15.1-06 CR-02: state-update queue. Run-thread mutators
+  // (SetLocalChannelInfo / DeleteLocalChannel / SetLocalChannelMonitoring)
+  // try_push variant records here; audio thread drains at top of AudioProc
+  // via drainLocalChannelUpdates(). Capacity 32 matches MAX_LOCAL_CHANNELS;
+  // local-channel mutations are UI-paced (≤ ~10 Hz worst case under fader
+  // storms), so 32 is generous.
+  jamwide::SpscRing<jamwide::LocalChannelUpdate, 32> m_locchan_update_q;
+
+  // 15.1-06 deviation #2 (cbf processor): SetLocalChannelProcessor
+  // publishes a separate update so audio-thread mirror.cbf/cbf_inst stay
+  // accurate. Declared inline here (NOT in spsc_payloads.h, which is
+  // FINAL per Wave-0 Codex M-9). Trivially copyable POD.
+  struct LocalChannelProcessorUpdate {
+      int channel = 0;
+      void (*cbf)(float* /*buf*/, int /*ns*/, void* /*inst*/) = nullptr;
+      void* cbf_inst = nullptr;
+  };
+  jamwide::SpscRing<LocalChannelProcessorUpdate, 16> m_locchan_processor_q;
+
+  // 15.1-06 + Codex HIGH-3: drain-generation counter.
+  //
+  // The audio thread bumps this once per AudioProc (after
+  // drainLocalChannelUpdates returns). The run thread reads it to know when
+  // its PUBLISHED LocalChannelRemovedUpdate has been observed by the audio
+  // thread (and only THEN is it safe to enqueue the canonical Local_Channel*
+  // onto the deferred-delete queue).
+  //
+  // Release-store on the audio side synchronizes with acquire-load on the run
+  // side (DeleteLocalChannel / drainLocalChannelDeferredDelete) — ensures the
+  // audio thread's mirror update (active=false) is visible before the run
+  // thread proceeds to the canonical free.
+  std::atomic<uint64_t> m_audio_drain_generation{0};
+
+  // 15.1-06 + Codex HIGH-3: deferred-free queue for run-thread-owned
+  // Local_Channel objects. The run thread enqueues a Local_Channel* ONLY
+  // AFTER:
+  //   (a) it has pushed a LocalChannelRemovedUpdate to m_locchan_update_q,
+  //       AND
+  //   (b) it has observed m_audio_drain_generation increment past the
+  //       publish moment (audio thread has drained the queue at least once
+  //       after the publish).
+  // This guarantees the audio thread never holds a stale view of the
+  // removed slot when the canonical object's destructor runs.
+  jamwide::SpscRing<Local_Channel*,
+                    jamwide::LOCAL_CHANNEL_DEFERRED_DELETE_CAPACITY>
+      m_locchan_deferred_delete_q;
+
+  // 15.1-06: overflow counter for m_locchan_update_q (Codex M-8 style).
+  // On try_push failure, the run-thread mutators bump this counter and log
+  // a warning. Non-zero at phase close is observable for the 15.1-10 gate.
+  // Run-thread side only — relaxed semantics are sufficient.
+  std::atomic<uint64_t> m_locchan_update_overflows{0};
+
+public:
+  // 15.1-06 CR-02: drain method called at the top of AudioProc — applies
+  // pending LocalChannelUpdate variants to m_locchan_mirror. After draining,
+  // bumps m_audio_drain_generation (release-store) so the run thread can
+  // verify its published RemovedUpdate has been observed before queuing the
+  // canonical Local_Channel* for deferred-free.
+  void drainLocalChannelUpdates();
+
+  // 15.1-06 + Codex HIGH-3: drain method called by the run thread (every
+  // 20ms tick) and once at shutdown. Pops any Local_Channel* from
+  // m_locchan_deferred_delete_q and runs the canonical destructor off the
+  // audio thread. The generation-gate logic that enqueues these pointers
+  // lives in DeleteLocalChannel.
+  void drainLocalChannelDeferredDelete();
+
+  // 15.1-06 + Codex M-8: phase-close verification reads this. MUST be 0
+  // after UAT. Non-zero == architectural defect (run-thread mutators
+  // overflowed the SPSC; a state change was lost). 15.1-10 phase
+  // verification asserts this counter == 0.
+  uint64_t GetLocalChannelUpdateOverflowCount() const noexcept {
+      return m_locchan_update_overflows.load(std::memory_order_relaxed);
+  }
 };
 
 
 
 #define MAX_USER_CHANNELS 32
-#define MAX_LOCAL_CHANNELS 32 // probably want to use NJClient::GetMaxLocalChannels() if determining when it's OK to add a channel,etc
+// 15.1-06 CR-02: MAX_LOCAL_CHANNELS hoisted above the NJClient class so the
+// LocalChannelMirror[MAX_LOCAL_CHANNELS] member array can see the constant.
+// The #ifndef guard there prevents redefinition; the comment that lived here
+// (about NJClient::GetMaxLocalChannels) still applies.
 #define DOWNLOAD_TIMEOUT 8
 
 

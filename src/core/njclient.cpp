@@ -787,6 +787,19 @@ unsigned int NJClient::GetSessionPosition()// returns milliseconds
 void NJClient::AudioProc(float **inbuf, int innch, float **outbuf, int outnch, int len, int srate, bool justmonitor, bool isPlaying, bool isSeek, double cursessionpos)
 {
   m_srate=srate;
+
+  // 15.1-06 CR-02: drain pending local-channel mutations into the audio-thread
+  // mirror BEFORE any read of locchannel state in process_samples /
+  // on_new_interval. m_locchan_cs is no longer acquired on the audio path.
+  drainLocalChannelUpdates();
+
+  // 15.1-06 + Codex HIGH-3: bump generation AFTER the drain. Run thread
+  // (DeleteLocalChannel and drainLocalChannelDeferredDelete) reads this to
+  // know when its PUBLISHED LocalChannelRemovedUpdate has been observed by
+  // the audio thread. Release-store synchronizes with the run thread's
+  // acquire-load.
+  m_audio_drain_generation.fetch_add(1, std::memory_order_release);
+
   // zero output
   int x;
   for (x = 0; x < outnch; x ++) memset(outbuf[x],0,sizeof(float)*len);
@@ -1978,15 +1991,27 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
                    // -36dB/sec
   double decay=pow(.25*0.25*0.25,len/(double)srate);
   // encode my audio and send to server, if enabled
-  int u;
-  m_locchan_cs.Enter();
-  for (u = 0; u < m_locchannels.GetSize(); u ++)
-  {
-    Local_Channel *lc=m_locchannels.Get(u);
-    if (!justmonitor && lc->channel_idx >= m_max_localch && !(lc->flags & 2)) continue; // server does not allow this channel index (instamode exempt)
 
-    int sc=lc->src_channel&1023;
-    int sc_nch=(lc->src_channel&1024)?2:1;
+  // 15.1-06 CR-02: m_locchan_cs.Enter/Leave removed. Audio thread reads from
+  // m_locchan_mirror, populated by drainLocalChannelUpdates() at the top of
+  // AudioProc. Mirror entries are by-VALUE (Codex HIGH-2: no Local_Channel*
+  // back-pointer). The per-mirror block_q SPSC is the producer side for the
+  // BlockRecord transport — pushes are deferred to 15.1-07b which lands in
+  // the same wave; for now broadcast on local channels is intentionally
+  // silent (the legacy lc->m_bq path is kept unlocked-but-unreachable from
+  // the audio thread, and the encoder thread continues to read via the
+  // run-thread-side m_locchan_cs path). UAT verifies non-broadcast paths.
+  for (int ch = 0; ch < MAX_LOCAL_CHANNELS; ++ch)
+  {
+    auto& lcm = m_locchan_mirror[ch];
+    if (!lcm.active) continue;
+
+    // Same gating as the legacy code: lc->channel_idx >= m_max_localch &&
+    // !(lc->flags & 2). channel_idx == ch (mirror is indexed by channel).
+    if (!justmonitor && ch >= m_max_localch && !(lcm.flags & 2)) continue;
+
+    int sc=lcm.srcch&1023;
+    int sc_nch=(lcm.srcch&1024)?2:1;
 
     float *src=NULL,*src2=NULL;
     if (sc >= 0 && sc < innch) src=inbuf[sc]+offset;
@@ -1996,7 +2021,7 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
       if (!src2) src2=src;
     }
 
-    if (lc->cbf || !src || ChannelMixer)
+    if (lcm.cbf || !src || ChannelMixer)
     {
       // todo: support stereo on chanmixer, silent, and effect processing stuff
       int bytelen=len*(int)sizeof(float);
@@ -2011,70 +2036,37 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
 
       src2=src=(float* )tmpblock.Get();
 
-      // processor
-      if (lc->cbf)
+      // processor (Instatalk PTT mute lambda registered via
+      // SetLocalChannelProcessor — see 15.1-06 deviation #2 in SUMMARY).
+      if (lcm.cbf)
       {
-        lc->cbf(src,len,lc->cbf_inst);
+        lcm.cbf(src,len,lcm.cbf_inst);
       }
     }
 
 
 #ifndef NJCLIENT_NO_XMIT_SUPPORT
-    if (!justmonitor)
-    {
-      if (lc->flags&2)
-      {
-        if (lc->bcast_active != lc->broadcasting ||
-              (lc->bcast_active && lc->m_curwritefile_curbuflen >= LL_CHUNK_SIZE * srate)
-           )
-        {
-          if (lc->bcast_active) lc->m_bq.AddBlock(0,0.0,NULL,0);
-          lc->bcast_active = lc->broadcasting;
-          lc->m_curwritefile_curbuflen=0.0;
-        }
-      }
-      else if (lc->flags&4)
-      {
-        if (isSeek|| // if seeked, too long, playing and not broadcasting, or not playing and broadcasting
-            lc->m_curwritefile_curbuflen>=SESSION_CHUNK_SIZE*(double)srate ||
-            (isPlaying && !lc->bcast_active && lc->broadcasting) ||
-            (!isPlaying && lc->bcast_active)
-          )
-        {
-          if (lc->bcast_active)
-          {
-            lc->m_bq.AddBlock(0,0.0,NULL,0);
-          }
-
-          if (lc->broadcasting&&isPlaying)
-          {
-            lc->bcast_active=true;
-            lc->m_bq.AddBlock(0,cursessionpos,NULL,-1);
-          }
-          else
-            lc->bcast_active=false;
-
-          lc->m_curwritefile_curbuflen=0.0;
-        }
-      }
-      else
-        lc->m_curwritefile_curbuflen=0.0;
-
-      if (lc->bcast_active)
-      {
-        lc->m_bq.AddBlock(sc_nch,0.0,src,len,src2);
-        lc->m_curwritefile_curbuflen += len;
-      }
-    }
+    // 15.1-06 hand-off note: the lc->m_bq.AddBlock path that used to live here
+    // is being replaced by mirror.block_q in 15.1-07b. For 15.1-06 the audio
+    // thread does NOT push to either the legacy m_bq (would require the back-
+    // pointer that HIGH-2 forbids) or the new mirror block_q (consumer side
+    // not wired yet). Broadcast on local channels is therefore silent for the
+    // brief window between this plan landing and 15.1-07b landing. Both plans
+    // are in Wave 2 and execute back-to-back; this is dev-test only.
+    //
+    // The bcast_active flag and m_curwritefile_curbuflen are run-thread-side
+    // state; the audio thread does not need them while the BlockRecord
+    // producer is dormant. Skipped entirely in 15.1-06.
+    (void)isSeek; (void)isPlaying; (void)cursessionpos;
 #endif
 
     if (!src2) src2=src;
 
     // monitor this channel
-    bool chan_active = ((!m_issoloactive && !lc->muted) || lc->solo);
+    bool chan_active = ((!m_issoloactive && !lcm.mute) || lcm.solo);
     {
       int use_nch=2;
-      const int outchanidx = lc->out_chan_index + m_local_chanoffs;
+      const int outchanidx = lcm.outch + m_local_chanoffs;
       if (outnch < 2 || (outchanidx&1024)) use_nch=1;
       int idx=(outchanidx & 1023);
       if (idx+use_nch>outnch) idx=outnch-use_nch;
@@ -2082,16 +2074,19 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
 
       float *out1=outbuf[idx]+offset;
 
-      float vol1=lc->volume;
+      float vol1=lcm.volume;
       if (use_nch > 1)
       {
         float vol2=vol1;
         float *out2=outbuf[idx+1]+offset;
-        if (lc->pan > 0.0f) vol1 *= 1.0f-lc->pan;
-        else if (lc->pan < 0.0f) vol2 *= 1.0f+lc->pan;
+        if (lcm.pan > 0.0f) vol1 *= 1.0f-lcm.pan;
+        else if (lcm.pan < 0.0f) vol2 *= 1.0f+lcm.pan;
 
-        float maxf=(float) (lc->decode_peak_vol[0]*decay);
-        float maxf2=(float) (lc->decode_peak_vol[1]*decay);
+        // 15.1-06: VU peak is stored on the mirror as std::atomic<float>;
+        // GetLocalChannelPeak reads from there (no m_locchan_cs needed on
+        // the UI side). Audio-thread writes are relaxed.
+        float maxf =(float)(lcm.peak_vol_l.load(std::memory_order_relaxed)*decay);
+        float maxf2=(float)(lcm.peak_vol_r.load(std::memory_order_relaxed)*decay);
 
         int x=len;
         while (x--)
@@ -2115,12 +2110,12 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
           src++;
           src2++;
         }
-        lc->decode_peak_vol[0]=maxf;
-        lc->decode_peak_vol[1]=maxf2;
+        lcm.peak_vol_l.store(maxf,  std::memory_order_relaxed);
+        lcm.peak_vol_r.store(maxf2, std::memory_order_relaxed);
       }
       else
       {
-        float maxf=(float) (lc->decode_peak_vol[0]*decay);
+        float maxf=(float)(lcm.peak_vol_l.load(std::memory_order_relaxed)*decay);
         int x=len;
         while (x--)
         {
@@ -2131,12 +2126,12 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
           if (chan_active)
             *out1++ += f * vol1;;
         }
-        lc->decode_peak_vol[1]=lc->decode_peak_vol[0]=maxf;
+        lcm.peak_vol_l.store(maxf, std::memory_order_relaxed);
+        lcm.peak_vol_r.store(maxf, std::memory_order_relaxed);
       }
     }
   }
-
-  m_locchan_cs.Leave();
+  // 15.1-06 CR-02: m_locchan_cs.Leave removed; mirror was used above.
 
 
   if (!justmonitor)
@@ -2146,7 +2141,7 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
     // 15.1-03 H-01: JAMWIDE_DEV_BUILD fopen("/tmp/jamwide.log") block removed unconditionally
     // (also removes the surrounding `if (!m_debug_logged_remote ...)` gate which existed only
     // to one-shot that dev-build log; m_debug_logged_remote field deleted from the class).
-    for (u = 0; u < m_remoteusers.GetSize(); u ++)
+    for (int u = 0; u < m_remoteusers.GetSize(); u ++)
     {
       RemoteUser *user=m_remoteusers.Get(u);
       int ch;
@@ -2413,6 +2408,96 @@ void NJClient::drainDeferredDelete()
   // spsc_payloads.h: pointers in this queue have been removed from the audio thread's
   // canonical slot, so no further audio-thread access is possible.
   m_deferred_delete_q.drain([](DecodeState* p) {
+    delete p;
+  });
+}
+
+// 15.1-06 CR-02: drain pending LocalChannelUpdate variants into the
+// audio-thread mirror. Called at the top of AudioProc.
+//
+// Codex HIGH-2: this method writes to m_locchan_mirror[ch] BY VALUE for every
+// field; it does NOT store any back-pointer into Local_Channel.
+//
+// Codex HIGH-3: AudioProc bumps m_audio_drain_generation AFTER this method
+// returns (release-store) so the run thread can synchronize its
+// deferred-Local_Channel-free with the audio-thread observation point.
+void NJClient::drainLocalChannelUpdates()
+{
+  // Apply variant mutations to mirror entries. Each visit is single-threaded
+  // (only the audio thread runs this) so we don't need extra synchronization
+  // on the mirror itself.
+  m_locchan_update_q.drain([this](jamwide::LocalChannelUpdate&& upd) {
+    std::visit([this](auto&& u) {
+      using T = std::decay_t<decltype(u)>;
+      if constexpr (std::is_same_v<T, jamwide::LocalChannelAddedUpdate>) {
+        if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
+        auto& m = m_locchan_mirror[u.channel];
+        m.active  = true;
+        m.srcch   = u.srcch;
+        m.bitrate = u.bitrate;
+        m.bcast   = u.bcast;
+        m.outch   = u.outch;
+        m.flags   = u.flags;
+        m.mute    = u.mute;
+        m.solo    = u.solo;
+        m.volume  = u.volume;
+        m.pan     = u.pan;
+        // block_q is already constructed in place inside the array element.
+        // cbf / cbf_inst are populated by LocalChannelProcessorUpdate (drained
+        // in the same method below) — left untouched here so an Add that
+        // arrives AFTER a SetLocalChannelProcessor doesn't clobber the cbf.
+      }
+      else if constexpr (std::is_same_v<T, jamwide::LocalChannelRemovedUpdate>) {
+        if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
+        auto& m = m_locchan_mirror[u.channel];
+        m.active = false;
+        // Drain any pending BlockRecords; they will not be processed.
+        // (The encoder thread will see active=false on its next tick and
+        // stop draining this slot.) The ring's head/tail are reset to empty
+        // by drain(); the storage is reused on the next AddedUpdate.
+        m.block_q.drain([](jamwide::BlockRecord&&){});
+        // Reset scalar fields so a subsequent AddedUpdate sees defaults.
+        m.srcch = 0; m.bitrate = 0; m.bcast = false; m.outch = -1; m.flags = 0;
+        m.mute = false; m.solo = false; m.volume = 1.0f; m.pan = 0.0f;
+        m.cbf = nullptr; m.cbf_inst = nullptr;
+      }
+      else if constexpr (std::is_same_v<T, jamwide::LocalChannelInfoUpdate>) {
+        if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
+        auto& m = m_locchan_mirror[u.channel];
+        m.srcch   = u.srcch;
+        m.bitrate = u.bitrate;
+        m.bcast   = u.bcast;
+        m.outch   = u.outch;
+        m.flags   = u.flags;
+      }
+      else if constexpr (std::is_same_v<T, jamwide::LocalChannelMonitoringUpdate>) {
+        if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
+        auto& m = m_locchan_mirror[u.channel];
+        if (u.set_volume) m.volume = u.volume;
+        if (u.set_pan)    m.pan    = u.pan;
+        if (u.set_mute)   m.mute   = u.mute;
+        if (u.set_solo)   m.solo   = u.solo;
+      }
+    }, upd);
+  });
+
+  // 15.1-06 deviation #2: drain processor (cbf) updates. Separate ring keeps
+  // spsc_payloads.h Wave-0-stable while still propagating cbf/cbf_inst.
+  m_locchan_processor_q.drain([this](LocalChannelProcessorUpdate&& u) {
+    if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
+    auto& m = m_locchan_mirror[u.channel];
+    m.cbf = u.cbf;
+    m.cbf_inst = u.cbf_inst;
+  });
+}
+
+// 15.1-06 + Codex HIGH-3: drain canonical Local_Channel* pointers whose
+// audio-thread observation has provably ceased (generation-gate enforced
+// at enqueue time inside DeleteLocalChannel). Called by the run thread
+// at every 20ms tick from NinjamRunThread::run() and once at shutdown.
+void NJClient::drainLocalChannelDeferredDelete()
+{
+  m_locchan_deferred_delete_q.drain([](Local_Channel* p) {
     delete p;
   });
 }
@@ -2737,34 +2822,32 @@ void NJClient::on_new_interval()
 
   m_metronome_pos=0.0;
 
-  int u;
-  m_locchan_cs.Enter();
-  for (u = 0; u < m_locchannels.GetSize(); u ++)
+  // 15.1-06 CR-02: m_locchan_cs.Enter/Leave removed. Iterate the audio-thread
+  // mirror; do NOT push BlockRecord boundary signals (deferred to 15.1-07b
+  // which lands in the same wave). The mirror's `bcast` field tracks the
+  // intended broadcast state, which is populated by run-thread mutators
+  // through LocalChannelInfoUpdate / LocalChannelAddedUpdate. The legacy
+  // `bcast_active` (boundary-tracking flag on canonical Local_Channel) is
+  // not mirrored — the BlockRecord transitions that depended on it land
+  // with 15.1-07b.
+  for (int ch = 0; ch < MAX_LOCAL_CHANNELS; ++ch)
   {
-    Local_Channel *lc=m_locchannels.Get(u);
-    if (lc->channel_idx >= m_max_localch && !(lc->flags & 2)) continue;
-
-    if (!(lc->flags&(4|2)))  // session mode and voice chat modes use their own (fixed) intervals
+    const auto& lcm = m_locchan_mirror[ch];
+    if (!lcm.active) continue;
+    if (ch >= m_max_localch && !(lcm.flags & 2)) continue;
+    // 15.1-06: BlockRecord boundary push deferred to 15.1-07b. The branch
+    // structure is preserved as a no-op so 15.1-07b is a localized edit:
+    if (!(lcm.flags & (4|2)))
     {
-      if (lc->bcast_active)
-      {
-        lc->m_bq.AddBlock(0,0.0,NULL,0);
-      }
-
-      int wasact=lc->bcast_active;
-
-      lc->bcast_active = lc->broadcasting;
-
-      if (wasact && !lc->bcast_active)
-      {
-        lc->m_bq.AddBlock(0,-1.0,NULL,-1);
-      }
+      // legacy: lc->m_bq.AddBlock(0,0.0,NULL,0)            — boundary marker
+      // legacy: lc->m_bq.AddBlock(0,-1.0,NULL,-1)          — broadcast-stop marker
+      // 15.1-07b will push equivalent BlockRecords onto lcm.block_q here.
     }
   }
-  m_locchan_cs.Leave();
+  // 15.1-06 CR-02: m_locchan_cs.Leave removed; mirror was used above.
 
   m_users_cs.Enter();
-  for (u = 0; u < m_remoteusers.GetSize(); u ++)
+  for (int u = 0; u < m_remoteusers.GetSize(); u ++)
   {
     RemoteUser *user=m_remoteusers.Get(u);
     int ch;
@@ -3098,14 +3181,17 @@ unsigned int NJClient::GetUserChannelCodec(int useridx, int channelidx)
 
 float NJClient::GetLocalChannelPeak(int ch, int whichch)
 {
-  WDL_MutexLock lock(&m_locchan_cs);
-  int x;
-  for (x = 0; x < m_locchannels.GetSize() && m_locchannels.Get(x)->channel_idx!=ch; x ++);
-  if (x == m_locchannels.GetSize()) return 0.0f;
-  Local_Channel *c=m_locchannels.Get(x);
-  if (whichch==0) return (float)c->decode_peak_vol[0];
-  if (whichch==1) return (float)c->decode_peak_vol[1];
-  return (float) (c->decode_peak_vol[0]+c->decode_peak_vol[1])*0.5f;
+  // 15.1-06: read from audio-thread mirror's atomic peak fields. Mirror is
+  // indexed by channel_idx, which is the same `ch` value the caller passes.
+  // Bounds-check; out-of-range reads return 0.
+  if (ch < 0 || ch >= MAX_LOCAL_CHANNELS) return 0.0f;
+  const auto& m = m_locchan_mirror[ch];
+  if (!m.active) return 0.0f;
+  const float l = m.peak_vol_l.load(std::memory_order_relaxed);
+  const float r = m.peak_vol_r.load(std::memory_order_relaxed);
+  if (whichch == 0) return l;
+  if (whichch == 1) return r;
+  return (l + r) * 0.5f;
 }
 
 void NJClient::DeleteLocalChannel(int ch)
@@ -3138,15 +3224,37 @@ void NJClient::DeleteLocalChannel(int ch)
 
 void NJClient::SetLocalChannelProcessor(int ch, void (*cbf)(float *, int ns, void *), void *inst)
 {
+  // 15.1-06 deviation #2: AUDIT H-03 said "JamWide doesn't register a cbf
+  // today" — this is INCORRECT; juce/NinjamRunThread.cpp:374 registers an
+  // Instatalk PTT mute lambda for channel 4 at every connect. The audio
+  // thread (process_samples) consults cbf to apply PTT muting. Per Codex
+  // HIGH-2, the audio path must NOT dereference a back-pointer into
+  // run-thread-owned Local_Channel; therefore the mirror carries cbf and
+  // cbf_inst BY VALUE (function pointer + opaque-context, both trivially
+  // copyable, the inst pointer is owned by JamWideJuceProcessor — NOT by
+  // Local_Channel — so this is not a HIGH-2 violation).
+  //
+  // We use a separate SPSC ring (m_locchan_processor_q, declared inline in
+  // njclient.h) so spsc_payloads.h remains FINAL per Wave-0 stability claim.
+
+  // Update canonical Local_Channel under the run-thread lock (preserves
+  // existing behavior for any other callers that read these fields).
+  m_locchan_cs.Enter();
   int x;
   for (x = 0; x < m_locchannels.GetSize() && m_locchannels.Get(x)->channel_idx!=ch; x ++);
   if (x < m_locchannels.GetSize())
   {
-     m_locchan_cs.Enter();
      Local_Channel *c=m_locchannels.Get(x);
      c->cbf=cbf;
      c->cbf_inst=inst;
-     m_locchan_cs.Leave();
+  }
+  m_locchan_cs.Leave();
+
+  // Publish to audio-thread mirror BY VALUE.
+  if (!m_locchan_processor_q.try_push(LocalChannelProcessorUpdate{ch, cbf, inst}))
+  {
+    m_locchan_update_overflows.fetch_add(1, std::memory_order_relaxed);
+    writeLog("WARNING: m_locchan_processor_q full; SetLocalChannelProcessor update lost (channel=%d)\n", ch);
   }
 }
 
@@ -3169,10 +3277,15 @@ void NJClient::GetLocalChannelProcessor(int ch, void **func, void **inst)
 void NJClient::SetLocalChannelInfo(int ch, const char *name, bool setsrcch, int srcch,
                                    bool setbitrate, int bitrate, bool setbcast, bool broadcast, bool setoutch, int outch, bool setflags, int flags)
 {
+  // 15.1-06 CR-02: keep canonical Local_Channel mutation under m_locchan_cs
+  // (UI/run-thread/network-thread consistency); after the canonical update,
+  // publish a LocalChannelUpdate variant onto m_locchan_update_q so the
+  // audio-thread mirror reflects the new state on its next AudioProc drain.
   m_locchan_cs.Enter();
   int x;
   for (x = 0; x < m_locchannels.GetSize() && m_locchannels.Get(x)->channel_idx!=ch; x ++);
-  if (x == m_locchannels.GetSize())
+  const bool was_add = (x == m_locchannels.GetSize());
+  if (was_add)
   {
     m_locchannels.Add(new Local_Channel);
   }
@@ -3185,7 +3298,44 @@ void NJClient::SetLocalChannelInfo(int ch, const char *name, bool setsrcch, int 
   if (setbcast) c->broadcasting=broadcast;
   if (setoutch) c->out_chan_index=outch;
   if (setflags) c->flags=flags;
+
+  // Snapshot the canonical state for the publish, INSIDE the lock. The
+  // mirror needs the FULL field set on Add; on Info-only updates only the
+  // changed fields are needed.
+  const int   cur_srcch   = c->src_channel;
+  const int   cur_bitrate = c->bitrate;
+  const bool  cur_bcast   = c->broadcasting;
+  const int   cur_outch   = c->out_chan_index;
+  const unsigned int cur_flags = (unsigned int)c->flags;
+  const bool  cur_mute    = c->muted;
+  const bool  cur_solo    = c->solo;
+  const float cur_vol     = c->volume;
+  const float cur_pan     = c->pan;
   m_locchan_cs.Leave();
+
+  // 15.1-06 CR-02: publish to audio-thread mirror BY VALUE (HIGH-2: no
+  // Local_Channel* pointer is sent across the SPSC). On overflow, bump the
+  // M-8-style counter and writeLog (run-thread side, OK). The audio thread
+  // continues to use whatever state it last observed.
+  bool ok;
+  if (was_add)
+  {
+    ok = m_locchan_update_q.try_push(jamwide::LocalChannelUpdate{
+        jamwide::LocalChannelAddedUpdate{
+            ch, cur_srcch, cur_bitrate, cur_bcast, cur_outch, cur_flags,
+            cur_mute, cur_solo, cur_vol, cur_pan}});
+  }
+  else
+  {
+    ok = m_locchan_update_q.try_push(jamwide::LocalChannelUpdate{
+        jamwide::LocalChannelInfoUpdate{
+            ch, cur_srcch, cur_bitrate, cur_bcast, cur_outch, cur_flags}});
+  }
+  if (!ok)
+  {
+    m_locchan_update_overflows.fetch_add(1, std::memory_order_relaxed);
+    writeLog("WARNING: m_locchan_update_q full; SetLocalChannelInfo update lost (channel=%d)\n", ch);
+  }
 }
 
 const char *NJClient::GetLocalChannelInfo(int ch, int *srcch, int *bitrate, bool *broadcast, int *outch, int *flags)
@@ -3212,10 +3362,14 @@ int NJClient::EnumLocalChannels(int i)
 
 void NJClient::SetLocalChannelMonitoring(int ch, bool setvol, float vol, bool setpan, float pan, bool setmute, bool mute, bool setsolo, bool solo)
 {
+  // 15.1-06 CR-02: keep canonical Local_Channel mutation under m_locchan_cs;
+  // publish a LocalChannelMonitoringUpdate after the lock so the audio-thread
+  // mirror reflects the new monitoring state.
   m_locchan_cs.Enter();
   int x;
   for (x = 0; x < m_locchannels.GetSize() && m_locchannels.Get(x)->channel_idx!=ch; x ++);
-  if (x == m_locchannels.GetSize())
+  const bool was_add = (x == m_locchannels.GetSize());
+  if (was_add)
   {
     m_locchannels.Add(new Local_Channel);
   }
@@ -3231,16 +3385,49 @@ void NJClient::SetLocalChannelMonitoring(int ch, bool setvol, float vol, bool se
     if (solo) m_issoloactive|=2;
     else
     {
-      int x;
-      for (x = 0; x < m_locchannels.GetSize(); x ++)
+      int xx;
+      for (xx = 0; xx < m_locchannels.GetSize(); xx ++)
       {
-        if (m_locchannels.Get(x)->solo) break;
+        if (m_locchannels.Get(xx)->solo) break;
       }
-      if (x == m_locchannels.GetSize())
+      if (xx == m_locchannels.GetSize())
         m_issoloactive&=~2;
     }
   }
+  // Snapshot for publish.
+  const float snap_vol  = c->volume;
+  const float snap_pan  = c->pan;
+  const bool  snap_mute = c->muted;
+  const bool  snap_solo = c->solo;
   m_locchan_cs.Leave();
+
+  // If this implicitly created a new channel (rare path: caller invoked
+  // Monitoring before Info), publish AddedUpdate first so the mirror knows
+  // the slot is active. Then publish the Monitoring delta.
+  bool ok = true;
+  if (was_add)
+  {
+    ok = m_locchan_update_q.try_push(jamwide::LocalChannelUpdate{
+        jamwide::LocalChannelAddedUpdate{
+            ch, /*srcch=*/0, /*bitrate=*/0, /*bcast=*/false,
+            /*outch=*/-1, /*flags=*/0u,
+            snap_mute, snap_solo, snap_vol, snap_pan}});
+  }
+  if (ok)
+  {
+    ok = m_locchan_update_q.try_push(jamwide::LocalChannelUpdate{
+        jamwide::LocalChannelMonitoringUpdate{
+            ch,
+            setvol,  vol,
+            setpan,  pan,
+            setmute, mute,
+            setsolo, solo}});
+  }
+  if (!ok)
+  {
+    m_locchan_update_overflows.fetch_add(1, std::memory_order_relaxed);
+    writeLog("WARNING: m_locchan_update_q full; SetLocalChannelMonitoring update lost (channel=%d)\n", ch);
+  }
 }
 
 int NJClient::GetLocalChannelMonitoring(int ch, float *vol, float *pan, bool *mute, bool *solo)

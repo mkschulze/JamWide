@@ -705,24 +705,30 @@ void NinjamRunThread::run()
             if (now_ms - lastVuDebugDumpMs_ >= 1000)
             {
                 lastVuDebugDumpMs_ = now_ms;
+                auto fmtCh = [client](int ch, char* buf, size_t n) {
+                    const uint64_t v = client->GetLocalChannelVisitCounts(ch);
+                    snprintf(buf, n,
+                        "ch%d{a=%d,vu=%llu,add=%u,rem=%u,inf=%u,mon=%u}",
+                        ch,
+                        (int)client->IsLocalChannelMirrorActive(ch),
+                        (unsigned long long)client->GetVuWriteCount(ch),
+                        (unsigned)((v >> 48) & 0xFFFF),
+                        (unsigned)((v >> 32) & 0xFFFF),
+                        (unsigned)((v >> 16) & 0xFFFF),
+                        (unsigned)( v        & 0xFFFF));
+                };
+                char c0[128], c1[128], c2[128], c3[128], c4[128];
+                fmtCh(0, c0, sizeof(c0));
+                fmtCh(1, c1, sizeof(c1));
+                fmtCh(2, c2, sizeof(c2));
+                fmtCh(3, c3, sizeof(c3));
+                fmtCh(4, c4, sizeof(c4));
                 std::fprintf(stderr,
-                    "[JamWide-VU-debug %lld] status=%d max_localch=%d  "
-                    "ch0{a=%d,vu=%llu}  ch1{a=%d,vu=%llu}  "
-                    "ch2{a=%d,vu=%llu}  ch3{a=%d,vu=%llu}  "
-                    "ch4{a=%d,vu=%llu}\n",
+                    "[JamWide-VU-debug %lld] status=%d max=%d  %s  %s  %s  %s  %s\n",
                     (long long)now_ms,
                     (int)client->cached_status.load(std::memory_order_relaxed),
                     client->GetMaxLocalChannels(),
-                    (int)client->IsLocalChannelMirrorActive(0),
-                    (unsigned long long)client->GetVuWriteCount(0),
-                    (int)client->IsLocalChannelMirrorActive(1),
-                    (unsigned long long)client->GetVuWriteCount(1),
-                    (int)client->IsLocalChannelMirrorActive(2),
-                    (unsigned long long)client->GetVuWriteCount(2),
-                    (int)client->IsLocalChannelMirrorActive(3),
-                    (unsigned long long)client->GetVuWriteCount(3),
-                    (int)client->IsLocalChannelMirrorActive(4),
-                    (unsigned long long)client->GetVuWriteCount(4));
+                    c0, c1, c2, c3, c4);
                 std::fflush(stderr);
             }
         }

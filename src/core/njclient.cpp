@@ -2648,6 +2648,7 @@ void NJClient::drainLocalChannelUpdates()
       if constexpr (std::is_same_v<T, jamwide::LocalChannelAddedUpdate>) {
         if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
         auto& m = m_locchan_mirror[u.channel];
+        m.add_visits.fetch_add(1, std::memory_order_relaxed);  // [BUG-A debug 2026-04-27]
         m.active  = true;
         m.srcch   = u.srcch;
         m.bitrate = u.bitrate;
@@ -2666,6 +2667,7 @@ void NJClient::drainLocalChannelUpdates()
       else if constexpr (std::is_same_v<T, jamwide::LocalChannelRemovedUpdate>) {
         if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
         auto& m = m_locchan_mirror[u.channel];
+        m.remove_visits.fetch_add(1, std::memory_order_relaxed);  // [BUG-A debug 2026-04-27]
         m.active = false;
         // 15.1-07b: do NOT drain block_q here — we WANT pending broadcast
         // records (e.g. the final boundary marker) to flow through to the
@@ -2686,6 +2688,7 @@ void NJClient::drainLocalChannelUpdates()
       else if constexpr (std::is_same_v<T, jamwide::LocalChannelInfoUpdate>) {
         if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
         auto& m = m_locchan_mirror[u.channel];
+        m.info_visits.fetch_add(1, std::memory_order_relaxed);  // [BUG-A debug 2026-04-27]
         m.srcch   = u.srcch;
         m.bitrate = u.bitrate;
         m.bcast   = u.bcast;
@@ -2695,6 +2698,7 @@ void NJClient::drainLocalChannelUpdates()
       else if constexpr (std::is_same_v<T, jamwide::LocalChannelMonitoringUpdate>) {
         if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
         auto& m = m_locchan_mirror[u.channel];
+        m.monitor_visits.fetch_add(1, std::memory_order_relaxed);  // [BUG-A debug 2026-04-27]
         if (u.set_volume) m.volume = u.volume;
         if (u.set_pan)    m.pan    = u.pan;
         if (u.set_mute)   m.mute   = u.mute;

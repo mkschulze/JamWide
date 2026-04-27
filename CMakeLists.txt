@@ -413,4 +413,15 @@ if(JAMWIDE_BUILD_TESTS)
     )
     add_test(NAME block_queue_spsc COMMAND test_block_queue_spsc)
 
+    # 15.1-07a RemoteUserMirror: concurrent peer-churn + HIGH-2 (no user_ptr)
+    # + HIGH-3 (generation-gate deferred-free for canonical RemoteUser)
+    # coverage. Pure-C++ (no NJClient link). Designed to run cleanly under
+    # -fsanitize=thread.
+    add_executable(test_remote_user_mirror tests/test_remote_user_mirror.cpp)
+    target_include_directories(test_remote_user_mirror PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME remote_user_mirror COMMAND test_remote_user_mirror)
+
 endif()

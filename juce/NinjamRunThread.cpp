@@ -696,43 +696,6 @@ void NinjamRunThread::run()
             client->drainWaveBlocks();
         }
 
-        // [BUG-A debug 2026-04-27] Once-per-second dump of local-channel mirror
-        // state to stderr (visible in DAW console / Reaper's Log Window).
-        // Helps diagnose why local Ch1-4 VU is dead while remote/master VU
-        // works. Will be removed once the dead-VU bug is fixed.
-        {
-            const auto now_ms = juce::Time::currentTimeMillis();
-            if (now_ms - lastVuDebugDumpMs_ >= 1000)
-            {
-                lastVuDebugDumpMs_ = now_ms;
-                auto fmtCh = [client](int ch, char* buf, size_t n) {
-                    const uint64_t v = client->GetLocalChannelVisitCounts(ch);
-                    snprintf(buf, n,
-                        "ch%d{a=%d,vu=%llu,add=%u,rem=%u,inf=%u,mon=%u}",
-                        ch,
-                        (int)client->IsLocalChannelMirrorActive(ch),
-                        (unsigned long long)client->GetVuWriteCount(ch),
-                        (unsigned)((v >> 48) & 0xFFFF),
-                        (unsigned)((v >> 32) & 0xFFFF),
-                        (unsigned)((v >> 16) & 0xFFFF),
-                        (unsigned)( v        & 0xFFFF));
-                };
-                char c0[128], c1[128], c2[128], c3[128], c4[128];
-                fmtCh(0, c0, sizeof(c0));
-                fmtCh(1, c1, sizeof(c1));
-                fmtCh(2, c2, sizeof(c2));
-                fmtCh(3, c3, sizeof(c3));
-                fmtCh(4, c4, sizeof(c4));
-                std::fprintf(stderr,
-                    "[JamWide-VU-debug %lld] status=%d max=%d  %s  %s  %s  %s  %s\n",
-                    (long long)now_ms,
-                    (int)client->cached_status.load(std::memory_order_relaxed),
-                    client->GetMaxLocalChannels(),
-                    c0, c1, c2, c3, c4);
-                std::fflush(stderr);
-            }
-        }
-
         // Adaptive sleep: connected = 20ms, disconnected = 50ms
         wait(lastStatus_ == NJClient::NJC_STATUS_OK ? 20 : 50);
     }

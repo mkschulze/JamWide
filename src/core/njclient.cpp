@@ -776,7 +776,27 @@ void NJClient::_reinit()
   for (x = 0; x < m_locchannels.GetSize(); x ++)
   {
     Local_Channel *c=m_locchannels.Get(x);
-    c->channel_idx = x; // normalize the channel indices on connect/disconnect
+    // 15.1-07b Bug A fix (2026-04-27): do NOT renormalize channel_idx here.
+    //
+    // The legacy code did `c->channel_idx = x;` "in case the user deleted
+    // channels in the lobby" so that on a subsequent connect the canonical
+    // list had sequential indices. With 15.1-06's audio-thread mirror, the
+    // mirror is indexed BY channel_idx — silently overwriting it on the
+    // canonical side strands the old mirror entry (active=true) and leaves
+    // the new index without an AddedUpdate. The next SetLocalChannelInfo
+    // for the renamed index sees was_add=false and publishes an InfoUpdate,
+    // which does NOT set mirror[new_idx].active=true. Result: VU meter
+    // dead for that channel in the connected session.
+    //
+    // Reproduction: syncInstatalkBroadcast() fires SetLocalChannelInfo(4,
+    // ...) at plugin-load time, before the first Connect. Connect calls
+    // Disconnect → _reinit, which (legacy) renamed channel_idx=4 → 0.
+    // Then handleStatusChange's SetLocalChannelInfo(0, "Ch1", ...) hit
+    // was_add=false and never woke mirror[0].
+    //
+    // Modern JamWide's UI doesn't expose Local_Channel deletion, so the
+    // legacy renormalize is dead code anyway. Remove the renormalize and
+    // keep peak-clear as the sole remaining responsibility.
     c->decode_peak_vol[0]=0.0f;
     c->decode_peak_vol[1]=0.0f;
   }
@@ -2312,7 +2332,6 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
         }
         lcm.peak_vol_l.store(maxf,  std::memory_order_relaxed);
         lcm.peak_vol_r.store(maxf2, std::memory_order_relaxed);
-        lcm.vu_write_count.fetch_add(1, std::memory_order_relaxed);  // [BUG-A debug 2026-04-27]
       }
       else
       {
@@ -2329,7 +2348,6 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
         }
         lcm.peak_vol_l.store(maxf, std::memory_order_relaxed);
         lcm.peak_vol_r.store(maxf, std::memory_order_relaxed);
-        lcm.vu_write_count.fetch_add(1, std::memory_order_relaxed);  // [BUG-A debug 2026-04-27]
       }
     }
   }
@@ -2648,7 +2666,6 @@ void NJClient::drainLocalChannelUpdates()
       if constexpr (std::is_same_v<T, jamwide::LocalChannelAddedUpdate>) {
         if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
         auto& m = m_locchan_mirror[u.channel];
-        m.add_visits.fetch_add(1, std::memory_order_relaxed);  // [BUG-A debug 2026-04-27]
         m.active  = true;
         m.srcch   = u.srcch;
         m.bitrate = u.bitrate;
@@ -2667,7 +2684,6 @@ void NJClient::drainLocalChannelUpdates()
       else if constexpr (std::is_same_v<T, jamwide::LocalChannelRemovedUpdate>) {
         if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
         auto& m = m_locchan_mirror[u.channel];
-        m.remove_visits.fetch_add(1, std::memory_order_relaxed);  // [BUG-A debug 2026-04-27]
         m.active = false;
         // 15.1-07b: do NOT drain block_q here — we WANT pending broadcast
         // records (e.g. the final boundary marker) to flow through to the
@@ -2688,7 +2704,6 @@ void NJClient::drainLocalChannelUpdates()
       else if constexpr (std::is_same_v<T, jamwide::LocalChannelInfoUpdate>) {
         if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
         auto& m = m_locchan_mirror[u.channel];
-        m.info_visits.fetch_add(1, std::memory_order_relaxed);  // [BUG-A debug 2026-04-27]
         m.srcch   = u.srcch;
         m.bitrate = u.bitrate;
         m.bcast   = u.bcast;
@@ -2698,7 +2713,6 @@ void NJClient::drainLocalChannelUpdates()
       else if constexpr (std::is_same_v<T, jamwide::LocalChannelMonitoringUpdate>) {
         if (u.channel < 0 || u.channel >= MAX_LOCAL_CHANNELS) return;
         auto& m = m_locchan_mirror[u.channel];
-        m.monitor_visits.fetch_add(1, std::memory_order_relaxed);  // [BUG-A debug 2026-04-27]
         if (u.set_volume) m.volume = u.volume;
         if (u.set_pan)    m.pan    = u.pan;
         if (u.set_mute)   m.mute   = u.mute;
@@ -3715,12 +3729,6 @@ void NJClient::SetLocalChannelInfo(int ch, const char *name, bool setsrcch, int 
   int x;
   for (x = 0; x < m_locchannels.GetSize() && m_locchannels.Get(x)->channel_idx!=ch; x ++);
   const bool was_add = (x == m_locchannels.GetSize());
-  // [BUG-A debug 2026-04-27] log every SetLocalChannelInfo call (run thread)
-  fprintf(stderr,
-      "[JamWide-SLI] SetLocalChannelInfo(ch=%d, name='%s', setsrcch=%d, setbitrate=%d, setbcast=%d, setoutch=%d, setflags=%d) was_add=%d list_size_before=%d\n",
-      ch, name ? name : "(null)",
-      (int)setsrcch, (int)setbitrate, (int)setbcast, (int)setoutch, (int)setflags,
-      (int)was_add, m_locchannels.GetSize());
   if (was_add)
   {
     m_locchannels.Add(new Local_Channel);
@@ -3805,11 +3813,6 @@ void NJClient::SetLocalChannelMonitoring(int ch, bool setvol, float vol, bool se
   int x;
   for (x = 0; x < m_locchannels.GetSize() && m_locchannels.Get(x)->channel_idx!=ch; x ++);
   const bool was_add = (x == m_locchannels.GetSize());
-  // [BUG-A debug 2026-04-27] log every SetLocalChannelMonitoring call
-  fprintf(stderr,
-      "[JamWide-SLM] SetLocalChannelMonitoring(ch=%d, setvol=%d, setpan=%d, setmute=%d, setsolo=%d) was_add=%d list_size_before=%d\n",
-      ch, (int)setvol, (int)setpan, (int)setmute, (int)setsolo,
-      (int)was_add, m_locchannels.GetSize());
   if (was_add)
   {
     m_locchannels.Add(new Local_Channel);

@@ -173,20 +173,6 @@ struct LocalChannelMirror {
     std::atomic<float> peak_vol_l{0.0f};
     std::atomic<float> peak_vol_r{0.0f};
 
-    // [BUG-A debug 2026-04-27] Counter incremented every time the audio thread
-    // writes to peak_vol_l/r in process_samples. Run thread reads this once
-    // per second to confirm the audio-thread loop is reaching this channel.
-    // Will be removed once the dead-VU bug is diagnosed.
-    std::atomic<uint64_t> vu_write_count{0};
-
-    // [BUG-A debug 2026-04-27] Per-variant visitor counters in
-    // drainLocalChannelUpdates. Distinguishes "AddedUpdate never arrived" from
-    // "AddedUpdate arrived but something cleared active afterwards".
-    std::atomic<uint32_t> add_visits{0};
-    std::atomic<uint32_t> remove_visits{0};
-    std::atomic<uint32_t> info_visits{0};
-    std::atomic<uint32_t> monitor_visits{0};
-
     // 15.1-07b: audio-thread-owned broadcast state. Replaces
     // canonical Local_Channel.bcast_active and .m_curwritefile_curbuflen
     // for the audio-thread-only path; the canonical fields remain in
@@ -454,30 +440,6 @@ public:
       return m_block_queue_drops.load(std::memory_order_relaxed);
   }
 
-  // [BUG-A debug 2026-04-27] Read the per-channel VU write counter (incremented
-  // every audio block where the loop body in process_samples reaches the peak
-  // store). Run-thread side reads this every ~1 second to determine whether
-  // the audio thread is reaching the per-channel loop body. Returns 0 for
-  // out-of-range channels. Will be removed once the dead-VU bug is diagnosed.
-  uint64_t GetVuWriteCount(int ch) const noexcept {
-      if (ch < 0 || ch >= MAX_LOCAL_CHANNELS) return 0;
-      return m_locchan_mirror[ch].vu_write_count.load(std::memory_order_relaxed);
-  }
-  bool IsLocalChannelMirrorActive(int ch) const noexcept {
-      if (ch < 0 || ch >= MAX_LOCAL_CHANNELS) return false;
-      return m_locchan_mirror[ch].active;
-  }
-  // [BUG-A debug 2026-04-27] visitor counts: add/remove/info/monitor packed
-  // into a single 64-bit return so the dump formatter doesn't have to issue 4
-  // separate accessor calls per channel.
-  uint64_t GetLocalChannelVisitCounts(int ch) const noexcept {
-      if (ch < 0 || ch >= MAX_LOCAL_CHANNELS) return 0;
-      const auto& m = m_locchan_mirror[ch];
-      return (uint64_t(m.add_visits.load(std::memory_order_relaxed))     << 48)
-           | (uint64_t(m.remove_visits.load(std::memory_order_relaxed))  << 32)
-           | (uint64_t(m.info_visits.load(std::memory_order_relaxed))    << 16)
-           |  uint64_t(m.monitor_visits.load(std::memory_order_relaxed));
-  }
 
   // 15.1-07b CR-09: drain per-channel mirror block_q rings on the run thread,
   // forwarding their BlockRecord payloads into the legacy lc->m_bq.AddBlock

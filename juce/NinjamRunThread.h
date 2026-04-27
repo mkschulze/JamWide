@@ -42,7 +42,6 @@ private:
     JamWideJuceProcessor& processor;
     jamwide::ServerListFetcher serverListFetcher;
     int lastStatus_ = -1;  // NJClient::NJC_STATUS_DISCONNECTED
-    juce::int64 lastVuDebugDumpMs_ = 0;  // [BUG-A debug 2026-04-27] once-per-second VU mirror dump
     // BPM/BPI change detection: suppress the initial default→real transition
     // that fires when the server sends its actual config on login. NJClient
     // constructs with m_bpm=120, m_bpi=32 defaults — GetActualBPM()/GetBPI()

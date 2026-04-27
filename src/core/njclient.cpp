@@ -3715,6 +3715,12 @@ void NJClient::SetLocalChannelInfo(int ch, const char *name, bool setsrcch, int 
   int x;
   for (x = 0; x < m_locchannels.GetSize() && m_locchannels.Get(x)->channel_idx!=ch; x ++);
   const bool was_add = (x == m_locchannels.GetSize());
+  // [BUG-A debug 2026-04-27] log every SetLocalChannelInfo call (run thread)
+  fprintf(stderr,
+      "[JamWide-SLI] SetLocalChannelInfo(ch=%d, name='%s', setsrcch=%d, setbitrate=%d, setbcast=%d, setoutch=%d, setflags=%d) was_add=%d list_size_before=%d\n",
+      ch, name ? name : "(null)",
+      (int)setsrcch, (int)setbitrate, (int)setbcast, (int)setoutch, (int)setflags,
+      (int)was_add, m_locchannels.GetSize());
   if (was_add)
   {
     m_locchannels.Add(new Local_Channel);
@@ -3799,6 +3805,11 @@ void NJClient::SetLocalChannelMonitoring(int ch, bool setvol, float vol, bool se
   int x;
   for (x = 0; x < m_locchannels.GetSize() && m_locchannels.Get(x)->channel_idx!=ch; x ++);
   const bool was_add = (x == m_locchannels.GetSize());
+  // [BUG-A debug 2026-04-27] log every SetLocalChannelMonitoring call
+  fprintf(stderr,
+      "[JamWide-SLM] SetLocalChannelMonitoring(ch=%d, setvol=%d, setpan=%d, setmute=%d, setsolo=%d) was_add=%d list_size_before=%d\n",
+      ch, (int)setvol, (int)setpan, (int)setmute, (int)setsolo,
+      (int)was_add, m_locchannels.GetSize());
   if (was_add)
   {
     m_locchannels.Add(new Local_Channel);

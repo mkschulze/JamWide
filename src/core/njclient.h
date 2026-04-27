@@ -103,6 +103,21 @@ class DecodeMediaBuffer;
 #define MAX_LOCAL_CHANNELS 32
 #endif
 
+// 15.1-07a CR-01: maximum user-channel count. Hoisted from a #define at the
+// bottom of this header so RemoteUserChannelMirror::chans[MAX_USER_CHANNELS]
+// (below) sees the constant. Original #define preserved at the bottom for
+// source-compat with existing callers.
+#ifndef MAX_USER_CHANNELS
+#define MAX_USER_CHANNELS 32
+#endif
+
+// 15.1-07a CR-01: maximum simultaneous remote peers tracked by the audio-thread
+// mirror. NINJAM servers cap typical jam-room sizes at 32-48 peers; 64 is a
+// conservative ceiling. Used to size m_remoteuser_mirror[MAX_PEERS] below.
+#ifndef MAX_PEERS
+#define MAX_PEERS 64
+#endif
+
 // 15.1-06 CR-02: audio-thread-owned mirror of local-channel state.
 //
 // Updated by NJClient::drainLocalChannelUpdates() at top of AudioProc; never
@@ -182,6 +197,93 @@ struct LocalChannelMirror {
     // bcast_active boundary state here.
     bool   bcast_active = false;
     double curwritefile_curbuflen = 0.0;
+};
+
+// 15.1-07a CR-01: audio-thread-owned per-channel mirror of remote-user state.
+//
+// Updated by NJClient::drainRemoteUserUpdates() at the top of AudioProc; never
+// accessed off the audio thread. Every field the audio thread needs to mix
+// (process_samples / mixInChannel) is stored BY VALUE.
+//
+// Codex HIGH-2 architectural fix: NO RemoteUser_Channel* / RemoteUser* /
+// user_ptr / void* escape-hatch field. The original revision of this plan
+// added a `user_ptr` field so the audio thread could access fields not in the
+// mirror; that undermined the mirror model because the audio thread still
+// dereferenced run-thread-owned objects. This revision eliminates the back-
+// pointer entirely.
+//
+// The DecodeState* members (ds, next_ds[0], next_ds[1]) are AUDIO-THREAD-OWNED
+// once published via PeerNextDsUpdate from the run thread. This is documented
+// ownership transfer (per spsc_payloads.h header comment) — NOT a back-
+// reference into shared state. The audio thread frees old DecodeState
+// pointers via the m_deferred_delete_q SPSC (15.1-05 helper).
+//
+// The session-info path (RemoteUser_Channel::GetSessionInfo, only reached when
+// flags & 4) is NOT mirrored — sessionmode is unused by JamWide's UI today
+// (see deferred-items.md / 15.1-MIRROR-AUDIT.md). The audio thread's
+// sessionmode branch in mixInChannel becomes a no-op without mirror data; if
+// a future plan exposes sessionmode, a separate session-info SPSC ring will
+// need to be added to this struct (and the mirror keyed by stable identity
+// preserved).
+struct RemoteUserChannelMirror {
+    bool         present = false;
+    bool         muted = false;
+    bool         solo = false;
+    float        volume = 1.0f;
+    float        pan = 0.0f;
+    int          out_chan_index = 0;
+    unsigned int flags = 0;
+    unsigned int codec_fourcc = 0;
+
+    // Audio-thread-owned DecodeState pointers; ownership transfers via
+    // PeerNextDsUpdate. Freed via deferDecodeStateDelete (15.1-05).
+    class ::DecodeState* ds = nullptr;
+    class ::DecodeState* next_ds[2] = {nullptr, nullptr};
+
+    // Audio-thread-only state: replaces RemoteUser_Channel::dump_samples and
+    // .curds_lenleft for mixInChannel's resample/skip bookkeeping. NOT read
+    // by run thread.
+    int    dump_samples = 0;
+    double curds_lenleft = 0.0;
+
+    // Per-channel VU peak. Audio thread writes (relaxed); UI thread reads via
+    // GetUserChannelPeak (relaxed). std::atomic<double> is too heavy on some
+    // platforms — split into two atomic floats matching LocalChannelMirror.
+    // The canonical RemoteUser_Channel.decode_peak_vol[2] remains as legacy
+    // storage (no longer the UI source of truth once this lands).
+    std::atomic<float> peak_vol_l{0.0f};
+    std::atomic<float> peak_vol_r{0.0f};
+};
+
+// 15.1-07a CR-01: audio-thread-owned mirror of a remote peer.
+//
+// Indexed by a STABLE SLOT (not by m_remoteusers list position). The run thread
+// allocates a slot when a peer is added (see SetUserChannelState publish path)
+// and releases it after the audio thread acknowledges the corresponding
+// PeerRemovedUpdate via the m_audio_drain_generation gate. This mitigates the
+// "Bug A shape" risk identified in 15.1-MIRROR-AUDIT.md — m_remoteusers.Delete
+// shifts subsequent list indices, but mirror entries are NEVER reindexed.
+//
+// Codex HIGH-2 architectural fix: NO RemoteUser* / user_ptr / void* escape-
+// hatch field. Every field the audio thread needs to iterate peers and call
+// mixInChannel is here BY VALUE. See RemoteUserChannelMirror above for the
+// per-channel breakdown.
+//
+// Lifetime: members of NJClient::m_remoteuser_mirror[MAX_PEERS] — constructed
+// in place when NJClient is constructed; per-mirror RemoteUserChannelMirror
+// chans[] are POD-default-initialized. The std::atomic<float> peak fields are
+// non-copyable/non-movable but in-place default-constructible.
+struct RemoteUserMirror {
+    bool active = false;
+    int  user_index = 0;             // server-assigned, stable per-session
+    int  submask = 0;
+    int  chanpresentmask = 0;
+    int  mutedmask = 0;
+    int  solomask = 0;
+    bool muted = false;
+    float volume = 1.0f;
+    float pan = 0.0f;
+    RemoteUserChannelMirror chans[MAX_USER_CHANNELS];
 };
 
 // #define NJCLIENT_NO_XMIT_SUPPORT // might want to do this for njcast :)
@@ -513,7 +615,12 @@ protected:
 
   WDL_PtrList<Local_Channel> m_locchannels;
 
-  void mixInChannel(RemoteUser *user, int chanidx,
+  // 15.1-07a CR-01: mixInChannel takes a STABLE SLOT into m_remoteuser_mirror,
+  // not a RemoteUser*. The audio thread reads ONLY mirror fields; no
+  // dereference of run-thread-owned RemoteUser / RemoteUser_Channel objects
+  // (Codex HIGH-2). DecodeState* pointer-shuffle operates entirely on the
+  // mirror's RemoteUserChannelMirror::ds / next_ds.
+  void mixInChannel(int slot, int chanidx,
                     bool muted, float vol, float pan, float **outbuf, int out_channel,
                     int len, int srate, int outnch, int offs, double vudecay, bool isPlaying, bool isSeek, double playPos);
 
@@ -598,6 +705,59 @@ protected:
   // Run-thread side only — relaxed semantics are sufficient.
   std::atomic<uint64_t> m_locchan_update_overflows{0};
 
+  // 15.1-07a CR-01: audio-thread mirror of remote-user state. Replaces
+  // m_users_cs.Enter/Leave at AudioProc, process_samples (audit line 2360),
+  // and on_new_interval (audit line 3231). Indexed by STABLE SLOT — the run
+  // thread allocates a slot when a peer is first announced (auth path) and
+  // releases it via the generation-gate after the audio thread acknowledges
+  // PeerRemovedUpdate. NOT keyed by m_remoteusers list index (shifts on
+  // Delete; see 15.1-MIRROR-AUDIT.md).
+  RemoteUserMirror m_remoteuser_mirror[MAX_PEERS];
+
+  // 15.1-07a CR-01: state-update queue. Run-thread mutators publish
+  // RemoteUserUpdate variants here; audio thread drains at top of AudioProc
+  // via drainRemoteUserUpdates(). Capacity 64 == MAX_PEERS — peer-churn is
+  // human-paced (≤ 1 join/leave/sec normally), generous headroom.
+  jamwide::SpscRing<jamwide::RemoteUserUpdate, 64> m_remoteuser_update_q;
+
+  // 15.1-07a + Codex M-8: overflow counter for m_remoteuser_update_q. Run-
+  // thread side bumps on try_push failure. 15.1-10 phase verification asserts
+  // == 0 post-UAT. Relaxed semantics — observability only.
+  std::atomic<uint64_t> m_remoteuser_update_overflows{0};
+
+  // 15.1-07a + Codex HIGH-3: deferred-free queue for run-thread-owned
+  // RemoteUser objects. The run thread enqueues a RemoteUser* ONLY AFTER:
+  //   (a) it has pushed a PeerRemovedUpdate to m_remoteuser_update_q, AND
+  //   (b) it has observed m_audio_drain_generation increment past the
+  //       publish moment (audio thread has drained the queue at least once
+  //       after the publish).
+  // Parallels the m_locchan_deferred_delete_q pattern from 15.1-06 / Codex
+  // HIGH-3 closure. The audio thread cannot still hold a stale view of the
+  // removed slot when the canonical destructor runs.
+  jamwide::SpscRing<RemoteUser*,
+                    jamwide::REMOTE_USER_DEFERRED_DELETE_CAPACITY>
+      m_remoteuser_deferred_delete_q;
+
+  // 15.1-07a + Codex M-8: name→slot lookup table for the run thread. Maps
+  // canonical RemoteUser pointer (stable per-session) to its mirror slot in
+  // m_remoteuser_mirror[]. Run-thread-only; no audio-thread access. Slot is
+  // -1 when the entry is unused. Capacity matches MAX_PEERS.
+  //
+  // Allocation: linear search for the first slot with .user==nullptr;
+  // wrap-around is fine — typical peer counts are ≤ 16. Slot is stable for
+  // the lifetime of the canonical RemoteUser; released only via the
+  // deferred-free protocol.
+  struct RemoteUserSlotEntry {
+      RemoteUser* user = nullptr;
+  };
+  RemoteUserSlotEntry m_remoteuser_slot_table[MAX_PEERS];
+
+  // Run-thread helpers for slot allocation/release (defined in njclient.cpp).
+  // Returns -1 if no free slot is available (peer count exceeds MAX_PEERS).
+  int  allocRemoteUserSlot(RemoteUser* user);
+  int  findRemoteUserSlot(RemoteUser* user) const;
+  void releaseRemoteUserSlot(int slot);
+
   // 15.1-07b CR-10: BlockRecord SPSC for the wavewrite/oggcomp output mix.
   // Replaces the audio-thread m_wavebq->AddBlock site at process_samples:2182.
   // Producer = audio thread (one push per processed block when waveWrite or
@@ -636,15 +796,39 @@ public:
   uint64_t GetLocalChannelUpdateOverflowCount() const noexcept {
       return m_locchan_update_overflows.load(std::memory_order_relaxed);
   }
+
+  // 15.1-07a CR-01: drain method called at the top of AudioProc — applies
+  // pending RemoteUserUpdate variants to m_remoteuser_mirror. Drained
+  // ALONGSIDE drainLocalChannelUpdates BEFORE m_audio_drain_generation is
+  // bumped, so the same generation gate covers both Local_Channel and
+  // RemoteUser deferred-free protocols.
+  void drainRemoteUserUpdates();
+
+  // 15.1-07a + Codex HIGH-3: drain method called by the run thread (every
+  // 20ms tick) and once at shutdown. Pops any RemoteUser* from
+  // m_remoteuser_deferred_delete_q and runs the canonical destructor off
+  // the audio thread. The generation-gate logic that enqueues these
+  // pointers lives in the peer-remove path (auth-side handler when
+  // chanpresentmask reaches 0; Disconnect; ~NJClient).
+  void drainRemoteUserDeferredDelete();
+
+  // 15.1-07a + Codex M-8: phase-close verification reads this. MUST be 0
+  // after UAT. Non-zero == architectural defect (run-thread mutators
+  // overflowed the SPSC; a peer state change was lost). 15.1-10 phase
+  // verification asserts this counter == 0.
+  uint64_t GetRemoteUserUpdateOverflowCount() const noexcept {
+      return m_remoteuser_update_overflows.load(std::memory_order_relaxed);
+  }
 };
 
 
 
-#define MAX_USER_CHANNELS 32
 // 15.1-06 CR-02: MAX_LOCAL_CHANNELS hoisted above the NJClient class so the
 // LocalChannelMirror[MAX_LOCAL_CHANNELS] member array can see the constant.
-// The #ifndef guard there prevents redefinition; the comment that lived here
-// (about NJClient::GetMaxLocalChannels) still applies.
+// 15.1-07a CR-01: MAX_USER_CHANNELS and MAX_PEERS similarly hoisted above the
+// NJClient class so RemoteUserChannelMirror::chans[MAX_USER_CHANNELS] and
+// NJClient::m_remoteuser_mirror[MAX_PEERS] see the constants.
+// The #ifndef guards above prevent redefinition.
 #define DOWNLOAD_TIMEOUT 8
 
 

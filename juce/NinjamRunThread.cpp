@@ -682,6 +682,14 @@ void NinjamRunThread::run()
             // ~Local_Channel() on the run thread, off the audio thread.
             client->drainLocalChannelDeferredDelete();
 
+            // 15.1-07a + Codex HIGH-3: drain deferred RemoteUser deletions.
+            // Same generation-gate semantics as drainLocalChannelDeferredDelete:
+            // the run-thread peer-remove path enqueues ONLY after the audio
+            // thread has acknowledged PeerRemovedUpdate via the shared
+            // m_audio_drain_generation counter (single bump covers BOTH
+            // mirrors). Runs ~RemoteUser() off the audio thread.
+            client->drainRemoteUserDeferredDelete();
+
             // 15.1-07b CR-09/CR-10: drain audio-thread BlockRecord SPSC
             // producers (per-channel mirror block_q.drain + m_wave_block_q
             // drain). NJClient::Run() ALSO drains these immediately before
@@ -700,14 +708,15 @@ void NinjamRunThread::run()
         wait(lastStatus_ == NJClient::NJC_STATUS_OK ? 20 : 50);
     }
 
-    // 15.1-05 + 15.1-06 + 15.1-07b: graceful shutdown drain. The audio
-    // thread has stopped, but the queues may still hold pending pointers
+    // 15.1-05 + 15.1-06 + 15.1-07a + 15.1-07b: graceful shutdown drain. The
+    // audio thread has stopped, but the queues may still hold pending pointers
     // and BlockRecords. Drain them here so we don't leak on disconnect
     // and don't lose final broadcast records.
     if (auto* finalClient = processor.getClient())
     {
         finalClient->drainDeferredDelete();
         finalClient->drainLocalChannelDeferredDelete();
+        finalClient->drainRemoteUserDeferredDelete();   // 15.1-07a HIGH-3
         finalClient->drainBroadcastBlocks();
         finalClient->drainWaveBlocks();
     }

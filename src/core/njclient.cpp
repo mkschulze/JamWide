@@ -412,6 +412,16 @@ class RemoteUser_Channel
 
     double curds_lenleft;
 
+    // 15.1-07a CR-01: run-thread shadow of the next_ds[] slot to fill on the
+    // next PeerNextDsUpdate publish. Audio thread maintains its own next_ds[2]
+    // in m_remoteuser_mirror[slot].chans[chidx].next_ds[2] and shuffles them
+    // independently; this run-thread shadow alternates 0/1 per publish so the
+    // two slots are kept fairly balanced. Pre-07a, the run thread used
+    // `useidx = !!next_ds[0]` to pick the slot — that read shared state and
+    // would race with the audio thread's mirror shuffle now. Tracking
+    // independently here keeps the choice deterministic and race-free.
+    int run_thread_next_ds_idx = 0;
+
     void AddSessionInfo(const unsigned char *guid, double st, double len);
     bool GetSessionInfo(double time, unsigned char *guid, double *offs, double *len, double mv);
     double GetMaxLength()
@@ -861,7 +871,21 @@ NJClient::~NJClient()
   {
     WDL_MutexLock lock_users(&m_users_cs);
     WDL_MutexLock lock_channels(&m_remotechannel_rd_mutex);
-    for (x = 0; x < m_remoteusers.GetSize(); x ++) delete m_remoteusers.Get(x);
+    // 15.1-07a CR-01: at destruction the audio thread has already been stopped
+    // by the JUCE host (releaseResources runs before the processor destructor).
+    // Direct-delete is safe here. Drain any pending deferred-deletes first so
+    // we don't leak in the rare race where Disconnect's gate timed out.
+    drainRemoteUserDeferredDelete();
+    for (x = 0; x < m_remoteusers.GetSize(); x ++)
+    {
+      RemoteUser* u = m_remoteusers.Get(x);
+      if (u)
+      {
+        const int slot = findRemoteUserSlot(u);
+        if (slot >= 0) releaseRemoteUserSlot(slot);
+        delete u;
+      }
+    }
     m_remoteusers.Empty();
   }
   for (x = 0; x < m_downloads.GetSize(); x ++) delete m_downloads.Get(x);
@@ -914,22 +938,32 @@ void NJClient::AudioProc(float **inbuf, int innch, float **outbuf, int outnch, i
   // on_new_interval. m_locchan_cs is no longer acquired on the audio path.
   drainLocalChannelUpdates();
 
-  // 15.1-06 + Codex HIGH-3: bump generation AFTER the drain. Run thread
-  // (DeleteLocalChannel and drainLocalChannelDeferredDelete) reads this to
-  // know when its PUBLISHED LocalChannelRemovedUpdate has been observed by
-  // the audio thread. Release-store synchronizes with the run thread's
-  // acquire-load.
+  // 15.1-07a CR-01: drain pending remote-user mutations into the audio-thread
+  // mirror BEFORE any read of remote-peer state in process_samples /
+  // on_new_interval / mixInChannel. m_users_cs is no longer acquired on the
+  // audio path.
+  drainRemoteUserUpdates();
+
+  // 15.1-06 + 15.1-07a + Codex HIGH-3: bump generation AFTER both drains.
+  // The run thread (DeleteLocalChannel + the peer-remove path) reads this to
+  // know when its PUBLISHED LocalChannelRemovedUpdate / PeerRemovedUpdate
+  // has been observed by the audio thread. Release-store synchronizes with
+  // the run thread's acquire-load. Single counter covers BOTH deferred-free
+  // protocols — the gate semantics are identical.
   m_audio_drain_generation.fetch_add(1, std::memory_order_release);
 
   // zero output
   int x;
   for (x = 0; x < outnch; x ++) memset(outbuf[x],0,sizeof(float)*len);
 
+  // 15.1-07a CR-01: remote_user_count derived from the audio-thread mirror
+  // (m_users_cs.Enter removed). The mirror's `active` slots are the audio-
+  // thread-visible peer count after drainRemoteUserUpdates above.
   int remote_user_count = 0;
   if (!justmonitor)
   {
-    WDL_MutexLock lock(&m_users_cs);
-    remote_user_count = m_remoteusers.GetSize();
+    for (int s = 0; s < MAX_PEERS; ++s)
+      if (m_remoteuser_mirror[s].active) ++remote_user_count;
   }
 
   if (!m_audio_enable||justmonitor ||
@@ -1037,11 +1071,69 @@ void NJClient::Disconnect()
   m_netcon=0;
 
   int x;
+  // 15.1-07a CR-01 + Codex HIGH-3: Disconnect can race with the audio thread
+  // (it runs on the run thread but the audio callback is independent). For each
+  // canonical RemoteUser we (a) publish PeerRemovedUpdate, (b) wait ONCE for
+  // m_audio_drain_generation to advance past the last publish moment, (c)
+  // enqueue all victims onto the deferred-free queue. The deferred-delete drain
+  // runs from NinjamRunThread (drainRemoteUserDeferredDelete) on the next 20ms
+  // tick, so canonical destructors run off the audio thread.
   {
     WDL_MutexLock lock_users(&m_users_cs);
     WDL_MutexLock lock_channels(&m_remotechannel_rd_mutex);
-    for (x=0;x<m_remoteusers.GetSize(); x++) delete m_remoteusers.Get(x);
-    m_remoteusers.Empty();
+    const int n = m_remoteusers.GetSize();
+    if (n > 0)
+    {
+      for (x = 0; x < n; ++x)
+      {
+        RemoteUser* u = m_remoteusers.Get(x);
+        if (!u) continue;
+        const int slot = findRemoteUserSlot(u);
+        if (slot >= 0)
+        {
+          if (!m_remoteuser_update_q.try_push(jamwide::RemoteUserUpdate{
+                jamwide::PeerRemovedUpdate{slot}}))
+          {
+            m_remoteuser_update_overflows.fetch_add(1, std::memory_order_relaxed);
+          }
+        }
+      }
+      const uint64_t publish_gen_target =
+          m_audio_drain_generation.load(std::memory_order_acquire) + 1;
+      const auto deadline = std::chrono::steady_clock::now()
+                          + std::chrono::milliseconds(200);
+      bool gen_ok = true;
+      while (m_audio_drain_generation.load(std::memory_order_acquire) < publish_gen_target)
+      {
+        if (std::chrono::steady_clock::now() > deadline)
+        {
+          writeLog("WARNING: Disconnect RemoteUser deferred-free generation gate timed out — leaking %d peers\n", n);
+          gen_ok = false;
+          break;
+        }
+        std::this_thread::yield();
+      }
+      for (x = 0; x < n; ++x)
+      {
+        RemoteUser* u = m_remoteusers.Get(x);
+        if (!u) continue;
+        const int slot = findRemoteUserSlot(u);
+        if (gen_ok)
+        {
+          if (m_remoteuser_deferred_delete_q.try_push(u))
+          {
+            if (slot >= 0) releaseRemoteUserSlot(slot);
+          }
+          else
+          {
+            writeLog("WARNING: m_remoteuser_deferred_delete_q full during Disconnect — leaking peer\n");
+          }
+        }
+        // If gate timed out, leak rather than risk UAF.
+      }
+      m_remoteusers.Empty();
+    }
+    x = n;
   }
   if (x) m_userinfochange=1; // if we removed users, notify parent
 
@@ -1456,6 +1548,18 @@ int NJClient::Run() // nonzero if sleep ok
                 // todo: have volume/pan settings here go into defaults for the channel. or not, kinda think it's pointless
                 if (cid >= 0 && cid < MAX_USER_CHANNELS)
                 {
+                  // 15.1-07a CR-01: track local outcomes so we can publish the
+                  // appropriate RemoteUserUpdate variants AFTER the m_users_cs
+                  // mutation block (see "Publish to RemoteUserMirror" below).
+                  bool        publish_added = false;
+                  bool        publish_removed = false;
+                  bool        publish_mask_change = true;
+                  RemoteUser* victim_for_deferred_delete = nullptr;
+                  int         victim_slot = -1;
+                  int         user_slot = -1;
+                  int         pub_submask = 0, pub_chanpresentmask = 0;
+                  int         pub_mutedmask = 0, pub_solomask = 0;
+
                   m_users_cs.Enter();
                   RemoteUser *theuser;
                   for (x = 0; x < m_remoteusers.GetSize() && strcmp((theuser=m_remoteusers.Get(x))->name.Get(),un); x ++);
@@ -1472,13 +1576,27 @@ int NJClient::Run() // nonzero if sleep ok
                       theuser=new RemoteUser;
                       theuser->name.Set(un);
                       m_remoteusers.Add(theuser);
+                      // 15.1-07a CR-01: allocate a stable mirror slot for this
+                      // canonical RemoteUser. Slot is held until generation-
+                      // gated deferred-free completes.
+                      user_slot = allocRemoteUserSlot(theuser);
+                      publish_added = (user_slot >= 0);
+                    }
+                    else
+                    {
+                      user_slot = findRemoteUserSlot(theuser);
                     }
 
                     if ((theuser->channels[cid].flags^f)&(2|4)) // if flags changed instamode, flush out the samples
                     {
-                      delete theuser->channels[cid].ds;
-                      delete theuser->channels[cid].next_ds[0];
-                      delete theuser->channels[cid].next_ds[1];
+                      // 15.1-07a CR-01 + Codex HIGH-2: ownership of these
+                      // pointers transferred to the audio thread via past
+                      // PeerNextDsUpdate publishes. The audio thread will
+                      // defer-delete them via deferDecodeStateDelete on the
+                      // next PeerChannelMaskUpdate / PeerRemovedUpdate apply
+                      // (the apply visitor handles in-flight ds for cleared
+                      // slots). Just null the canonical pointers here so the
+                      // canonical destructor doesn't double-free later.
                       theuser->channels[cid].ds=0;
                       theuser->channels[cid].next_ds[0]=0;
                       theuser->channels[cid].next_ds[1]=0;
@@ -1526,6 +1644,10 @@ int NJClient::Run() // nonzero if sleep ok
                         theuser->channels[cid].out_chan_index = find_unused_output_channel_pair();
                       }
                     }
+                    pub_submask         = theuser->submask;
+                    pub_chanpresentmask = theuser->chanpresentmask;
+                    pub_mutedmask       = theuser->mutedmask;
+                    pub_solomask        = theuser->solomask;
                   }
                   else
                   {
@@ -1540,19 +1662,35 @@ int NJClient::Run() // nonzero if sleep ok
                       int chksolo=theuser->solomask == (1u<<cid);
                       theuser->solomask &= ~(1u<<cid);
 
-                      delete theuser->channels[cid].ds;
-                      delete theuser->channels[cid].next_ds[0];
-                      delete theuser->channels[cid].next_ds[1];
+                      // 15.1-07a CR-01 + Codex HIGH-2: ds/next_ds are audio-
+                      // thread-owned via past PeerNextDsUpdate. The audio
+                      // thread will defer-delete them when the corresponding
+                      // PeerChannelMaskUpdate (chanpresentmask=0) is observed
+                      // and on_new_interval cleans the slot. Just null the
+                      // canonical pointers.
                       theuser->channels[cid].ds=0;
                       theuser->channels[cid].next_ds[0]=0;
                       theuser->channels[cid].next_ds[1]=0;
 //                      OutputDebugString("channel flags changed, flushing sources2\n");
 
+                      pub_submask         = theuser->submask;
+                      pub_chanpresentmask = theuser->chanpresentmask;
+                      pub_mutedmask       = theuser->mutedmask;
+                      pub_solomask        = theuser->solomask;
+                      user_slot = findRemoteUserSlot(theuser);
+
                       if (!theuser->chanpresentmask) // user no longer exists, it seems
                       {
                         chksolo=1;
-                        delete theuser;
+                        // 15.1-07a CR-01 + Codex HIGH-3: do NOT delete theuser
+                        // inline. Detach from m_remoteusers, capture the victim
+                        // pointer + its slot; the publish-wait-defer dance
+                        // happens AFTER m_users_cs.Leave below.
+                        victim_for_deferred_delete = theuser;
+                        victim_slot = user_slot;
                         m_remoteusers.Delete(x);
+                        publish_removed = (victim_slot >= 0);
+                        publish_mask_change = false;  // RemovedUpdate covers it
                       }
 
                       if (chksolo)
@@ -1566,6 +1704,78 @@ int NJClient::Run() // nonzero if sleep ok
                     }
                   }
                   m_users_cs.Leave();
+
+                  // 15.1-07a CR-01: publish to RemoteUserMirror. Order matters
+                  // for HIGH-3: PeerAddedUpdate first (slot gets active=true),
+                  // then PeerChannelMaskUpdate (per-channel present/mute/solo),
+                  // then PeerVolPanUpdate (peer-level vol/pan/mute). For peer
+                  // removal, publish PeerRemovedUpdate, wait for the audio
+                  // thread to drain (m_audio_drain_generation gate), then
+                  // enqueue the canonical RemoteUser* onto the deferred-free
+                  // queue. The deferred-delete drain runs from NinjamRunThread
+                  // (drainRemoteUserDeferredDelete) at the next 20ms tick.
+                  if (publish_added && user_slot >= 0)
+                  {
+                    if (!m_remoteuser_update_q.try_push(jamwide::RemoteUserUpdate{
+                          jamwide::PeerAddedUpdate{user_slot, x}}))
+                    {
+                      m_remoteuser_update_overflows.fetch_add(1, std::memory_order_relaxed);
+                      writeLog("WARNING: m_remoteuser_update_q full on PeerAddedUpdate (slot=%d)\n", user_slot);
+                    }
+                  }
+                  if (publish_mask_change && user_slot >= 0)
+                  {
+                    if (!m_remoteuser_update_q.try_push(jamwide::RemoteUserUpdate{
+                          jamwide::PeerChannelMaskUpdate{user_slot, pub_submask,
+                                                        pub_chanpresentmask,
+                                                        pub_mutedmask, pub_solomask}}))
+                    {
+                      m_remoteuser_update_overflows.fetch_add(1, std::memory_order_relaxed);
+                      writeLog("WARNING: m_remoteuser_update_q full on PeerChannelMaskUpdate (slot=%d)\n", user_slot);
+                    }
+                  }
+                  if (publish_removed && victim_slot >= 0 && victim_for_deferred_delete)
+                  {
+                    // HIGH-3 generation-gate publish-wait-defer.
+                    const uint64_t publish_gen_target =
+                        m_audio_drain_generation.load(std::memory_order_acquire) + 1;
+                    if (!m_remoteuser_update_q.try_push(jamwide::RemoteUserUpdate{
+                          jamwide::PeerRemovedUpdate{victim_slot}}))
+                    {
+                      m_remoteuser_update_overflows.fetch_add(1, std::memory_order_relaxed);
+                      writeLog("WARNING: m_remoteuser_update_q full on PeerRemovedUpdate (slot=%d) — leaking RemoteUser to preserve RT-safety\n", victim_slot);
+                      // RT-safety > memory hygiene. Cannot enqueue safely.
+                    }
+                    else
+                    {
+                      const auto deadline = std::chrono::steady_clock::now()
+                                          + std::chrono::milliseconds(200);
+                      while (m_audio_drain_generation.load(std::memory_order_acquire) < publish_gen_target)
+                      {
+                        if (std::chrono::steady_clock::now() > deadline)
+                        {
+                          writeLog("WARNING: RemoteUser deferred-free generation gate timed out (slot=%d) — leaking\n", victim_slot);
+                          victim_for_deferred_delete = nullptr;
+                          break;
+                        }
+                        std::this_thread::yield();
+                      }
+                      if (victim_for_deferred_delete)
+                      {
+                        if (!m_remoteuser_deferred_delete_q.try_push(victim_for_deferred_delete))
+                        {
+                          writeLog("WARNING: m_remoteuser_deferred_delete_q full (slot=%d) — leaking\n", victim_slot);
+                        }
+                        else
+                        {
+                          // Slot is freed only AFTER successful enqueue so a
+                          // future PeerAddedUpdate can't reuse it before the
+                          // canonical destructor has run.
+                          releaseRemoteUserSlot(victim_slot);
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1576,6 +1786,12 @@ int NJClient::Run() // nonzero if sleep ok
             mpb_server_download_interval_begin dib;
             if (!dib.parse(msg) && dib.username)
             {
+              int slot_to_publish = -1;
+              int useidx_to_publish = 0;
+              ::DecodeState* ds_to_publish = nullptr;
+              bool publish_silence = false;
+              int silence_chidx = -1;
+              {
               WDL_MutexLock lock(&m_users_cs);
               int x;
               RemoteUser *theuser;
@@ -1587,10 +1803,15 @@ int NJClient::Run() // nonzero if sleep ok
                 {
                   if (!(theuser->channels[dib.chidx].flags&4) && !(theuser->channels[dib.chidx].flags&2))
                   {
-                    int useidx=!!theuser->channels[dib.chidx].next_ds[0];
-                    DecodeState *tmp=theuser->channels[dib.chidx].next_ds[useidx];
-                    theuser->channels[dib.chidx].next_ds[useidx]=0;
-                    delete tmp;
+                    // 15.1-07a CR-01: silence-marker. Publish a NULL ds via
+                    // PeerNextDsUpdate so the audio thread mirror's slot gets
+                    // cleared (the audio-thread apply visitor defer-deletes
+                    // any existing ds in that slot).
+                    publish_silence = true;
+                    silence_chidx = dib.chidx;
+                    slot_to_publish = findRemoteUserSlot(theuser);
+                    useidx_to_publish = theuser->channels[dib.chidx].run_thread_next_ds_idx;
+                    theuser->channels[dib.chidx].run_thread_next_ds_idx ^= 1;
 //                    OutputDebugString("added silence to channel\n");
                   }
                   //else OutputDebugString("woulda added silence to channel\n");
@@ -1611,13 +1832,43 @@ int NJClient::Run() // nonzero if sleep ok
                 else if (!(theuser->channels[dib.chidx].flags&4))
                 {
 //                  OutputDebugString("added free-guid to channel\n");
-                  DecodeState *tmp=start_decode(dib.guid, theuser->channels[dib.chidx].flags, 0, NULL);
-                  int useidx=!!theuser->channels[dib.chidx].next_ds[0];
-                  DecodeState *t2=theuser->channels[dib.chidx].next_ds[useidx];
-                  theuser->channels[dib.chidx].next_ds[useidx]=tmp;
-                  delete t2;
+                  // 15.1-07a CR-01: ownership of the freshly-decoded ds
+                  // transfers to the audio thread via PeerNextDsUpdate. Use
+                  // the run-thread useidx shadow (alternating bit), publish,
+                  // and let the audio thread defer-delete the old slot.
+                  ds_to_publish = start_decode(dib.guid, theuser->channels[dib.chidx].flags, 0, NULL);
+                  slot_to_publish = findRemoteUserSlot(theuser);
+                  useidx_to_publish = theuser->channels[dib.chidx].run_thread_next_ds_idx;
+                  theuser->channels[dib.chidx].run_thread_next_ds_idx ^= 1;
                 }
 
+              }
+              }
+              // 15.1-07a CR-01: publish PeerNextDsUpdate AFTER releasing the
+              // lock. The mirror's apply visitor handles the defer-delete of
+              // the previous next_ds[useidx_to_publish] slot.
+              if (slot_to_publish >= 0 && (ds_to_publish || publish_silence))
+              {
+                jamwide::PeerNextDsUpdate upd{};
+                upd.slot     = slot_to_publish;
+                upd.channel  = publish_silence ? silence_chidx : dib.chidx;
+                upd.slot_idx = useidx_to_publish;
+                upd.ds       = reinterpret_cast<jamwide::DecodeState*>(ds_to_publish);
+                if (!m_remoteuser_update_q.try_push(jamwide::RemoteUserUpdate{upd}))
+                {
+                  m_remoteuser_update_overflows.fetch_add(1, std::memory_order_relaxed);
+                  // Queue full — leak the ds (RT-safety > memory hygiene).
+                  // The mirror's previous slot retains its old ds; this update
+                  // is lost, which means a one-interval audio glitch but no
+                  // crash.
+                  writeLog("WARNING: m_remoteuser_update_q full on PeerNextDsUpdate (slot=%d ch=%d) — leaking ds\n", slot_to_publish, upd.channel);
+                }
+              }
+              else if (ds_to_publish)
+              {
+                // No mirror slot for this peer (peer not yet registered) —
+                // delete the orphaned ds locally.
+                delete ds_to_publish;
               }
             }
           }
@@ -2356,38 +2607,41 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
 
   if (!justmonitor)
   {
-    // mix in all active (subscribed) channels
-    m_users_cs.Enter();
-    // 15.1-03 H-01: JAMWIDE_DEV_BUILD fopen("/tmp/jamwide.log") block removed unconditionally
-    // (also removes the surrounding `if (!m_debug_logged_remote ...)` gate which existed only
-    // to one-shot that dev-build log; m_debug_logged_remote field deleted from the class).
-    for (int u = 0; u < m_remoteusers.GetSize(); u ++)
+    // 15.1-07a CR-01: m_users_cs.Enter/Leave removed. Audio thread iterates
+    // m_remoteuser_mirror[MAX_PEERS]; every field needed for the mix-in pass
+    // is BY VALUE in the mirror (Codex HIGH-2). The DecodeState* members of
+    // each per-channel mirror are audio-thread-owned — pointer-shuffle in
+    // mixInChannel operates ONLY on the mirror.
+    // 15.1-03 H-01: JAMWIDE_DEV_BUILD fopen("/tmp/jamwide.log") block removed
+    // unconditionally (also removes the surrounding `if (!m_debug_logged_remote ...)`
+    // gate which existed only to one-shot that dev-build log; m_debug_logged_remote
+    // field deleted from the class).
+    for (int s = 0; s < MAX_PEERS; ++s)
     {
-      RemoteUser *user=m_remoteusers.Get(u);
-      int ch;
-      if (!user) continue;
+      auto& um = m_remoteuser_mirror[s];
+      if (!um.active) continue;
 
-      int a=user->chanpresentmask;
-      for (ch = 0; ch < MAX_USER_CHANNELS&&a; ch ++)
+      int a = um.chanpresentmask;
+      for (int ch = 0; ch < MAX_USER_CHANNELS && a; ++ch)
       {
-        if (a&1)
+        if (a & 1)
         {
-          float lpan=user->pan+user->channels[ch].pan;
-          if (lpan<-1.0)lpan=-1.0;
-          else if (lpan>1.0)lpan=1.0;
+          float lpan = um.pan + um.chans[ch].pan;
+          if (lpan < -1.0f) lpan = -1.0f;
+          else if (lpan > 1.0f) lpan = 1.0f;
 
           bool muteflag;
-          if (m_issoloactive) muteflag = !(user->solomask & (1u<<ch));
-          else muteflag=(user->mutedmask & (1u<<ch)) || user->muted;
+          if (m_issoloactive) muteflag = !(um.solomask & (1u << ch));
+          else muteflag = (um.mutedmask & (1u << ch)) || um.muted;
 
-          mixInChannel(user,ch,muteflag,
-            user->volume*user->channels[ch].volume,lpan,
-              outbuf,user->channels[ch].out_chan_index + m_remote_chanoffs,len,srate,outnch,offset,decay,isPlaying,isSeek,cursessionpos);
+          mixInChannel(s, ch, muteflag,
+            um.volume * um.chans[ch].volume, lpan,
+            outbuf, um.chans[ch].out_chan_index + m_remote_chanoffs,
+            len, srate, outnch, offset, decay, isPlaying, isSeek, cursessionpos);
         }
-        a>>=1;
+        a >>= 1;
       }
     }
-    m_users_cs.Leave();
 
 
     // write out wave if necessary
@@ -2742,6 +2996,185 @@ void NJClient::drainLocalChannelDeferredDelete()
   });
 }
 
+// 15.1-07a CR-01: drain pending RemoteUserUpdate variants into the audio-
+// thread mirror. Called at the top of AudioProc, BEFORE the
+// m_audio_drain_generation bump (which already exists from 15.1-06). The
+// single generation bump covers BOTH local-channel and remote-user removes —
+// the gate semantics work for both deferred-free protocols.
+//
+// Codex HIGH-2: this method writes to m_remoteuser_mirror[slot] BY VALUE for
+// every field; it does NOT store any back-pointer into RemoteUser /
+// RemoteUser_Channel. The DecodeState* pointers transferred via
+// PeerNextDsUpdate become audio-thread-owned at the moment of slotting.
+//
+// Codex HIGH-3: AudioProc bumps m_audio_drain_generation AFTER this method
+// returns (release-store) so the run thread can synchronize its deferred-
+// RemoteUser-free with the audio-thread observation point.
+void NJClient::drainRemoteUserUpdates()
+{
+  m_remoteuser_update_q.drain([this](jamwide::RemoteUserUpdate&& upd) {
+    std::visit([this](auto&& u) {
+      using T = std::decay_t<decltype(u)>;
+      if constexpr (std::is_same_v<T, jamwide::PeerAddedUpdate>) {
+        if (u.slot < 0 || u.slot >= MAX_PEERS) return;
+        auto& m = m_remoteuser_mirror[u.slot];
+        m.active = true;
+        m.user_index = u.user_index;
+        // Per-channel state is populated by subsequent
+        // PeerChannelMaskUpdate / PeerVolPanUpdate / PeerNextDsUpdate
+        // arrivals. AddedUpdate sets the bare-minimum identity.
+      }
+      else if constexpr (std::is_same_v<T, jamwide::PeerRemovedUpdate>) {
+        if (u.slot < 0 || u.slot >= MAX_PEERS) return;
+        auto& m = m_remoteuser_mirror[u.slot];
+        m.active = false;
+        // Capture any in-flight DecodeState pointers and defer-delete them.
+        // They became audio-thread-owned at the moment of PeerNextDsUpdate;
+        // cleanup is the audio thread's responsibility.
+        for (int ch = 0; ch < MAX_USER_CHANNELS; ++ch) {
+          deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, m.chans[ch].ds);
+          deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, m.chans[ch].next_ds[0]);
+          deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, m.chans[ch].next_ds[1]);
+          // Reset the per-channel mirror to defaults. Cannot use {} because
+          // RemoteUserChannelMirror has std::atomic<float> peak fields that
+          // are non-copyable; assign each field explicitly.
+          m.chans[ch].present = false;
+          m.chans[ch].muted = false;
+          m.chans[ch].solo = false;
+          m.chans[ch].volume = 1.0f;
+          m.chans[ch].pan = 0.0f;
+          m.chans[ch].out_chan_index = 0;
+          m.chans[ch].flags = 0;
+          m.chans[ch].codec_fourcc = 0;
+          m.chans[ch].ds = nullptr;
+          m.chans[ch].next_ds[0] = nullptr;
+          m.chans[ch].next_ds[1] = nullptr;
+          m.chans[ch].dump_samples = 0;
+          m.chans[ch].curds_lenleft = 0.0;
+          m.chans[ch].peak_vol_l.store(0.0f, std::memory_order_relaxed);
+          m.chans[ch].peak_vol_r.store(0.0f, std::memory_order_relaxed);
+        }
+        m.user_index = 0;
+        m.submask = 0; m.chanpresentmask = 0; m.mutedmask = 0; m.solomask = 0;
+        m.muted = false; m.volume = 1.0f; m.pan = 0.0f;
+      }
+      else if constexpr (std::is_same_v<T, jamwide::PeerChannelMaskUpdate>) {
+        if (u.slot < 0 || u.slot >= MAX_PEERS) return;
+        auto& m = m_remoteuser_mirror[u.slot];
+        const int prev_present = m.chanpresentmask;
+        m.submask = u.submask;
+        m.chanpresentmask = u.chanpresentmask;
+        m.mutedmask = u.mutedmask;
+        m.solomask = u.solomask;
+        for (int ch = 0; ch < MAX_USER_CHANNELS; ++ch) {
+          m.chans[ch].present = (u.chanpresentmask & (1u << ch)) != 0;
+          m.chans[ch].muted   = (u.mutedmask        & (1u << ch)) != 0;
+          m.chans[ch].solo    = (u.solomask         & (1u << ch)) != 0;
+          // 15.1-07a CR-01 + Codex HIGH-2: if a channel just transitioned from
+          // present → not-present, defer-delete any in-flight DecodeState* for
+          // that channel. The run-thread mutator nulled its canonical
+          // RemoteUser_Channel.ds/next_ds copies in the publish path; this is
+          // the audio-thread side of the same handover (single-owner: audio
+          // thread owns these pointers post-PeerNextDsUpdate handover).
+          const bool was_present = (prev_present       & (1u << ch)) != 0;
+          const bool now_present = (m.chanpresentmask  & (1u << ch)) != 0;
+          if (was_present && !now_present) {
+            deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, m.chans[ch].ds);
+            deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, m.chans[ch].next_ds[0]);
+            deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, m.chans[ch].next_ds[1]);
+          }
+        }
+      }
+      else if constexpr (std::is_same_v<T, jamwide::PeerVolPanUpdate>) {
+        if (u.slot < 0 || u.slot >= MAX_PEERS) return;
+        auto& m = m_remoteuser_mirror[u.slot];
+        m.muted = u.muted; m.volume = u.volume; m.pan = u.pan;
+      }
+      else if constexpr (std::is_same_v<T, jamwide::PeerNextDsUpdate>) {
+        // 15.1-07a CR-01: bridge the spsc_payloads.h forward-decl
+        // jamwide::DecodeState* to the global ::DecodeState* used by the
+        // production class definition (njclient.cpp:260) and the audio-thread
+        // mirror (RemoteUserChannelMirror::ds / next_ds). Both names refer to
+        // the SAME memory layout — production never defines jamwide::DecodeState
+        // (it's an opaque ownership-transfer tag in spsc_payloads.h, kept FINAL
+        // per Codex M-9). The reinterpret_cast is the documented bridge.
+        ::DecodeState* incoming_ds = reinterpret_cast<::DecodeState*>(u.ds);
+        if (u.slot < 0 || u.slot >= MAX_PEERS) {
+          // Drop the orphaned DecodeState* (defer-delete to keep audio-
+          // thread RT-safety). It came from start_decode on the run thread
+          // — single owner now is us.
+          deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, incoming_ds);
+          return;
+        }
+        if (u.channel < 0 || u.channel >= MAX_USER_CHANNELS) {
+          deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, incoming_ds);
+          return;
+        }
+        if (u.slot_idx < 0 || u.slot_idx > 1) {
+          deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, incoming_ds);
+          return;
+        }
+        auto& chan = m_remoteuser_mirror[u.slot].chans[u.channel];
+        // If a previous next_ds[slot_idx] pointer was queued, defer-delete it
+        // before overwriting (audio thread retains exclusive ownership during
+        // the swap; only the now-orphaned pointer crosses to the run thread).
+        deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, chan.next_ds[u.slot_idx]);
+        chan.next_ds[u.slot_idx] = incoming_ds;
+      }
+      else if constexpr (std::is_same_v<T, jamwide::PeerCodecSwapUpdate>) {
+        if (u.slot < 0 || u.slot >= MAX_PEERS) return;
+        if (u.channel < 0 || u.channel >= MAX_USER_CHANNELS) return;
+        m_remoteuser_mirror[u.slot].chans[u.channel].codec_fourcc = u.new_fourcc;
+      }
+    }, upd);
+  });
+}
+
+// 15.1-07a + Codex HIGH-3: drain canonical RemoteUser* pointers whose audio-
+// thread observation has provably ceased (generation-gate enforced at enqueue
+// time inside the peer-remove path). Called by the run thread at every 20ms
+// tick from NinjamRunThread::run() and once at shutdown.
+void NJClient::drainRemoteUserDeferredDelete()
+{
+  m_remoteuser_deferred_delete_q.drain([](RemoteUser* p) {
+    delete p;
+  });
+}
+
+// 15.1-07a + Codex M-8: run-thread slot allocation/lookup/release helpers.
+// These are NEVER called from the audio thread — only from the run-thread
+// peer-add (auth handler) and peer-remove paths.
+//
+// allocRemoteUserSlot: linear-scan for first free slot. O(MAX_PEERS) is fine
+// at peer-add time — happens at sub-Hz rate. Returns -1 if no slot is free
+// (peer count exceeds MAX_PEERS — a defect; bumps the overflow counter).
+int NJClient::allocRemoteUserSlot(RemoteUser* user)
+{
+  if (!user) return -1;
+  for (int s = 0; s < MAX_PEERS; ++s) {
+    if (!m_remoteuser_slot_table[s].user) {
+      m_remoteuser_slot_table[s].user = user;
+      return s;
+    }
+  }
+  return -1;
+}
+
+int NJClient::findRemoteUserSlot(RemoteUser* user) const
+{
+  if (!user) return -1;
+  for (int s = 0; s < MAX_PEERS; ++s) {
+    if (m_remoteuser_slot_table[s].user == user) return s;
+  }
+  return -1;
+}
+
+void NJClient::releaseRemoteUserSlot(int slot)
+{
+  if (slot < 0 || slot >= MAX_PEERS) return;
+  m_remoteuser_slot_table[slot].user = nullptr;
+}
+
 // 15.1-07b CR-09: drain per-channel mirror BlockRecord rings on the run
 // thread, forwarding each BlockRecord into the legacy BufferQueue-backed
 // encoder feed. The audio thread is the producer (process_samples /
@@ -2863,230 +3296,207 @@ void NJClient::drainWaveBlocks()
 }
 
 
-void NJClient::mixInChannel(RemoteUser *user, int chanidx,
+// 15.1-07a CR-01 + Codex HIGH-2: mixInChannel reads ONLY from the audio-thread
+// mirror (m_remoteuser_mirror[slot].chans[chanidx]). No dereference of run-
+// thread-owned RemoteUser / RemoteUser_Channel objects on the audio path.
+//
+// DecodeState ownership: chan_mirror.ds and chan_mirror.next_ds[0/1] are
+// audio-thread-owned once published via PeerNextDsUpdate (15.1-04 contract).
+// Pointer-shuffle in this function operates ENTIRELY on the mirror; old
+// pointers cross to the run thread via deferDecodeStateDelete (15.1-05).
+//
+// Sessionmode (flags & 4): becomes a no-op without mirror-side session info.
+// Sessionmode is unused by JamWide's UI today (per 15.1-MIRROR-AUDIT.md and
+// the comments on RemoteUserChannelMirror in njclient.h). If sessionmode is
+// re-enabled in a future plan, a separate session-info SPSC will need to be
+// added to the mirror; until then, sessionmode early-returns and defer-deletes
+// any in-flight ds so it doesn't leak.
+//
+// Insta measurement (Phase 14.2): identity is now encoded as the mirror SLOT
+// (uintptr_t-cast) rather than the canonical RemoteUser* — the old pointer
+// would have been a cross-thread back-reference (HIGH-2 violation). Slot is
+// stable per-session, so identity comparison in on_new_interval still works.
+void NJClient::mixInChannel(int slot, int chanidx,
                             bool muted, float vol, float pan, float **outbuf, int out_channel,
                             int len, int srate, int outnch, int offs, double vudecay,
                             bool isPlaying, bool isSeek, double playPos)
 {
-  RemoteUser_Channel * const userchan = &user->channels[chanidx];
-  userchan->decode_peak_vol[0]*=vudecay;
-  userchan->decode_peak_vol[1]*=vudecay;
+  if (slot < 0 || slot >= MAX_PEERS) return;
+  if (chanidx < 0 || chanidx >= MAX_USER_CHANNELS) return;
+  auto& chan_mirror = m_remoteuser_mirror[slot].chans[chanidx];
 
-  int llmode=(userchan->flags&2);
-  int sessionmode = !llmode && (userchan->flags&4);
+  // VU decay — read existing peak, decay, store back. Atomic relaxed because
+  // UI side reads relaxed too (display-only convergent value).
+  float peak_l_decayed = chan_mirror.peak_vol_l.load(std::memory_order_relaxed) * (float)vudecay;
+  float peak_r_decayed = chan_mirror.peak_vol_r.load(std::memory_order_relaxed) * (float)vudecay;
+
+  const int llmode     = (chan_mirror.flags & 2);
+  const int sessionmode = !llmode && (chan_mirror.flags & 4);
 
   overlapFadeState fade_state;
+
   if (sessionmode)
   {
-    if (!isPlaying)
+    // 15.1-07a CR-01: sessionmode is a no-op without mirror-side session info
+    // (GetSessionInfo / AddSessionInfo live on canonical RemoteUser_Channel).
+    // Defer-delete any in-flight ds so it doesn't leak; restore peak; return.
+    if (chan_mirror.ds)
     {
-      // 15.1-05 CR-05 (site 1/7): sessionmode + transport stopped
-      deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, userchan->ds);
-      return;
+      // Capture pointer FIRST, null the slot, defer-delete the captured value
+      // (RESEARCH § "Subtle note for the planner": single-owner-at-a-time).
+      ::DecodeState* old_ds = chan_mirror.ds;
+      chan_mirror.ds = nullptr;
+      deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, old_ds);
     }
-
-    if (isSeek || userchan->curds_lenleft <= 0.0)
-    {
-      if (userchan->ds)
-      {
-        userchan->ds->calcOverlap(&fade_state);
-        // 15.1-05 CR-05 (site 2/7): sessionmode seek/exhaustion
-        deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, userchan->ds);
-      }
-
-      unsigned char guid[16];
-      double offs=0.0;
-
-    //  char buf[512];
-  //    sprintf(buf,"querying %f\n",playPos);
-//      OutputDebugString(buf);
-      double mediasr=m_srate;
-      if (userchan->GetSessionInfo(playPos,guid,&offs,&userchan->curds_lenleft,1.0/srate) && userchan->curds_lenleft > 16.0/srate)
-      {
-        userchan->ds=start_decode(guid, userchan->flags, 0, NULL);
-        if (userchan->ds&&userchan->ds->decode_codec)
-        {
-          userchan->ds->applyOverlap(&fade_state);
-          mediasr=userchan->ds->decode_codec->GetSampleRate();
-          userchan->dump_samples = ((int) (offs * mediasr))*userchan->ds->decode_codec->GetNumChannels();
-          if (userchan->dump_samples<0)userchan->dump_samples=0;
-
-/*
-          char buf[512];
-          char guidstr[256];
-          guidtostr(guid,guidstr);
-          sprintf(buf,"at %f got %s %.10f %.10f\n",playPos,guidstr,offs*mediasr,userchan->curds_lenleft*mediasr);
-          OutputDebugString(buf);
-          */
-          userchan->curds_lenleft += 100/mediasr;
-
-        }
-        else
-        {
-          // 15.1-05 CR-05 (site 3/7): start_decode failure rollback
-          deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, userchan->ds);
-        }
-      }
-      else
-      {
-      }
-
-      userchan->curds_lenleft *= mediasr;
-
-    }
-
+    chan_mirror.peak_vol_l.store(peak_l_decayed, std::memory_order_relaxed);
+    chan_mirror.peak_vol_r.store(peak_r_decayed, std::memory_order_relaxed);
+    return;
   }
 
-  DecodeState *chan=userchan->ds;
+  ::DecodeState* chan = chan_mirror.ds;
   if (!chan || !chan->decode_codec || (!chan->decode_fp && !chan->decode_buf))
   {
-    if (llmode && userchan->next_ds[0])
+    if (llmode && chan_mirror.next_ds[0])
     {
-      if (userchan->ds) userchan->ds->calcOverlap(&fade_state);
+      if (chan_mirror.ds) chan_mirror.ds->calcOverlap(&fade_state);
       // 15.1-05 CR-05 (site 4/7): llmode advance to next_ds[0]. Per RESEARCH
       // § "Subtle note for the planner": capture old pointer FIRST, advance
-      // the slot (chan->ds = next_ds[0]), THEN defer-delete the captured old
-      // pointer. Audio thread retains exclusive ownership during the shuffle;
-      // only the now-orphaned old pointer crosses to the run thread.
-      DecodeState* old_ds = userchan->ds;
-      chan = userchan->ds = userchan->next_ds[0];
-      userchan->next_ds[0]=userchan->next_ds[1]; // advance queue
-      userchan->next_ds[1]=0;
+      // the slot, THEN defer-delete the captured old pointer. Audio thread
+      // retains exclusive ownership during the shuffle; only the now-orphaned
+      // old pointer crosses to the run thread.
+      ::DecodeState* old_ds = chan_mirror.ds;
+      chan = chan_mirror.ds = chan_mirror.next_ds[0];
+      chan_mirror.next_ds[0] = chan_mirror.next_ds[1]; // advance queue
+      chan_mirror.next_ds[1] = nullptr;
       deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, old_ds);
 
-      if (userchan->ds)
+      if (chan_mirror.ds)
       {
-        userchan->ds->applyOverlap(&fade_state);
+        chan_mirror.ds->applyOverlap(&fade_state);
         // 15.1-03 H-02: writeUserChanLog removed from audio path.
       }
 
-      // Phase 14.2: capture t_insta when instamode data first mixed for a remote user.
+      // Phase 14.2: capture t_insta when instamode data first mixed for a peer.
       // State machine transition: IDLE -> INSTA_CAPTURED.
-      // Identity: store RemoteUser* so t_interval can verify same-user match.
-      // Only capture once per measurement cycle (state must be IDLE).
-      if (userchan->ds
+      // 15.1-07a HIGH-2: identity encoded as the STABLE mirror SLOT (cast to
+      // uintptr_t) rather than RemoteUser*. Slot is allocated once per session
+      // and released only via the deferred-free generation gate, so identity
+      // comparison in on_new_interval is still meaningful and deterministic.
+      if (chan_mirror.ds
           && insta_meas_state_.load(std::memory_order_relaxed) == kInstaMeasIdle)
       {
-          insta_meas_user_ptr_.store(reinterpret_cast<uintptr_t>(user), std::memory_order_relaxed);
+          insta_meas_user_ptr_.store(static_cast<uintptr_t>(slot), std::memory_order_relaxed);
           insta_t_insta_ms_.store(currentMillis(), std::memory_order_release);
           insta_meas_state_.store(kInstaCapured, std::memory_order_release);
       }
     }
-    if (!chan || !chan->decode_codec || (!chan->decode_fp&&!chan->decode_buf))
+    if (!chan || !chan->decode_codec || (!chan->decode_fp && !chan->decode_buf))
     {
-      userchan->curds_lenleft -= len;
+      chan_mirror.curds_lenleft -= len;
+      // Restore decayed peak even on early return so VU keeps decaying.
+      chan_mirror.peak_vol_l.store(peak_l_decayed, std::memory_order_relaxed);
+      chan_mirror.peak_vol_r.store(peak_r_decayed, std::memory_order_relaxed);
       return;
     }
   }
 
-  const int mdump=0;
+  const int mdump = 0;
 
-  if (userchan->dump_samples>mdump)
+  if (chan_mirror.dump_samples > mdump)
   {
-    int av=chan->decode_codec->Available();
-    if (av > userchan->dump_samples-mdump) av=userchan->dump_samples-mdump;
+    int av = chan->decode_codec->Available();
+    if (av > chan_mirror.dump_samples - mdump) av = chan_mirror.dump_samples - mdump;
     chan->decode_codec->Skip(av);
-    userchan->dump_samples-=av;
+    chan_mirror.dump_samples -= av;
   }
 
-  int needed=0;
-  int srcnch=chan->decode_codec->GetNumChannels();
-  while (chan->decode_codec->Available() <= (needed=resampleLengthNeeded(chan->decode_codec->GetSampleRate(),srate,len,&chan->resample_state))*srcnch)
+  int needed = 0;
+  int srcnch = chan->decode_codec->GetNumChannels();
+  while (chan->decode_codec->Available() <= (needed = resampleLengthNeeded(chan->decode_codec->GetSampleRate(), srate, len, &chan->resample_state)) * srcnch)
   {
     bool done = chan->runDecode(256);
     if (chan->decode_codec->Available() > 0 && chan->is_voice_firstchk)
     {
-      chan->is_voice_firstchk=false;
+      chan->is_voice_firstchk = false;
       while (!chan->runDecode(256))
       {
       }
       const int nch = chan->decode_codec->GetNumChannels();
       if (WDL_NORMALLY(nch > 0))
       {
-        const int srate = chan->decode_codec->GetSampleRate();
-        const int avail = (chan->decode_codec->Available()-userchan->dump_samples)/nch;
-        const int skip = avail - (srate*3/4 + needed);
+        const int srate2 = chan->decode_codec->GetSampleRate();
+        const int avail = (chan->decode_codec->Available() - chan_mirror.dump_samples) / nch;
+        const int skip = avail - (srate2 * 3 / 4 + needed);
         if (skip > 512)
         {
-          userchan->dump_samples += nch * skip;
+          chan_mirror.dump_samples += nch * skip;
         }
       }
     }
 
-    if (userchan->dump_samples>mdump)
+    if (chan_mirror.dump_samples > mdump)
     {
-      int av=chan->decode_codec->Available();
-      if (av > userchan->dump_samples-mdump) av=userchan->dump_samples-mdump;
+      int av = chan->decode_codec->Available();
+      if (av > chan_mirror.dump_samples - mdump) av = chan_mirror.dump_samples - mdump;
       chan->decode_codec->Skip(av);
-      userchan->dump_samples-=av;
+      chan_mirror.dump_samples -= av;
     }
 
     if (done) break;
   }
 
 
-  int codecavail=chan->decode_codec->Available();
-  if (sessionmode)
+  int codecavail = chan->decode_codec->Available();
+  // 15.1-07a: sessionmode early-returned above; codecavail clamping for
+  // sessionmode (legacy `a = curds_lenleft+0.5`) is unreachable on this path.
+
+  int len_out = len;
+  if (llmode && codecavail < needed * srcnch)
   {
-    int a= (int)(userchan->curds_lenleft+0.5);
-    if (a<1) a=1;
-
-    a*=srcnch;
-    if (codecavail >= a)
-    {
-      codecavail=a;
-    }
-  }
-
-
-  int len_out=len;
-  if (llmode ? (codecavail < needed*srcnch) : sessionmode ? (codecavail <= needed*srcnch) : false)
-  {
-    if (codecavail>0)
+    if (codecavail > 0)
     {
       // this is probably not really right, need to do some testing
-      needed=codecavail/srcnch;
-      len_out = ((int) ((double)srate / (double)chan->decode_codec->GetSampleRate() * (double) (needed-chan->resample_state)));
-      if (len_out<0)len_out=0;
-      else if (len_out>len)len_out=len;
+      needed = codecavail / srcnch;
+      len_out = ((int) ((double)srate / (double)chan->decode_codec->GetSampleRate() * (double) (needed - chan->resample_state)));
+      if (len_out < 0) len_out = 0;
+      else if (len_out > len) len_out = len;
     }
     else
     {
-      len_out=0;
+      len_out = 0;
     }
   }
-  if (sessionmode)
-  {
-    userchan->curds_lenleft -= needed;
-  }
 
-  if (codecavail>0 && codecavail >= needed*srcnch)
+  if (codecavail > 0 && codecavail >= needed * srcnch)
   {
-    float *sptr=chan->decode_codec->Get();
+    float *sptr = chan->decode_codec->Get();
 
     // process VU meter, yay for powerful CPUs
     if (!muted && vol > 0.0000001)
     {
-      float *p=sptr;
-      int l=(needed)*srcnch;
-      float maxf=(float) (userchan->decode_peak_vol[0]/vol);
-      float maxf2=(float) (userchan->decode_peak_vol[1]/vol);
-      if (srcnch>=2) // vu meter + clipping
+      float *p = sptr;
+      int l = needed * srcnch;
+      // Use the decayed-peak value computed above (was based on the relaxed-
+      // load before this block; equivalent to the legacy decode_peak_vol[0]/vol
+      // baseline because we re-multiply by vol when storing back).
+      float maxf  = peak_l_decayed / (vol > 0.0f ? vol : 1.0f);
+      float maxf2 = peak_r_decayed / (vol > 0.0f ? vol : 1.0f);
+      if (srcnch >= 2) // vu meter + clipping
       {
-        l/=2;
+        l /= 2;
         while (l--)
         {
-          float f=*p;
-          if (f<-1.0f) f=*p=-1.0f;
-          else if (f>1.0f) f=*p=1.0f;
-          if (f > maxf) maxf=f;
-          else if (f < -maxf) maxf=-f;
+          float f = *p;
+          if (f < -1.0f) f = *p = -1.0f;
+          else if (f > 1.0f) f = *p = 1.0f;
+          if (f > maxf) maxf = f;
+          else if (f < -maxf) maxf = -f;
 
-          f=*++p;
-          if (f<-1.0f) f=*p=-1.0f;
-          else if (f>1.0f) f=*p=1.0f;
-          if (f > maxf2) maxf2=f;
-          else if (f < -maxf2) maxf2=-f;
+          f = *++p;
+          if (f < -1.0f) f = *p = -1.0f;
+          else if (f > 1.0f) f = *p = 1.0f;
+          if (f > maxf2) maxf2 = f;
+          else if (f < -maxf2) maxf2 = -f;
           p++;
         }
       }
@@ -3094,77 +3504,92 @@ void NJClient::mixInChannel(RemoteUser *user, int chanidx,
       {
         while (l--)
         {
-          float f=*p;
-          if (f<-1.0f) f=*p=-1.0f;
-          else if (f>1.0f) f=*p=1.0f;
-          if (f > maxf) maxf=f;
-          else if (f < -maxf) maxf=-f;
+          float f = *p;
+          if (f < -1.0f) f = *p = -1.0f;
+          else if (f > 1.0f) f = *p = 1.0f;
+          if (f > maxf) maxf = f;
+          else if (f < -maxf) maxf = -f;
           p++;
         }
-        maxf2=maxf;
+        maxf2 = maxf;
       }
-      userchan->decode_peak_vol[0]=maxf*vol;
-      userchan->decode_peak_vol[1]=maxf2*vol;
+      // Store the post-decode peak back into the mirror (relaxed; UI reads
+      // relaxed). Multiply by vol to match legacy decode_peak_vol semantics
+      // (lc->decode_peak_vol stored vol-applied peak; UI side scales by 1/vol
+      // when interpreting the dB display).
+      chan_mirror.peak_vol_l.store(maxf * vol,  std::memory_order_relaxed);
+      chan_mirror.peak_vol_r.store(maxf2 * vol, std::memory_order_relaxed);
 
-      int use_nch=2;
-      if (outnch < 2 || (out_channel&1024)) use_nch=1;
-      int idx=(out_channel&1023);
-      if (idx+use_nch>outnch) idx=outnch-use_nch;
-      if (idx< 0)idx=0;
+      int use_nch = 2;
+      if (outnch < 2 || (out_channel & 1024)) use_nch = 1;
+      int idx = (out_channel & 1023);
+      if (idx + use_nch > outnch) idx = outnch - use_nch;
+      if (idx < 0) idx = 0;
 
-      float lvol=vol;
-      float *tmpbuf[2]={outbuf[idx]+offs,use_nch > 1 ? (outbuf[idx+1]+offs) : 0};
-      if (use_nch==1 && srcnch>1)
+      float lvol = vol;
+      float *tmpbuf[2] = { outbuf[idx] + offs, use_nch > 1 ? (outbuf[idx + 1] + offs) : nullptr };
+      if (use_nch == 1 && srcnch > 1)
       {
-        tmpbuf[1]=tmpbuf[0];
-        lvol*=0.5f;
-        use_nch=2;
+        tmpbuf[1] = tmpbuf[0];
+        lvol *= 0.5f;
+        use_nch = 2;
       }
 
       mixFloatsNIOutput(sptr,
               chan->decode_codec->GetSampleRate(),
               srcnch,
               tmpbuf,
-              srate,use_nch,len_out,
-              lvol,pan,&chan->resample_state,
+              srate, use_nch, len_out,
+              lvol, pan, &chan->resample_state,
               chan->decode_codec->Available() / srcnch);
+    }
+    else
+    {
+      // Even when muted/vol==0, propagate the decayed peak so the VU meter
+      // continues to fall to zero.
+      chan_mirror.peak_vol_l.store(peak_l_decayed, std::memory_order_relaxed);
+      chan_mirror.peak_vol_r.store(peak_r_decayed, std::memory_order_relaxed);
     }
 
     // advance the queue
-    chan->decode_codec->Skip(needed*srcnch);
+    chan->decode_codec->Skip(needed * srcnch);
   }
-  else if (needed>0)
+  else
   {
-    if (!llmode&&!sessionmode)
+    // Restore decayed peak when no audio was mixed in this block.
+    chan_mirror.peak_vol_l.store(peak_l_decayed, std::memory_order_relaxed);
+    chan_mirror.peak_vol_r.store(peak_r_decayed, std::memory_order_relaxed);
+
+    if (needed > 0 && !llmode)
     {
-      userchan->dump_samples+=needed*srcnch - chan->decode_codec->Available();
+      chan_mirror.dump_samples += needed * srcnch - chan->decode_codec->Available();
       chan->decode_codec->Skip(chan->decode_codec->Available());
     }
   }
 
-  if ((llmode||sessionmode) &&
+  if (llmode &&
       len_out < len &&
-      (userchan->next_ds[0]||(sessionmode&&len_out>0)))
+      chan_mirror.next_ds[0])
   {
     // call again
-    userchan->curds_lenleft=-10000.0;
-    if (userchan->ds) userchan->ds->calcOverlap(&fade_state);
+    chan_mirror.curds_lenleft = -10000.0;
+    if (chan_mirror.ds) chan_mirror.ds->calcOverlap(&fade_state);
     // 15.1-05 CR-05 (site 5/7): tail-recursion advance. Same pointer-shuffle
     // ordering as site 4 — capture old pointer FIRST, advance the slot, THEN
     // defer-delete (RESEARCH § "Subtle note for the planner").
-    DecodeState* old_ds = userchan->ds;
-    chan = userchan->ds = userchan->next_ds[0];
-    userchan->next_ds[0]=userchan->next_ds[1]; // advance queue
-    userchan->next_ds[1]=0;
+    ::DecodeState* old_ds = chan_mirror.ds;
+    chan = chan_mirror.ds = chan_mirror.next_ds[0];
+    chan_mirror.next_ds[0] = chan_mirror.next_ds[1]; // advance queue
+    chan_mirror.next_ds[1] = nullptr;
     deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, old_ds);
-    if (userchan->ds)
+    if (chan_mirror.ds)
     {
-      userchan->ds->applyOverlap(&fade_state);
+      chan_mirror.ds->applyOverlap(&fade_state);
       // 15.1-03 H-02: writeUserChanLog removed from audio path.
     }
-    if (sessionmode || (chan && chan->decode_codec && (chan->decode_fp||chan->decode_buf)))
-      mixInChannel(user,chanidx,muted,vol,pan,outbuf,out_channel,len-len_out,srate,outnch,offs+len_out,vudecay,
-        isPlaying,false,playPos + len_out/(double)srate);
+    if (chan && chan->decode_codec && (chan->decode_fp || chan->decode_buf))
+      mixInChannel(slot, chanidx, muted, vol, pan, outbuf, out_channel, len - len_out, srate, outnch, offs + len_out, vudecay,
+        isPlaying, false, playPos + len_out / (double)srate);
   }
 }
 
@@ -3228,64 +3653,70 @@ void NJClient::on_new_interval()
   }
   // 15.1-06 CR-02: m_locchan_cs.Leave removed; mirror was used above.
 
-  m_users_cs.Enter();
-  for (int u = 0; u < m_remoteusers.GetSize(); u ++)
+  // 15.1-07a CR-01: m_users_cs.Enter/Leave removed. Audio thread iterates
+  // m_remoteuser_mirror[MAX_PEERS]; the next_ds-advance pointer-shuffle
+  // operates ENTIRELY on the mirror's audio-thread-owned DecodeState slots
+  // (Codex HIGH-2 — no dereference of run-thread-owned RemoteUser_Channel).
+  // Submask/chanpresentmask are mirrored as scalar fields on RemoteUserMirror.
+  for (int s = 0; s < MAX_PEERS; ++s)
   {
-    RemoteUser *user=m_remoteusers.Get(u);
-    int ch;
-//    printf("submask=%d,cpm=%d\n",user->submask , user->chanpresentmask);
-    for (ch = 0; ch < MAX_USER_CHANNELS; ch ++)
+    auto& um = m_remoteuser_mirror[s];
+    if (!um.active) continue;
+
+    for (int ch = 0; ch < MAX_USER_CHANNELS; ++ch)
     {
-      RemoteUser_Channel *chan=&user->channels[ch];
+      auto& chan_mirror = um.chans[ch];
 
-      if (!(chan->flags&2) && !(chan->flags&4))
+      // Skip llmode (flags & 2) and sessionmode (flags & 4) — only regular
+      // (interval-driven) channels reach this advance path.
+      if ((chan_mirror.flags & 2) || (chan_mirror.flags & 4)) continue;
+
+      chan_mirror.dump_samples = 0;
+      overlapFadeState fade_state;
+      if (chan_mirror.ds) chan_mirror.ds->calcOverlap(&fade_state);
+      // 15.1-05 CR-06 (site 6/7): on_new_interval — replace chan_mirror.ds.
+      // Capture old pointer FIRST, advance the slot, THEN defer-delete the
+      // captured value (single-owner-at-a-time invariant).
+      ::DecodeState* old_ds = chan_mirror.ds;
+      if ((um.submask & um.chanpresentmask) & (1u << ch))
       {
-/*        if (ch<2)
-        {
-          OutputDebugString("advanced to next_ds (intervalpoo)\n");
-        }
-        */
-        chan->dump_samples=0;
-        overlapFadeState fade_state;
-        if (chan->ds) chan->ds->calcOverlap(&fade_state);
-        // 15.1-05 CR-06 (site 6/7): on_new_interval — replace chan->ds.
-        deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, chan->ds);
-        if ((user->submask & user->chanpresentmask) & (1u<<ch))
-        {
-          chan->ds = chan->next_ds[0];
-          chan->next_ds[0]=chan->next_ds[1]; // advance queue
-          chan->next_ds[1]=0;
-        }
-        else
-        {
-          // 15.1-05 CR-07 (site 7/7): on_new_interval — drop unsubscribed
-          // next_ds[0]. Capture pointer FIRST, advance the slot (next_ds[0]
-          // = next_ds[1]), THEN defer-delete the captured pointer.
-          DecodeState* old_next0 = chan->next_ds[0];
-          chan->next_ds[0]=chan->next_ds[1]; // advance queue
-          chan->next_ds[1]=0;
-          deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, old_next0);
-        }
+        chan_mirror.ds = chan_mirror.next_ds[0];
+        chan_mirror.next_ds[0] = chan_mirror.next_ds[1]; // advance queue
+        chan_mirror.next_ds[1] = nullptr;
+        deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, old_ds);
+      }
+      else
+      {
+        // 15.1-05 CR-07 (site 7/7): on_new_interval — drop unsubscribed
+        // next_ds[0]. Capture pointer FIRST, advance the slot, THEN defer-
+        // delete the captured pointer. Both old_ds and old_next0 are now
+        // orphaned; defer-delete both.
+        ::DecodeState* old_next0 = chan_mirror.next_ds[0];
+        chan_mirror.ds = nullptr;
+        chan_mirror.next_ds[0] = chan_mirror.next_ds[1]; // advance queue
+        chan_mirror.next_ds[1] = nullptr;
+        deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, old_ds);
+        deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, old_next0);
+      }
 
-        if (chan->ds)
-        {
-          chan->ds->applyOverlap(&fade_state);
-          // 15.1-03 H-02: writeUserChanLog removed from audio path.
+      if (chan_mirror.ds)
+      {
+        chan_mirror.ds->applyOverlap(&fade_state);
+        // 15.1-03 H-02: writeUserChanLog removed from audio path.
 
-          // Phase 14.2: capture t_interval when measured user's regular channel ds advances.
-          // State machine transition: INSTA_CAPTURED -> MEASURED.
-          // Verify same user by comparing RemoteUser* pointer.
-          if (insta_meas_state_.load(std::memory_order_relaxed) == kInstaCapured
-              && reinterpret_cast<uintptr_t>(user) == insta_meas_user_ptr_.load(std::memory_order_relaxed))
-          {
-              insta_t_interval_ms_.store(currentMillis(), std::memory_order_release);
-              insta_meas_state_.store(kInstaMeasured, std::memory_order_release);
-          }
+        // Phase 14.2: capture t_interval when the measured peer's regular
+        // channel ds advances. State machine transition: INSTA_CAPTURED →
+        // MEASURED. 15.1-07a HIGH-2: identity is the STABLE mirror SLOT
+        // (uintptr_t-cast), set in mixInChannel's IDLE→CAPTURED transition.
+        if (insta_meas_state_.load(std::memory_order_relaxed) == kInstaCapured
+            && static_cast<uintptr_t>(s) == insta_meas_user_ptr_.load(std::memory_order_relaxed))
+        {
+            insta_t_interval_ms_.store(currentMillis(), std::memory_order_release);
+            insta_meas_state_.store(kInstaMeasured, std::memory_order_release);
         }
       }
     }
   }
-  m_users_cs.Leave();
 }  //if (m_enc->isError()) printf("ERROR\n");
   //else printf("YAY\n");
 
@@ -3382,13 +3813,31 @@ void NJClient::GetRemoteUsersSnapshot(std::vector<RemoteUserInfo>& out)
 
 void NJClient::SetUserState(int idx, bool setvol, float vol, bool setpan, float pan, bool setmute, bool mute)
 {
-  WDL_MutexLock lock(&m_users_cs);
-  WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
-  if (idx<0 || idx>=m_remoteusers.GetSize()) return;
-  RemoteUser *p=m_remoteusers.Get(idx);
-  if (setvol) p->volume=vol;
-  if (setpan) p->pan=pan;
-  if (setmute) p->muted=mute;
+  int slot = -1;
+  bool pub_muted = false;
+  float pub_volume = 1.0f, pub_pan = 0.0f;
+  {
+    WDL_MutexLock lock(&m_users_cs);
+    WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
+    if (idx<0 || idx>=m_remoteusers.GetSize()) return;
+    RemoteUser *p=m_remoteusers.Get(idx);
+    if (setvol) p->volume=vol;
+    if (setpan) p->pan=pan;
+    if (setmute) p->muted=mute;
+    pub_volume = p->volume;
+    pub_pan    = p->pan;
+    pub_muted  = p->muted;
+    slot = findRemoteUserSlot(p);
+  }
+  // 15.1-07a CR-01: publish vol/pan/mute to mirror.
+  if (slot >= 0)
+  {
+    if (!m_remoteuser_update_q.try_push(jamwide::RemoteUserUpdate{
+          jamwide::PeerVolPanUpdate{slot, pub_muted, pub_volume, pub_pan}}))
+    {
+      m_remoteuser_update_overflows.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
 }
 
 int NJClient::EnumUserChannels(int useridx, int i)
@@ -3430,70 +3879,98 @@ const char *NJClient::GetUserChannelState(int useridx, int channelidx, bool *sub
 void NJClient::SetUserChannelState(int useridx, int channelidx,
                                    bool setsub, bool sub, bool setvol, float vol, bool setpan, float pan, bool setmute, bool mute, bool setsolo, bool solo, bool setoutch, int outchannel)
 {
-  WDL_MutexLock lock(&m_users_cs);
-  WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
-
-  if (useridx<0 || useridx>=m_remoteusers.GetSize()||channelidx<0||channelidx>=MAX_USER_CHANNELS) return;
-  RemoteUser *user=m_remoteusers.Get(useridx);
-  RemoteUser_Channel *p=user->channels + channelidx;
-  if (!(user->chanpresentmask & (1u<<channelidx))) return;
-
-  if (setsub && !!(user->submask&(1u<<channelidx)) != sub)
+  int slot = -1;
+  int pub_submask = 0, pub_chanpresentmask = 0, pub_mutedmask = 0, pub_solomask = 0;
+  bool publish_mask = false;
   {
-    // toggle subscription
-    if (!sub)
+    WDL_MutexLock lock(&m_users_cs);
+    WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
+
+    if (useridx<0 || useridx>=m_remoteusers.GetSize()||channelidx<0||channelidx>=MAX_USER_CHANNELS) return;
+    RemoteUser *user=m_remoteusers.Get(useridx);
+    RemoteUser_Channel *p=user->channels + channelidx;
+    if (!(user->chanpresentmask & (1u<<channelidx))) return;
+
+    if (setsub && !!(user->submask&(1u<<channelidx)) != sub)
     {
-      mpb_client_set_usermask su;
-      su.build_add_rec(user->name.Get(),(user->submask&=~(1u<<channelidx)));
-      m_netcon->Send(su.build());
-
-      DecodeState *tmp,*tmp2,*tmp3;
-      m_users_cs.Enter();
-//      OutputDebugString("flushds (state)\n");
-      tmp=p->ds; p->ds=0;
-      tmp2=p->next_ds[0]; p->next_ds[0]=0;
-      tmp3=p->next_ds[1]; p->next_ds[1]=0;
-      m_users_cs.Leave();
-
-      p->dump_samples=0;
-
-      delete tmp;
-      delete tmp2;
-      delete tmp3;
-    }
-    else
-    {
-      mpb_client_set_usermask su;
-      su.build_add_rec(user->name.Get(),(user->submask|=(1u<<channelidx)));
-      m_netcon->Send(su.build());
-    }
-
-  }
-  if (setvol) p->volume=vol;
-  if (setpan) p->pan=pan;
-  if (setoutch) p->out_chan_index=outchannel;
-  if (setmute)
-  {
-    if (mute)
-      user->mutedmask |= (1u<<channelidx);
-    else
-      user->mutedmask &= ~(1u<<channelidx);
-  }
-  if (setsolo)
-  {
-    if (solo) user->solomask |= (1u<<channelidx);
-    else user->solomask &= ~(1u<<channelidx);
-
-    if (user->solomask) m_issoloactive|=1;
-    else
-    {
-      int x;
-      for (x = 0; x < m_remoteusers.GetSize(); x ++)
+      // toggle subscription
+      if (!sub)
       {
-        if (m_remoteusers.Get(x)->solomask)
-          break;
+        mpb_client_set_usermask su;
+        su.build_add_rec(user->name.Get(),(user->submask&=~(1u<<channelidx)));
+        m_netcon->Send(su.build());
+
+        // 15.1-07a CR-01 + Codex HIGH-2: do NOT delete the canonical ds/next_ds
+        // on the run thread — the audio-thread mirror may still hold those
+        // pointers via past PeerNextDsUpdate handovers. The mirror's own
+        // pointer-shuffle (process_samples / on_new_interval / mixInChannel
+        // llmode advance) is the canonical owner now; the canonical
+        // RemoteUser_Channel.ds / next_ds[] fields are no longer the audio
+        // thread's source of truth. Null them on the canonical side and let
+        // the audio thread defer-delete its own copies during the next
+        // PeerChannelMaskUpdate-driven mute/unsubscribe cycle.
+        //
+        // Note: lines below were `delete tmp; delete tmp2; delete tmp3;` pre-
+        // 07a. Now the audio thread owns the pointers; the canonical side
+        // just clears its slot to avoid double-free if the canonical struct
+        // is destroyed later.
+        p->ds=0;
+        p->next_ds[0]=0;
+        p->next_ds[1]=0;
+        p->dump_samples=0;
       }
-      if (x == m_remoteusers.GetSize()) m_issoloactive&=~1;
+      else
+      {
+        mpb_client_set_usermask su;
+        su.build_add_rec(user->name.Get(),(user->submask|=(1u<<channelidx)));
+        m_netcon->Send(su.build());
+      }
+      publish_mask = true;
+    }
+    if (setvol) p->volume=vol;
+    if (setpan) p->pan=pan;
+    if (setoutch) p->out_chan_index=outchannel;
+    if (setmute)
+    {
+      if (mute)
+        user->mutedmask |= (1u<<channelidx);
+      else
+        user->mutedmask &= ~(1u<<channelidx);
+      publish_mask = true;
+    }
+    if (setsolo)
+    {
+      if (solo) user->solomask |= (1u<<channelidx);
+      else user->solomask &= ~(1u<<channelidx);
+
+      if (user->solomask) m_issoloactive|=1;
+      else
+      {
+        int x;
+        for (x = 0; x < m_remoteusers.GetSize(); x ++)
+        {
+          if (m_remoteusers.Get(x)->solomask)
+            break;
+        }
+        if (x == m_remoteusers.GetSize()) m_issoloactive&=~1;
+      }
+      publish_mask = true;
+    }
+    pub_submask         = user->submask;
+    pub_chanpresentmask = user->chanpresentmask;
+    pub_mutedmask       = user->mutedmask;
+    pub_solomask        = user->solomask;
+    slot = findRemoteUserSlot(user);
+  }
+  // 15.1-07a CR-01: publish channel-mask change to mirror so the audio thread
+  // sees mute/solo/subscribe toggles immediately on the next AudioProc drain.
+  if (publish_mask && slot >= 0)
+  {
+    if (!m_remoteuser_update_q.try_push(jamwide::RemoteUserUpdate{
+          jamwide::PeerChannelMaskUpdate{slot, pub_submask, pub_chanpresentmask,
+                                        pub_mutedmask, pub_solomask}}))
+    {
+      m_remoteuser_update_overflows.fetch_add(1, std::memory_order_relaxed);
     }
   }
 }
@@ -4143,6 +4620,12 @@ void RemoteDownload::startPlaying(int force)
   if (force)
     // wait until we have config_play_prebuffer of data to start playing, or if config_play_prebuffer is 0, we are forced to play (download finished)
   {
+    int slot_to_publish = -1;
+    int useidx_to_publish = 0;
+    int chidx_to_publish = -1;
+    ::DecodeState* ds_to_publish = nullptr;
+    unsigned int fourcc_to_publish = 0;
+    {
     WDL_MutexLock lock(&m_parent->m_users_cs);
     int x;
     RemoteUser *theuser;
@@ -4155,23 +4638,55 @@ void RemoteDownload::startPlaying(int force)
 
       if (!(theuser->channels[chidx].flags&4)) // only "play" if not a session channel
       {
-        DecodeState *tmp=m_parent->start_decode(guid,theuser->channels[chidx].flags,m_fourcc,m_decbuf);
+        ds_to_publish = m_parent->start_decode(guid,theuser->channels[chidx].flags,m_fourcc,m_decbuf);
 
 //        OutputDebugString(tmp?"started new decde\n":"tried to start new decode\n");
 
         // Record the codec FOURCC on the channel for UI display
         theuser->channels[chidx].codec_fourcc = m_fourcc;
+        fourcc_to_publish = m_fourcc;
 
-        DecodeState *tmp2;
-        int useidx=!!theuser->channels[chidx].next_ds[0];
-        tmp2=theuser->channels[chidx].next_ds[useidx];
-        theuser->channels[chidx].next_ds[useidx]=tmp;
-        delete tmp2;
+        // 15.1-07a CR-01: ownership of the freshly-decoded ds transfers to
+        // the audio thread via PeerNextDsUpdate. Use the run-thread useidx
+        // shadow (alternating bit) to pick a slot; the audio-thread apply
+        // visitor defer-deletes the previous occupant of that slot.
+        slot_to_publish = m_parent->findRemoteUserSlot(theuser);
+        useidx_to_publish = theuser->channels[chidx].run_thread_next_ds_idx;
+        theuser->channels[chidx].run_thread_next_ds_idx ^= 1;
+        chidx_to_publish = chidx;
       }
     }
   //  else
 //      OutputDebugString("download had no dest!\n");
     chidx=-1;
+    }
+    // 15.1-07a CR-01: publish PeerNextDsUpdate (and PeerCodecSwapUpdate for
+    // the FOURCC) AFTER releasing the lock.
+    if (slot_to_publish >= 0 && ds_to_publish && chidx_to_publish >= 0)
+    {
+      jamwide::PeerNextDsUpdate upd_ds{};
+      upd_ds.slot     = slot_to_publish;
+      upd_ds.channel  = chidx_to_publish;
+      upd_ds.slot_idx = useidx_to_publish;
+      upd_ds.ds       = reinterpret_cast<jamwide::DecodeState*>(ds_to_publish);
+      if (!m_parent->m_remoteuser_update_q.try_push(jamwide::RemoteUserUpdate{upd_ds}))
+      {
+        m_parent->m_remoteuser_update_overflows.fetch_add(1, std::memory_order_relaxed);
+        m_parent->writeLog("WARNING: m_remoteuser_update_q full on PeerNextDsUpdate (download, slot=%d ch=%d) — leaking ds\n", slot_to_publish, chidx_to_publish);
+      }
+      jamwide::PeerCodecSwapUpdate upd_codec{};
+      upd_codec.slot       = slot_to_publish;
+      upd_codec.channel    = chidx_to_publish;
+      upd_codec.new_fourcc = fourcc_to_publish;
+      if (!m_parent->m_remoteuser_update_q.try_push(jamwide::RemoteUserUpdate{upd_codec}))
+      {
+        m_parent->m_remoteuser_update_overflows.fetch_add(1, std::memory_order_relaxed);
+      }
+    }
+    else if (ds_to_publish)
+    {
+      delete ds_to_publish;
+    }
   }
 }
 

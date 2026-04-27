@@ -2312,6 +2312,7 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
         }
         lcm.peak_vol_l.store(maxf,  std::memory_order_relaxed);
         lcm.peak_vol_r.store(maxf2, std::memory_order_relaxed);
+        lcm.vu_write_count.fetch_add(1, std::memory_order_relaxed);  // [BUG-A debug 2026-04-27]
       }
       else
       {
@@ -2328,6 +2329,7 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
         }
         lcm.peak_vol_l.store(maxf, std::memory_order_relaxed);
         lcm.peak_vol_r.store(maxf, std::memory_order_relaxed);
+        lcm.vu_write_count.fetch_add(1, std::memory_order_relaxed);  // [BUG-A debug 2026-04-27]
       }
     }
   }

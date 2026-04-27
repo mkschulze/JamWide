@@ -173,6 +173,12 @@ struct LocalChannelMirror {
     std::atomic<float> peak_vol_l{0.0f};
     std::atomic<float> peak_vol_r{0.0f};
 
+    // [BUG-A debug 2026-04-27] Counter incremented every time the audio thread
+    // writes to peak_vol_l/r in process_samples. Run thread reads this once
+    // per second to confirm the audio-thread loop is reaching this channel.
+    // Will be removed once the dead-VU bug is diagnosed.
+    std::atomic<uint64_t> vu_write_count{0};
+
     // 15.1-07b: audio-thread-owned broadcast state. Replaces
     // canonical Local_Channel.bcast_active and .m_curwritefile_curbuflen
     // for the audio-thread-only path; the canonical fields remain in
@@ -438,6 +444,20 @@ public:
   // Relaxed semantics — observability counter, no synchronization-with-other-state.
   uint64_t GetBlockQueueDropCount() const noexcept {
       return m_block_queue_drops.load(std::memory_order_relaxed);
+  }
+
+  // [BUG-A debug 2026-04-27] Read the per-channel VU write counter (incremented
+  // every audio block where the loop body in process_samples reaches the peak
+  // store). Run-thread side reads this every ~1 second to determine whether
+  // the audio thread is reaching the per-channel loop body. Returns 0 for
+  // out-of-range channels. Will be removed once the dead-VU bug is diagnosed.
+  uint64_t GetVuWriteCount(int ch) const noexcept {
+      if (ch < 0 || ch >= MAX_LOCAL_CHANNELS) return 0;
+      return m_locchan_mirror[ch].vu_write_count.load(std::memory_order_relaxed);
+  }
+  bool IsLocalChannelMirrorActive(int ch) const noexcept {
+      if (ch < 0 || ch >= MAX_LOCAL_CHANNELS) return false;
+      return m_locchan_mirror[ch].active;
   }
 
   // 15.1-07b CR-09: drain per-channel mirror block_q rings on the run thread,

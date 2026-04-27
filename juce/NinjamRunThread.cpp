@@ -696,6 +696,37 @@ void NinjamRunThread::run()
             client->drainWaveBlocks();
         }
 
+        // [BUG-A debug 2026-04-27] Once-per-second dump of local-channel mirror
+        // state to stderr (visible in DAW console / Reaper's Log Window).
+        // Helps diagnose why local Ch1-4 VU is dead while remote/master VU
+        // works. Will be removed once the dead-VU bug is fixed.
+        {
+            const auto now_ms = juce::Time::currentTimeMillis();
+            if (now_ms - lastVuDebugDumpMs_ >= 1000)
+            {
+                lastVuDebugDumpMs_ = now_ms;
+                std::fprintf(stderr,
+                    "[JamWide-VU-debug %lld] status=%d max_localch=%d  "
+                    "ch0{a=%d,vu=%llu}  ch1{a=%d,vu=%llu}  "
+                    "ch2{a=%d,vu=%llu}  ch3{a=%d,vu=%llu}  "
+                    "ch4{a=%d,vu=%llu}\n",
+                    (long long)now_ms,
+                    (int)client->cached_status.load(std::memory_order_relaxed),
+                    client->GetMaxLocalChannels(),
+                    (int)client->IsLocalChannelMirrorActive(0),
+                    (unsigned long long)client->GetVuWriteCount(0),
+                    (int)client->IsLocalChannelMirrorActive(1),
+                    (unsigned long long)client->GetVuWriteCount(1),
+                    (int)client->IsLocalChannelMirrorActive(2),
+                    (unsigned long long)client->GetVuWriteCount(2),
+                    (int)client->IsLocalChannelMirrorActive(3),
+                    (unsigned long long)client->GetVuWriteCount(3),
+                    (int)client->IsLocalChannelMirrorActive(4),
+                    (unsigned long long)client->GetVuWriteCount(4));
+                std::fflush(stderr);
+            }
+        }
+
         // Adaptive sleep: connected = 20ms, disconnected = 50ms
         wait(lastStatus_ == NJClient::NJC_STATUS_OK ? 20 : 50);
     }

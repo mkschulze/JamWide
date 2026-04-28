@@ -4135,6 +4135,13 @@ void NJClient::GetRemoteUsersSnapshot(std::vector<RemoteUserInfo>& out)
     info.volume = user->volume;
     info.pan = user->pan;
 
+    // 15.1-07a Bug A clone fix (post-UAT build 284): the audio thread now
+    // writes VU peaks to m_remoteuser_mirror[slot].chans[ch].peak_vol_l/r,
+    // not to the legacy RemoteUser_Channel.decode_peak_vol. Look up the
+    // user's mirror slot once per user (hoisted out of the per-channel
+    // loop). Held m_users_cs makes the slot table read safe.
+    const int user_slot = findRemoteUserSlot(user);
+
     const unsigned int present_mask =
         static_cast<unsigned int>(user->chanpresentmask);
     if (present_mask)
@@ -4161,8 +4168,14 @@ void NJClient::GetRemoteUsersSnapshot(std::vector<RemoteUserInfo>& out)
         ch_info.pan = chan->pan;
         ch_info.mute = (user->mutedmask & (1u << ch)) != 0;
         ch_info.solo = (user->solomask & (1u << ch)) != 0;
-        ch_info.vu_left = static_cast<float>(chan->decode_peak_vol[0]);
-        ch_info.vu_right = static_cast<float>(chan->decode_peak_vol[1]);
+        if (user_slot >= 0) {
+          const auto& chan_mirror = m_remoteuser_mirror[user_slot].chans[ch];
+          ch_info.vu_left  = chan_mirror.peak_vol_l.load(std::memory_order_relaxed);
+          ch_info.vu_right = chan_mirror.peak_vol_r.load(std::memory_order_relaxed);
+        } else {
+          ch_info.vu_left = 0.0f;
+          ch_info.vu_right = 0.0f;
+        }
         ch_info.out_chan_index = chan->out_chan_index;
         ch_info.codec_fourcc = chan->codec_fourcc;
         ch_info.flags = chan->flags;
@@ -4381,14 +4394,21 @@ float NJClient::GetUserChannelPeak(int useridx, int channelidx, int whichch)
   WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
 
   if (useridx<0 || useridx>=m_remoteusers.GetSize()||channelidx<0||channelidx>=MAX_USER_CHANNELS) return 0.0f;
-  RemoteUser_Channel *p=m_remoteusers.Get(useridx)->channels + channelidx;
   RemoteUser *user=m_remoteusers.Get(useridx);
   if (!(user->chanpresentmask & (1u<<channelidx))) return 0.0f;
 
-  if (whichch==0) return (float)p->decode_peak_vol[0];
-  if (whichch==1) return (float)p->decode_peak_vol[1];
-  return (float) (p->decode_peak_vol[0]+p->decode_peak_vol[1])*0.5f;
-
+  // 15.1-07a Bug A clone fix (post-UAT build 284): read VU peak from the
+  // audio-thread mirror, not from the legacy canonical decode_peak_vol
+  // field which the audio thread no longer writes. Held m_users_cs makes
+  // the slot table read safe.
+  const int slot = findRemoteUserSlot(user);
+  if (slot < 0) return 0.0f;
+  const auto& chan_mirror = m_remoteuser_mirror[slot].chans[channelidx];
+  const float l = chan_mirror.peak_vol_l.load(std::memory_order_relaxed);
+  const float r = chan_mirror.peak_vol_r.load(std::memory_order_relaxed);
+  if (whichch==0) return l;
+  if (whichch==1) return r;
+  return (l + r) * 0.5f;
 }
 
 unsigned int NJClient::GetUserChannelCodec(int useridx, int channelidx)

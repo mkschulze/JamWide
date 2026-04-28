@@ -26,7 +26,11 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <algorithm>  // 15.1-07c CR-12: std::min in DecodeMediaBuffer::Read/Write
+#include <array>      // 15.1-07c CR-12: std::array consumer-side linear buffer
+#include <atomic>     // 15.1-07c CR-12: std::atomic<int> m_refcnt
 #include <chrono>
+#include <cstring>    // 15.1-07c CR-12: std::memcpy in DecodeMediaBuffer Read/Write
 #include <thread>  // 15.1-06 HIGH-3: std::this_thread::yield in DeleteLocalChannel gate
 #include "njclient.h"
 #include "mpb.h"
@@ -204,48 +208,153 @@ static inline void pushWaveBlockRecord(
 
 #define MAKE_NJ_FOURCC(A,B,C,D) ((A) | ((B)<<8) | ((C)<<16) | ((D)<<24))
 
+// ---------------------------------------------------------------------------
+// 15.1-07c CR-12: DecodeMediaBuffer — network-stream byte buffer between the
+// run/network thread (Write) and the audio thread (Read, via runDecode).
+//
+// BEFORE: WDL_Mutex acquired on every Read() — audio-thread lock acquisition
+// (AUDIT CR-12). Refcnt protected by the same mutex.
+//
+// AFTER:  Internals replaced with SpscRing<DecodeChunk, 32>. The audio thread
+// reads lock-free; partial-chunk reads are absorbed by an audio-thread-owned
+// linear consumer buffer (m_consumer_buf). The Write() side splits the
+// caller's data into CHUNK_BYTES-sized chunks. Refcnt is std::atomic<int>
+// with fetch_sub(acq_rel) — UAF-safe across audio/run thread Release races
+// (T-15.1-07c-01).
+//
+// External API per CONTEXT D-04:
+//   - Write(const void*, int)        — run thread (network/decode stream-in)
+//   - Read(void*, int) -> int        — audio thread (codec srcbuf fill)
+//   - Size() -> int                  — run thread (RemoteDownload::startPlaying
+//                                       pre-buffer threshold check)
+//   - AddRef() / Release()           — both threads (atomic refcount)
+//
+// The producer-side overflow policy on a full ring is "drop the chunk and
+// return short-write count to the caller" (T-15.1-07c-03). NINJAM frame loss
+// is handled by the codec; bytes-written return signals partial success to
+// the caller, which propagates via RemoteDownload::Write -> startPlaying.
+// ---------------------------------------------------------------------------
 class DecodeMediaBuffer
 {
 public:
-  DecodeMediaBuffer()
-  {
-    refcnt=1;
-    rdpos=0;
-  }
-  ~DecodeMediaBuffer()
-  {
-  }
-  void AddRef() { refcnt++; }
-  void Release() { if (!--refcnt) delete this; }
+  DecodeMediaBuffer() = default;
+  ~DecodeMediaBuffer() = default;
 
-  void Write(const void *buf, int len)
+  void AddRef() { m_refcnt.fetch_add(1, std::memory_order_relaxed); }
+  void Release()
   {
-    mutex.Enter();
-    m_buf.Add(buf,len);
-    mutex.Leave();
+    // acq_rel: the last decrement must happen-after all prior writes from
+    // either thread, so the destructor sees a consistent state.
+    if (m_refcnt.fetch_sub(1, std::memory_order_acq_rel) == 1)
+      delete this;
   }
 
-  int Avail() { return m_buf.Available() - rdpos; }
-  int Size() { return m_buf.Available(); }
+  // Run/network thread. Splits the caller's data into chunk-sized records and
+  // pushes them into the SPSC. Returns the number of bytes successfully
+  // pushed; on a full ring, returns < len (drops happen at chunk granularity).
+  int Write(const void *buf, int len)
+  {
+    if (len <= 0 || !buf) return 0;
+    const uint8_t *in = static_cast<const uint8_t *>(buf);
+    int remaining = len;
+    while (remaining > 0)
+    {
+      jamwide::DecodeChunk chunk{};
+      chunk.len = std::min(remaining, jamwide::CHUNK_BYTES);
+      std::memcpy(chunk.data, in, static_cast<size_t>(chunk.len));
+      if (!m_chunks.try_push(chunk))
+      {
+        // Ring full — producer drops the rest. NINJAM frame loss handled by
+        // the codec; the run-thread caller sees a short return.
+        m_write_drops.fetch_add(1, std::memory_order_relaxed);
+        return len - remaining;
+      }
+      in += chunk.len;
+      remaining -= chunk.len;
+      m_total_written.fetch_add(chunk.len, std::memory_order_relaxed);
+    }
+    return len;
+  }
+
+  // Audio thread. Drains chunks from the SPSC into the linear consumer buffer
+  // and serves up to len bytes from it. Returns the number of bytes filled
+  // (may be 0 if the SPSC is empty and the consumer buffer is dry). Never
+  // blocks; never allocates; never enters a kernel mutex (CR-12 closed).
   int Read(void *buf, int len)
   {
-    mutex.Enter();
-    int l=Avail();
-    if (l >len)l=len;
-    if (l>0)
+    if (len <= 0 || !buf) return 0;
+    int written = 0;
+    uint8_t *out = static_cast<uint8_t *>(buf);
+    while (written < len)
     {
-      memcpy(buf,(char *)m_buf.Get()+rdpos,l);
-      rdpos+=l;
+      // 1. Drain consumer-side buffer first.
+      const int avail = m_consumer_buf_len - m_consumer_buf_pos;
+      if (avail > 0)
+      {
+        const int take = std::min(avail, len - written);
+        std::memcpy(out + written,
+                    m_consumer_buf.data() + m_consumer_buf_pos,
+                    static_cast<size_t>(take));
+        m_consumer_buf_pos += take;
+        written += take;
+        continue;
+      }
+      // 2. Pull next chunk from SPSC. Empty -> return what we have so far
+      //    (short read; caller signals codec EOF/needs-more).
+      auto chunk = m_chunks.try_pop();
+      if (!chunk) break;
+      // Defensive bounds-check: producer always writes <= CHUNK_BYTES, but
+      // assert anyway so a future payload-size change is caught early.
+      const int clen = chunk->len;
+      if (clen <= 0 || clen > jamwide::CHUNK_BYTES) continue; // skip malformed
+      std::memcpy(m_consumer_buf.data(), chunk->data,
+                  static_cast<size_t>(clen));
+      m_consumer_buf_len = clen;
+      m_consumer_buf_pos = 0;
     }
-    mutex.Leave();
-    return l;
+    return written;
+  }
+
+  // Run-thread helper. Returns the cumulative bytes written by Write(). Used
+  // by RemoteDownload::startPlaying to gate pre-buffer threshold (e.g.
+  // "wait until we have config_play_prebuffer of data"). Atomic for safety
+  // even though only the run thread reads it; the audio thread does NOT call
+  // this. Semantics preserved from legacy m_buf.Available() (which the
+  // original implementation also returned without compaction).
+  int Size() const
+  {
+    return static_cast<int>(m_total_written.load(std::memory_order_relaxed));
   }
 
 private:
-  WDL_Mutex mutex;
-  int rdpos;
-  int refcnt;
-  WDL_Queue m_buf;
+  // SPSC byte-stream — replaces WDL_Mutex + WDL_Queue. CHUNK_BYTES=4096 and
+  // N=32 chosen per RESEARCH § "Use 5 — DecodeMediaBuffer byte-queue
+  // replacement" (32 * 4 KB = 128 KB outstanding budget, comfortably above
+  // typical NINJAM block sizes).
+  jamwide::SpscRing<jamwide::DecodeChunk, 32> m_chunks;
+
+  // Audio-thread-owned linear buffer — absorbs partial-chunk reads when the
+  // codec asks for fewer bytes than CHUNK_BYTES at a time. Sized to 2x
+  // CHUNK_BYTES so a single chunk fits with margin.
+  std::array<uint8_t, jamwide::CHUNK_BYTES * 2> m_consumer_buf{};
+  int m_consumer_buf_len = 0;
+  int m_consumer_buf_pos = 0;
+
+  // Atomic refcount. Replaces the legacy WDL_Mutex-protected int. Race-safe
+  // for concurrent Release() across audio/run threads (T-15.1-07c-01 mitigation).
+  std::atomic<int> m_refcnt{1};
+
+  // Run-thread-only counter — Write() advances it; Size() reads it.
+  // Atomic for cross-thread visibility safety (in case a future caller reads
+  // Size() from outside the run thread). The audio-thread Read() does NOT
+  // touch this counter.
+  std::atomic<int64_t> m_total_written{0};
+
+  // Run-thread-only drop counter for SPSC overflow (T-15.1-07c-03). Mirrors
+  // the m_block_queue_drops pattern from 15.1-07b. Currently unread; future
+  // 15.1-10 phase-verification may expose it. Written only from Write() on
+  // the run thread.
+  std::atomic<uint64_t> m_write_drops{0};
 };
 
 struct overlapFadeState {

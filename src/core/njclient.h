@@ -774,6 +774,54 @@ protected:
   // verification). Relaxed semantics — observability only.
   std::atomic<uint64_t> m_block_queue_drops{0};
 
+  // 15.1-09 CR-08 + H-04 + Codex HIGH-1: sessionmode rearm requests from audio
+  // thread → run thread. The current 15.1-07a refactor already collapses the
+  // audio-thread sessionmode rearm to an early-return no-op (mixInChannel
+  // sessionmode branch defer-deletes any in-flight ds and returns), so under
+  // today's UI flow this SPSC is unused. It is retained for the day a future
+  // plan re-enables sessionmode — the audio thread MUST emit DecodeArmRequest
+  // here rather than calling start_decode directly. DecodeArmRequest payload
+  // was finalized in 15.1-04 (Codex M-9); this plan does NOT modify
+  // spsc_payloads.h.
+  jamwide::SpscRing<jamwide::DecodeArmRequest, jamwide::ARM_REQUEST_CAPACITY>
+      m_arm_request_q;
+
+  // 15.1-09 + Codex M-8: arm-request drop counter. 15.1-10 asserts == 0
+  // post-UAT. Same Codex M-8 pattern as m_deferred_delete_overflows /
+  // m_locchan_update_overflows / m_remoteuser_update_overflows /
+  // m_block_queue_drops. Relaxed — observability only.
+  std::atomic<uint64_t> m_arm_request_drops{0};
+
+  // 15.1-09 + Codex HIGH-1: per-tick refill SPSC overflow counter. The
+  // refill loop drops at most CHUNK_BYTES per overflow event (it discards
+  // the bytes already read into the local stack buffer and continues at
+  // the file's next byte on the next tick — see refillSessionmodeBuffers
+  // in njclient.cpp). 15.1-10 asserts == 0 post-UAT.
+  std::atomic<uint64_t> m_sessionmode_refill_drops{0};
+
+  // 15.1-09 + Codex HIGH-1: run-thread-private bookkeeping of active
+  // sessionmode-style file readers. For every audio-thread-visible
+  // DecodeState backed by an on-disk file (the H-04 path before this plan,
+  // structurally unreachable after), the run thread keeps the FILE* HERE
+  // — NOT in the audio-thread DecodeState. On every run-thread tick,
+  // refillSessionmodeBuffers reads bytes from each active FILE* and pushes
+  // them into the corresponding DecodeMediaBuffer (lock-free SPSC push from
+  // 15.1-07c). The audio thread's runDecode reaches `decode_buf->Read` for
+  // these states, NEVER `fread(decode_fp)`.
+  //
+  // Run-thread-only access; protected by NJClient's existing run-thread
+  // serialization (NinjamRunThread holds processor.getClientLock() during
+  // the run-loop body; m_users_cs would be redundant but is still acquired
+  // inside the DOWNLOAD_INTERVAL_BEGIN handler which adds entries here).
+  // The forward-declared DecodeMediaBuffer is sufficient — this struct
+  // only stores a pointer, never dereferences.
+  struct SessionmodeFileReader {
+      FILE*               file = nullptr;     // owned here on the run thread
+      DecodeMediaBuffer*  buffer = nullptr;   // refcounted; same instance the audio thread reads
+      bool                eof = false;        // set when fread returns 0
+  };
+  std::vector<SessionmodeFileReader> m_sessionmode_file_readers;
+
 public:
   // 15.1-06 CR-02: drain method called at the top of AudioProc — applies
   // pending LocalChannelUpdate variants to m_locchan_mirror. After draining,
@@ -819,6 +867,60 @@ public:
   uint64_t GetRemoteUserUpdateOverflowCount() const noexcept {
       return m_remoteuser_update_overflows.load(std::memory_order_relaxed);
   }
+
+  // 15.1-09 + Codex M-8: arm-request drop counter accessor for 15.1-10
+  // phase-close verification. MUST be 0 after UAT. Currently always 0
+  // because sessionmode rearm is dormant in the audio thread (see comment
+  // on m_arm_request_q in the protected section) — but the counter and
+  // accessor are wired so the gate is in place if sessionmode is re-enabled.
+  uint64_t GetArmRequestDropCount() const noexcept {
+      return m_arm_request_drops.load(std::memory_order_relaxed);
+  }
+
+  // 15.1-09 + Codex HIGH-1: refill SPSC drop counter accessor. Bumped by
+  // refillSessionmodeBuffers when the per-file DecodeMediaBuffer's SPSC is
+  // full (audio thread has not drained recently). 15.1-10 asserts == 0
+  // post-UAT. A non-zero value indicates the audio thread's runDecode is
+  // not consuming fast enough OR the run thread's refill cadence is too
+  // bursty — either is an architectural defect.
+  uint64_t GetSessionmodeRefillDropCount() const noexcept {
+      return m_sessionmode_refill_drops.load(std::memory_order_relaxed);
+  }
+
+  // 15.1-09 CR-08 + Codex HIGH-1: drain method called from the run thread
+  // (NinjamRunThread::run) inside the locked block. Drains pending
+  // DecodeArmRequest entries from m_arm_request_q; for each, calls
+  // start_decode off the audio thread, inverts the FILE* into a
+  // SessionmodeFileReader entry (so the audio-thread DecodeState has
+  // decode_fp == nullptr), and publishes the result via PeerNextDsUpdate.
+  // Currently a no-op under today's UI flow (no audio-thread emitter), but
+  // wired so a future sessionmode re-enable doesn't have to re-architect.
+  void drainArmRequests();
+
+  // 15.1-09 + Codex HIGH-1: per-tick refill loop. Reads bytes from every
+  // active SessionmodeFileReader's FILE* and pushes them into the
+  // corresponding DecodeMediaBuffer (lock-free SPSC push from 15.1-07c).
+  // The audio thread's runDecode → decode_buf->Read path is fed by THIS
+  // method; without it, the buffer would drain and playback would silence
+  // on file-backed sessions. Removes entries whose buffer's refcnt drops
+  // to 1 (the audio side has Released its share — we can fclose and let go).
+  void refillSessionmodeBuffers();
+
+  // 15.1-09 + Codex HIGH-1: helper invoked from the run-thread side of
+  // start_decode's call sites (DOWNLOAD_INTERVAL_BEGIN at njclient.cpp:1948
+  // and RemoteDownload::startPlaying) for the file-backed code path. It
+  // takes the FILE* off the just-constructed DecodeState, allocates a
+  // fresh DecodeMediaBuffer, primes the buffer with one initial chunk, and
+  // registers a SessionmodeFileReader entry so refillSessionmodeBuffers
+  // will continue feeding it on subsequent ticks.
+  //
+  // After this returns, the DecodeState's decode_fp is nullptr and its
+  // decode_buf is non-null — making the H-04 fread path structurally
+  // unreachable from the audio thread. Returns false on allocation
+  // failure; the caller should publish the DS unmodified (the audio
+  // thread will see decode_fp set but the failure is exceedingly rare —
+  // operator new for 4 KB does not fail under realistic conditions).
+  bool inversionAttachSessionmodeReader(DecodeState* ds);
 };
 
 

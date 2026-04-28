@@ -106,6 +106,20 @@ class VorbisDecoder : public VorbisDecoderInterface
 
       ogg_sync_init(&oy); /* Now we can read pages */
       m_err=0;
+
+      // 15.1-08 CR-11 mitigation: pre-grow the float-sample queue to peak
+      // NINJAM frame size. Vorbis blocksize is up to 8192 samples per frame;
+      // MAX_CHANNELS=2 covers stereo. This is ~64KB conservative. Prealloc
+      // calls Resize(sz, false) under the hood (heapbuf.h:56) — single-thread
+      // contract; safe here because VorbisDecoder is constructed on the run
+      // thread per 15.1-09 (the Codex HIGH-1 invariant: every audio-thread-
+      // visible DecodeState has decode_fp == nullptr; decoder construction
+      // is on the run thread). After this call, the audio-thread DecodeWrote
+      // path's m_buf.Add does NOT realloc in steady state. Algorithmic
+      // libogg residual (first 3-5 frames per stream) remains as documented
+      // in 15.1-RESEARCH.md § "Codec Internal Allocation Residual" — bounded
+      // and deferred to 15.1-10's Instruments UAT (per CR-11 partial closure).
+      m_buf.Prealloc(8192 * 2);
     }
     ~VorbisDecoder()
     {

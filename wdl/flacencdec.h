@@ -242,6 +242,22 @@ private:
         m_decoder = FLAC__stream_decoder_new();
         if (!m_decoder) { m_err = 1; return; }
 
+        // 15.1-08 CR-11 mitigation: pre-grow input compressed-byte and output
+        // sample queues. m_inbuf is byte-typed (WDL_Queue) — 16384 bytes
+        // covers a NINJAM compressed frame plus headroom. m_outbuf is
+        // float-typed (WDL_TypedQueue<float>) — Prealloc takes element count;
+        // 8192 * 2 = 16384 floats = 64KB covers stereo at peak frame size.
+        // Both Prealloc calls delegate to WDL_HeapBuf::Prealloc (single-thread
+        // contract; safe at construction). Since FlacDecoder is constructed
+        // on the run thread per 15.1-09 (Codex HIGH-1 invariant), and Reset()
+        // also runs on the run thread, the audio-thread paths
+        // (DecodeGetSrcBuffer / write_cb's m_outbuf.Add) do NOT realloc in
+        // steady state. Algorithmic libFLAC residual (first 3-5 frames per
+        // stream) is bounded; deferred to 15.1-10 Instruments UAT for full
+        // CR-11 closure measurement.
+        m_inbuf.Prealloc(16384);
+        m_outbuf.Prealloc(8192 * 2);
+
         FLAC__StreamDecoderInitStatus status = FLAC__stream_decoder_init_stream(
             m_decoder,
             read_cb, /*seek*/nullptr, /*tell*/nullptr,

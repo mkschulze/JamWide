@@ -34,7 +34,7 @@ Load JamWide, connect to a server, and start jamming with musicians around the g
 |-------------------|--------------|
 | Separate NINJAM app | Plugin in your DAW or standalone app |
 | Stereo mix only | 17 stereo output buses — route each musician to a separate track |
-| Vorbis compression only | FLAC lossless audio alongside Vorbis |
+| Vorbis compression only | OGG/Vorbis (FLAC lossless support in development) |
 | Manual BPM management | DAW transport sync with live BPM/BPI changes |
 | Limited processing | Full plugin chain access on every participant |
 
@@ -46,7 +46,7 @@ Load JamWide, connect to a server, and start jamming with musicians around the g
 |---|---|
 | **DAW Integration** | VST3, AU, CLAP, and Standalone. Works in Ableton, Logic, REAPER, Bitwig, Cubase, and more. |
 | **Multichannel Routing** | Route each remote musician to a separate stereo track in your DAW for independent mixing and processing. |
-| **FLAC Lossless Audio** | Send and receive uncompressed audio quality. Switch between FLAC and Vorbis per session. |
+| **FLAC Lossless Audio (in development)** | Lossless FLAC encode/decode is being developed. This beta uses OGG/Vorbis. |
 | **DAW Transport Sync** | Plugin only broadcasts when the DAW is playing. Live BPM/BPI changes without reconnecting. |
 | **Full Mixer** | Per-channel volume, pan, mute, solo with real-time VU meters. State persists across DAW save/load. |
 | **OSC Remote Control** | Bidirectional OSC server for TouchOSC and other control surfaces. Full parameter mapping with echo suppression. |

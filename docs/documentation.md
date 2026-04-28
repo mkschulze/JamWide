@@ -62,11 +62,11 @@ To use in your DAW: enable additional output buses in the plugin I/O settings, t
 
 ### Codec Selection
 
-JamWide supports two audio codecs:
-- **FLAC** (default) — Lossless audio quality, higher bandwidth
-- **Vorbis** — Compressed audio, lower bandwidth
+JamWide ships with OGG/Vorbis as the working codec for sessions:
+- **OGG/Vorbis** — Compressed audio (the working codec in this beta)
+- **FLAC** — Lossless audio, **in development** — encode/decode does not yet round-trip cleanly. The selector in the connection bar will accept FLAC, but it is not recommended for sessions until the round-trip is fixed.
 
-Switch codecs using the selector in the connection bar. The switch applies cleanly at the next interval boundary. FLAC and Vorbis users can coexist in the same session.
+When FLAC is ready, codec switches will apply cleanly at the next interval boundary, and FLAC and Vorbis users will coexist in the same session.
 
 ### DAW Transport Sync
 

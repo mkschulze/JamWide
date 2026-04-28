@@ -11,11 +11,10 @@ JamWide packs the full NINJAM experience into a plugin you can use in any DAW, o
 
 ## Audio
 
-### FLAC Lossless Codec
-- Send and receive audio in FLAC lossless quality
-- Switch between FLAC and Vorbis per session via UI toggle
-- Codec switch applies cleanly at the next interval boundary
-- Mixed-codec sessions work naturally (FLAC and Vorbis users coexist)
+### FLAC Lossless Codec (in development)
+- FLAC encode/decode is partially implemented but does not yet round-trip cleanly
+- This beta uses OGG/Vorbis exclusively for sessions
+- Once FLAC round-trips: switch between FLAC and Vorbis per session via UI toggle, with switches applying at the next interval boundary, and mixed-codec sessions working naturally
 
 ### Multichannel Output Routing
 - 17 stereo output buses: main mix + 15 remote + metronome
@@ -103,7 +102,7 @@ See the [OSC Reference](/osc) for the complete address list.
 ### Connection Bar
 - Server address, username, and password fields
 - Connect/disconnect with status indicator
-- Codec selector (FLAC/Vorbis)
+- Codec selector (Vorbis; FLAC option present but in development)
 - Route button with mode popup
 - Sync button with 3-state feedback (Idle/Waiting/Active)
 

@@ -22,7 +22,7 @@ NINJAM (Novel Intervallic Network Jamming Architecture for Music) is an open-sou
 JamWide offers:
 
 - **Multichannel output** — Route each remote musician to a separate stereo track in your DAW (17 stereo buses)
-- **FLAC lossless audio** — Send and receive uncompressed audio quality
+- **FLAC lossless audio** — in development; this beta uses OGG/Vorbis
 - **DAW transport sync** — Plugin only broadcasts when the DAW is playing
 - **Cross-platform** — macOS, Windows, and Linux with VST3, AU, CLAP, and Standalone
 - **Standalone mode** — Use without a DAW
@@ -92,10 +92,10 @@ Yes! As a plugin, JamWide uses whatever audio setup your DAW is configured with.
 
 ### What audio codecs are supported?
 
-- **FLAC** (default) — Lossless audio quality, higher bandwidth
-- **Vorbis** — Compressed audio, lower bandwidth
+- **OGG/Vorbis** — Compressed audio (the working codec in this beta)
+- **FLAC** — Lossless audio, **in development** — encode/decode does not yet round-trip cleanly. The codec selector in the UI will accept FLAC but it is not yet recommended for sessions.
 
-You can switch codecs using the selector in the connection bar. FLAC and Vorbis users can coexist in the same session.
+FLAC support is being actively developed. Until it round-trips cleanly, please use Vorbis for sessions.
 
 ### What sample rates are supported?
 

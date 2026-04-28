@@ -68,7 +68,7 @@ These addresses are send-only. JamWide broadcasts them when values change. Incom
 | `/JamWide/session/beat` | int | Current beat position within the interval (0-based) |
 | `/JamWide/session/status` | int | Connection status (NJClient status code) |
 | `/JamWide/session/users` | int | Number of connected users |
-| `/JamWide/session/codec` | string | Active codec name ("FLAC" or "Vorbis") |
+| `/JamWide/session/codec` | string | Active codec name. The parameter accepts `"FLAC"` and `"Vorbis"`, but FLAC encode/decode is in development and does not yet round-trip cleanly — Vorbis is the working codec in this beta. |
 | `/JamWide/session/samplerate` | float | Current sample rate in Hz |
 
 ---

@@ -21,7 +21,7 @@ JamWide brings the full NINJAM experience into your DAW as a plugin, or runs as 
 
 - **Use NINJAM directly in your DAW** — Connect to jam sessions without leaving your production environment
 - **Multichannel output routing** — Route each remote participant to a separate stereo track for independent mixing
-- **FLAC lossless audio** — Send and receive uncompressed audio quality alongside Vorbis
+- **FLAC lossless audio (in development)** — work in progress; this beta uses OGG/Vorbis
 - **DAW transport sync** — Plugin only broadcasts when the DAW is playing
 - **Standalone mode** — Use JamWide without a DAW, with built-in audio device selection
 - **OSC remote control** — Bidirectional OSC server for control surfaces like TouchOSC
@@ -29,7 +29,7 @@ JamWide brings the full NINJAM experience into your DAW as a plugin, or runs as 
 ## Features
 
 ### Audio
-- FLAC lossless and OGG/Vorbis encoding with per-session codec selection
+- OGG/Vorbis encoding (FLAC lossless support in development)
 - 17 stereo output buses (main mix + 15 remote + metronome)
 - Auto-assign routing modes: by user or by channel
 - 4 stereo local input channels with per-channel controls

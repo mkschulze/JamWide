@@ -9,7 +9,7 @@ title: Download
 
 ## v1.1 Beta — JUCE Rewrite
 
-The new JUCE-based version of JamWide is available as a beta. This is a complete rewrite with FLAC lossless audio, multichannel output routing, DAW transport sync, standalone mode, and Linux support.
+The new JUCE-based version of JamWide is available as a beta. This is a complete rewrite with multichannel output routing, DAW transport sync, standalone mode, and Linux support. (FLAC lossless support is in development; this beta uses OGG/Vorbis.)
 
 **This is beta software** — it may contain bugs. Please report issues on [GitHub](https://github.com/mkschulze/JamWide/issues).
 

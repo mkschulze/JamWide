@@ -213,6 +213,13 @@ private:
     juce::AudioBuffer<float> outputScratch;
     double storedSampleRate = 48000.0;
 
+    // 15.1-08 M-03: latched copy of the host-promised maximum samplesPerBlock
+    // captured in prepareToPlay. The processBlock jassert below catches a
+    // host that violates its own getMaximumExpectedSamplesPerBlock contract
+    // in Debug builds. In Release the M-7 throw at SetMaxAudioBlockSize +
+    // the per-callsite bounds check (15.1-07b pushBlockRecord) backstop.
+    int prevPreparedSize = 0;
+
     // Audio-thread-only edge detection state (no sync primitive needed -- single thread)
     // rawHostPlaying_ stores the ACTUAL host transport state before any overrides.
     // wasPlaying_ could otherwise store the overridden value (false during WAITING),

@@ -31,6 +31,7 @@
 #include <atomic>     // 15.1-07c CR-12: std::atomic<int> m_refcnt
 #include <chrono>
 #include <cstring>    // 15.1-07c CR-12: std::memcpy in DecodeMediaBuffer Read/Write
+#include <stdexcept>  // 15.1-08 + Codex M-7: std::runtime_error in SetMaxAudioBlockSize
 #include <thread>  // 15.1-06 HIGH-3: std::this_thread::yield in DeleteLocalChannel gate
 #include "njclient.h"
 #include "mpb.h"
@@ -969,6 +970,40 @@ void NJClient::SetLogFile(const char *name)
       m_logFile=fopenUTF8(name,"a+t");
   }
   m_log_cs.Leave();
+}
+
+
+// 15.1-08 M-01 + Codex M-7: pre-grow tmpblock so the audio thread (process_samples)
+// never hits its `if (tmpblock.GetSize() < bytelen) tmpblock.Resize(bytelen)` branch
+// in steady state. ALSO enforces the MAX_BLOCK_SAMPLES contract from
+// 15.1-04 spsc_payloads.h: throws std::runtime_error if maxSamplesPerBlock
+// > jamwide::MAX_BLOCK_SAMPLES.
+//
+// Threading: caller MUST be a non-audio thread (JUCE prepareToPlay; UI/host
+// setup). Prealloc mutates m_alloc/m_size/m_buf and is NOT thread-safe vs the
+// audio thread reading tmpblock. JUCE guarantees prepareToPlay is called BEFORE
+// any processBlock call (and the audio thread is suspended across prepareToPlay
+// for a re-prepare), so this contract holds. Idempotent: WDL_HeapBuf::Prealloc
+// only grows; calling with a smaller value is a no-op.
+//
+// Failure mode: throws BEFORE touching tmpblock, so the receiver (JUCE
+// prepareToPlay) sees the bound violation synchronously and can log/degrade.
+// In Release builds, an unhandled host bound violation that slips past
+// SetMaxAudioBlockSize would still surface via the M-03 jassert at the top of
+// processBlock (Debug only) or via the per-callsite bounds check in
+// 15.1-07b's pushBlockRecord (Release counter increment).
+void NJClient::SetMaxAudioBlockSize(int maxSamplesPerBlock)
+{
+  if (maxSamplesPerBlock <= 0) return;
+
+  if (maxSamplesPerBlock > jamwide::MAX_BLOCK_SAMPLES) {
+    throw std::runtime_error(
+      "Host samplesPerBlock exceeds JamWide MAX_BLOCK_SAMPLES contract. "
+      "Recompile with larger MAX_BLOCK_SAMPLES or reduce host block size.");
+  }
+
+  // tmpblock holds `len` floats per audio-thread mix iteration; size in bytes.
+  tmpblock.Prealloc(maxSamplesPerBlock * static_cast<int>(sizeof(float)));
 }
 
 

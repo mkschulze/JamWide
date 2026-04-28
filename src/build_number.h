@@ -1,2 +1,2 @@
 #pragma once
-#define JAMWIDE_BUILD_NUMBER 282
+#define JAMWIDE_BUILD_NUMBER 284

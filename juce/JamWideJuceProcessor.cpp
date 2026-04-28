@@ -157,6 +157,28 @@ void JamWideJuceProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     // Use samplesPerBlock from the host. AudioProc zeros the buffer internally.
     outputScratch.setSize(kTotalOutChannels, samplesPerBlock, false, true, false);
 
+    // 15.1-08 M-01 + Codex M-7: pre-grow NJClient::tmpblock so the audio
+    // thread (process_samples) never hits its `tmpblock.Resize` branch in
+    // steady state, AND assert the host's claimed bound is within
+    // jamwide::MAX_BLOCK_SAMPLES (the spsc_payloads BlockRecord contract).
+    // Throw is run-thread/UI-thread synchronous: it happens BEFORE any
+    // audio-thread call. JUCE may re-prepareToPlay with a different bound;
+    // SetMaxAudioBlockSize is idempotent (Prealloc only grows).
+    if (client) {
+        try {
+            client->SetMaxAudioBlockSize(samplesPerBlock);
+        } catch (const std::runtime_error& e) {
+            // Host claims a samplesPerBlock larger than our payload contract
+            // can carry. Log; continue with the previously-preallocated
+            // tmpblock size. The M-03 jassert below will fire in Debug if
+            // the host actually drives a too-large block to processBlock.
+            juce::Logger::writeToLog(juce::String("JamWide: ") + e.what());
+        }
+    }
+
+    // 15.1-08 M-03: latch the host-promised bound for the processBlock assertion.
+    prevPreparedSize = samplesPerBlock;
+
     // Initialize standalone MIDI collector with host sample rate
     if (midiMapper)
         midiMapper->setSampleRate(sampleRate, samplesPerBlock);
@@ -467,6 +489,14 @@ void JamWideJuceProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     juce::ScopedNoDenormals noDenormals;
 
     const int numSamples = buffer.getNumSamples();
+
+    // 15.1-08 M-03: detect host-claimed-max violation in debug builds. If
+    // the host driving processBlock exceeds the bound it promised in
+    // prepareToPlay, the audio path's preallocated buffers (NJClient::tmpblock,
+    // outputScratch) may not be sized for it. In Release the per-callsite
+    // bounds check (15.1-07b pushBlockRecord; outputScratch's safety-net
+    // setSize below) backstop without aborting.
+    jassert(numSamples <= prevPreparedSize);
 
     syncApvtsToAtomics();
 

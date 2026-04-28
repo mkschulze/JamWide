@@ -462,6 +462,16 @@ public:
 
   void SetLogFile(const char *name=NULL);
 
+  // 15.1-08 M-01 + Codex M-7: pre-grow tmpblock so the audio thread never
+  // reallocates it. ALSO enforces the MAX_BLOCK_SAMPLES contract from
+  // 15.1-04 spsc_payloads.h: throws std::runtime_error if maxSamplesPerBlock
+  // > jamwide::MAX_BLOCK_SAMPLES. JUCE prepareToPlay catches this and
+  // surfaces it as a host-incompatibility error (the M-03 jassert in the
+  // processor's processBlock then catches debug-build violations of the
+  // host-claimed bound at audio time). Idempotent and safe to call from
+  // every prepareToPlay (Prealloc only grows, never shrinks).
+  void SetMaxAudioBlockSize(int maxSamplesPerBlock);
+
   void SetOggOutFile(FILE *fp, int srate, int nch, int bitrate=128);
   WaveWriter *waveWrite;
 

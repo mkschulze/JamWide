@@ -464,4 +464,18 @@ if(JAMWIDE_BUILD_TESTS)
     target_link_libraries(test_decoder_prealloc PRIVATE wdl vorbis vorbisenc ogg FLAC)
     add_test(NAME decoder_prealloc COMMAND test_decoder_prealloc)
 
+    # 15.1-10 Signal 1b — Codex M-5 automated NINJAM-like peer-churn simulation.
+    # Satisfies the AUTOMATED-coverage portion of ROADMAP-15.1-S1. Three
+    # concurrent threads (audio + run + reaper) cycle 1000 peer-churn patterns
+    # through the production SPSC primitives + payloads (from 15.1-04), with
+    # acceptance gates on drop counters (== 0) and TSan reports (== 0).
+    # Pure-C++ — no NJClient link; mirrors the test_remote_user_mirror.cpp /
+    # test_local_channel_mirror.cpp / test_decode_state_arming.cpp pattern.
+    add_executable(test_peer_churn_simulation tests/test_peer_churn_simulation.cpp)
+    target_include_directories(test_peer_churn_simulation PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME peer_churn_simulation COMMAND test_peer_churn_simulation)
+
 endif()

@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-04-29T05:06:29Z",
+  "phase": "15.1",
+  "phase_name": "rt-safety-hardening",
+  "phase_dir": ".planning/phases/15.1-rt-safety-hardening",
+  "plan": 10,
+  "task": 4,
+  "total_tasks": 5,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": "15.1-02", "name": "atomic-promotion (m_misc_cs fields)", "status": "done", "commit": "3895fd6"},
+    {"id": "15.1-03", "name": "eliminate-audio-path-logging", "status": "done", "commit": "17e8400"},
+    {"id": "15.1-04", "name": "spsc-infrastructure (Wave-0 final payloads)", "status": "done", "commit": "3a19eb3"},
+    {"id": "15.1-05", "name": "deferred-delete (DecodeState* SPSC)", "status": "done", "commit": "738ef99"},
+    {"id": "15.1-06", "name": "locchan-cs-snapshot (LocalChannelMirror)", "status": "done", "commit": "36c9cf0"},
+    {"id": "15.1-07b", "name": "buffer-queue (BlockRecord SPSC)", "status": "done", "commit": "7296a73"},
+    {"id": "15.1-07a", "name": "remote-user-mirror (RemoteUserMirror, CR-01) + 3 post-UAT stabilization fixes", "status": "done", "commit": "e151dd8 (final stabilization fix)"},
+    {"id": "15.1-07c", "name": "decode-media-buffer (DecodeMediaBuffer SPSC, CR-12)", "status": "done", "commit": "ba29cd0"},
+    {"id": "15.1-09", "name": "codec-call-site-integration (file-reader inversion, HIGH-1)", "status": "done", "commit": "e89f94f"},
+    {"id": "15.1-08", "name": "prealloc-hardening (M-01/M-02/M-03/CR-11-partial)", "status": "done", "commit": "f7d3f6c"},
+    {"id": "15.1-10", "name": "phase-verification — mechanical signals 1a/1b/2/4/5/6 GREEN; HUMAN signals 1c/3/6/7 awaiting bundled multi-user UAT", "status": "in_progress", "progress": "v1.1-beta.20 shipped to provide the build for multi-user UAT; user-side has only seen single-DAW play-test"}
+  ],
+  "remaining_tasks": [
+    {"id": "15.1-10/Signal-1c", "name": "Manual standalone UAT under TSan, populated server, 30+ min", "status": "deferred to multi-user beta UAT"},
+    {"id": "15.1-10/Signal-3", "name": "Audible glitches + CPU history pattern check", "status": "deferred to multi-user beta UAT"},
+    {"id": "15.1-10/Signal-6", "name": "lldb attach + read 6 production drop-counter accessors at session-end (all must == 0)", "status": "not_started — quick mechanical follow-up"},
+    {"id": "15.1-10/Signal-7", "name": "Instruments Time Profiler 60s under broadcast load — BlockRecord memcpy CPU < 5%", "status": "not_started — Instruments measurement needed"}
+  ],
+  "blockers": [
+    {"description": "User-reported high cache writes — investigation incomplete; no JamWide-specific writes found in ~/Library or /tmp; vscode-cpptools at 5.7GB stood out but not confirmed. User has not yet reported back which process/path is writing.", "type": "external", "workaround": "Asked user for Activity Monitor → Disk view (process + bytes written) and target path. Suspect vscode-cpptools clangd indexing churning over 15+ commits to njclient.cpp."}
+  ],
+  "human_actions_pending": [
+    {"action": "Multi-user populated-server UAT on v1.1-beta.20 — bundled UAT for 07a/07c/09/08 + 07b regression check + broadcast continuity", "context": "Phase 15.1 cannot formally close without Signals 1c/3/6/7. v1.1-beta.20 shipped specifically to enable other beta testers to install and join sessions.", "blocking": true},
+    {"action": "Localize cache-write source (Activity Monitor → Disk view, sort by Bytes Written, identify process + path)", "context": "User reported extremely high cache writes; investigation found no JamWide-specific source. Need user to point at the writer.", "blocking": false},
+    {"action": "Optional: lldb counter readout (Signal 6) and Instruments perf budget (Signal 7) on local build", "context": "Quick mechanical signals that can be done without multi-user; useful if multi-user UAT is delayed.", "blocking": false}
+  ],
+  "decisions": [
+    {"decision": "Bundled UAT scope: 07a + 07c + 09 + 08 deferred to 15.1-10 phase-end UAT (not per-plan)", "rationale": "User direction at start of 07c work. Cost: 3 stabilization cycles when 07a regressions surfaced in single-user UAT. Acceptable given each cycle was diagnose→surgical-fix→rebuild→verify (no patch piles).", "phase": "15.1"},
+    {"decision": "PR #14 (steveseguin VDO sync) merged BEFORE pushing 15.1 work", "rationale": "PR was opened pre-15.1; clean rebase placed PR commits below 15.1 in history, preserving authorship and CI signal separation.", "phase": "15.1"},
+    {"decision": "Beta numbering continued v1.1-beta.20 (skipping 19 since v1.1-beta.19-no-video was a one-off variant) instead of starting v1.2-beta.1", "rationale": "Respects existing convention. v1.2.0 stable can come later when milestone formally closes.", "phase": "15.1"},
+    {"decision": "Architecture-mirror dead-but-live finding (njclient.cpp:1648 lobby renormalize) flagged in deferred-items.md as VERIFIED-UNREACHABLE rather than fixed", "rationale": ".continue-here.md option (b) — currently dead in modern JamWide; one-line surgical fix can land in v1.3 cleanup.", "phase": "15.1"},
+    {"decision": "VST3 rebuilt locally to build 291 (post-PR #14 merge) for parity with CI artifacts", "rationale": "User asked for parity so they can DAW-test exactly what other beta testers receive.", "phase": "15.1"}
+  ],
+  "uncommitted_files": [],
+  "next_action": "Resume by checking gh release v1.1-beta.20 status (CI artifacts uploaded?), then either: (a) wait for multi-user UAT feedback from beta testers; (b) execute Signal 6 (lldb counter readout) + Signal 7 (Instruments) locally to close the mechanical signals; (c) investigate user's cache-write report when they reply with localization info.",
+  "context_notes": "Phase 15.1 implementation is FUNCTIONALLY COMPLETE. All 10 plans landed, 3 post-UAT stabilization fixes shipped, beta released. Open: bundled multi-user UAT (intentionally requires beta installation by other users) + cache-write investigation (awaiting user info). The three 07a stabilization fixes (b9899a0/e827453/e151dd8 in pushed history; b8ca083/7e69e1a/00dfee7 in local pre-rebase history) all share root cause — slot picking placed on wrong thread; the apply-visitor fix is the architecturally correct one. feedback_legacy_invariant_audit.md updated with all three Direction A/B/C patterns from this session."
+}

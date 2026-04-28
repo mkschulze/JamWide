@@ -3288,16 +3288,41 @@ void NJClient::drainRemoteUserUpdates()
           deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, incoming_ds);
           return;
         }
-        if (u.slot_idx < 0 || u.slot_idx > 1) {
-          deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, incoming_ds);
-          return;
-        }
+        // 15.1-07a post-UAT build 289 fix: pick the slot HERE (audio-thread
+        // apply visitor), not on the run-thread publisher. The publisher's
+        // u.slot_idx is now ignored. Background:
+        //   - The original 07a publisher used a stateful XOR shadow that
+        //     alternated 0/1 per publish — but the audio thread always reads
+        //     next_ds[0] first and shifts next_ds[1]→next_ds[0]→nullptr, so
+        //     slot-1 publishes were unreachable until the next shift, causing
+        //     every-other-interval audio cutout (build 288 fix tried to
+        //     hardcode slot 0 to mitigate).
+        //   - The build-288 always-slot-0 mitigation defer-deleted the prior
+        //     next_ds[0] on every publish, silently dropping data when the
+        //     run thread published 2+ updates between two audio drains
+        //     (bursty network arrivals → random remote audio cutout).
+        //   - Correct semantics (matches the legacy `useidx = !!next_ds[0]`):
+        //     fill the empty slot, queue behind in slot 1 if slot 0 is
+        //     occupied, only defer-delete the oldest if BOTH slots are full
+        //     (extremely rare — would require the audio thread to skip 2+
+        //     intervals while the run thread publishes).
+        //   - This works concurrency-safely because BOTH writers to next_ds
+        //     (this apply visitor AND the on_new_interval shuffle) run on
+        //     the audio thread; no run-thread state read needed.
         auto& chan = m_remoteuser_mirror[u.slot].chans[u.channel];
-        // If a previous next_ds[slot_idx] pointer was queued, defer-delete it
-        // before overwriting (audio thread retains exclusive ownership during
-        // the swap; only the now-orphaned pointer crosses to the run thread).
-        deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, chan.next_ds[u.slot_idx]);
-        chan.next_ds[u.slot_idx] = incoming_ds;
+        if (chan.next_ds[0] == nullptr) {
+          chan.next_ds[0] = incoming_ds;
+        } else if (chan.next_ds[1] == nullptr) {
+          chan.next_ds[1] = incoming_ds;
+        } else {
+          // Both slots full — defer-delete oldest (next_ds[0]), shift, queue
+          // new ds at next_ds[1]. Bumps the deferred-delete overflow path
+          // implicitly (the captured pointer goes to defer-delete; no audio
+          // gap, just a backlog skip).
+          deferDecodeStateDelete(m_deferred_delete_q, m_deferred_delete_overflows, chan.next_ds[0]);
+          chan.next_ds[0] = chan.next_ds[1];
+          chan.next_ds[1] = incoming_ds;
+        }
       }
       else if constexpr (std::is_same_v<T, jamwide::PeerCodecSwapUpdate>) {
         if (u.slot < 0 || u.slot >= MAX_PEERS) return;

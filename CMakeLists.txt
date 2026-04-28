@@ -448,4 +448,20 @@ if(JAMWIDE_BUILD_TESTS)
     )
     add_test(NAME decode_state_arming COMMAND test_decode_state_arming)
 
+    # 15.1-08 prealloc-hardening: lighter sanity per Codex per-plan delta.
+    # Verifies VorbisDecoder + FlacDecoder construct cleanly post-Prealloc and
+    # the Codex M-7 SetMaxAudioBlockSize bound enforcement (assertion body
+    # reimplemented in-test via a stand-in lambda; no NJClient link). Strict
+    # allocation-count verification deferred to 15.1-10 Instruments UAT.
+    # Links the same codec libraries as njclient (vorbis vorbisenc ogg FLAC)
+    # so the full VorbisDecoder body compiles (NOT WDL_VORBIS_INTERFACE_ONLY,
+    # because we construct VorbisDecoder directly here).
+    add_executable(test_decoder_prealloc tests/test_decoder_prealloc.cpp)
+    target_include_directories(test_decoder_prealloc PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_link_libraries(test_decoder_prealloc PRIVATE wdl vorbis vorbisenc ogg FLAC)
+    add_test(NAME decoder_prealloc COMMAND test_decoder_prealloc)
+
 endif()

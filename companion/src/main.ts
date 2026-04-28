@@ -25,6 +25,8 @@ import {
   renderRosterStrip,
   getSavedBandwidthProfile,
   saveBandwidthProfile,
+  getActiveDelayMs,
+  getLastAutoSyncMode,
 } from './ui';
 import type { BgEffect, BandwidthProfile } from './ui';
 
@@ -86,6 +88,14 @@ function openPopout(streamId: string, username: string): void {
   });
   if (roomHashFragment) popoutParams.set('password', roomHashFragment);
   popoutParams.set('quality', getSavedBandwidthProfile());
+  if (new URLSearchParams(window.location.search).get('vdoProduction') === '1') {
+    popoutParams.set('vdoProduction', '1');
+  }
+  const activeDelay = getActiveDelayMs();
+  if (activeDelay !== null && activeDelay > 0) {
+    popoutParams.set('buffer', String(activeDelay));
+    popoutParams.set('syncMode', getLastAutoSyncMode());
+  }
 
   const url = `popout.html?${popoutParams.toString()}`;
   const windowName = `jamwide-popout-${streamId}`;
@@ -139,6 +149,17 @@ function notifyPopouts(users: RosterUser[]): void {
     // or same localhost dev server), so origin is always correct. The popout also
     // validates event.source === window.opener for defense in depth (see popout.ts).
     win.postMessage({ type: 'roster', users }, window.location.origin);
+  }
+  updatePillIndicators();
+}
+
+function notifyPopoutDelay(delayMs: number, syncMode?: 'measured' | 'calculated'): void {
+  for (const [streamId, win] of popoutWindows.entries()) {
+    if (win.closed) {
+      popoutWindows.delete(streamId);
+      continue;
+    }
+    win.postMessage({ type: 'bufferDelay', delayMs, syncMode }, window.location.origin);
   }
   updatePillIndicators();
 }
@@ -237,6 +258,7 @@ const callbacks: WsCallbacks = {
     console.log('VideoSync: plugin sent bufferDelay:', msg.delayMs, 'ms',
       msg.syncMode ? `(${msg.syncMode})` : '');
     setLastAutoDelay(msg.delayMs, msg.syncMode);
+    notifyPopoutDelay(msg.delayMs, msg.syncMode);
     updateFooterDelayStatus();
     // D-09: show sync overlay when measured delay arrives.
     // Only for 'measured' mode -- calculated mode doesn't need a visible sync phase

@@ -122,7 +122,7 @@ public:
     static constexpr int kDefaultWsPort = 7170;
 
 private:
-    bool startWebSocketServer(const SessionSnapshot& snap);
+    bool startWebSocketServer();
     void stopWebSocketServer();
 
     juce::String deriveRoomId(const juce::String& serverAddr,

@@ -168,7 +168,7 @@ public:
 
     // -- Phase 14.2: PTT + measurement broadcast guard (VID-13) --
     // pttActive: message thread writes (PTT button/key), audio thread reads (via SetLocalChannelProcessor callback)
-    // instaMeasurementBroadcast: run thread sets true after broadcasting measured delay to VideoCompanion
+    // instaMeasurementBroadcast: run thread sets true after caching/broadcasting measured delay to VideoCompanion
     // These are the ONLY Phase 14.2 atomics on the Processor. All measurement state lives in NJClient.
     std::atomic<bool> pttActive{false};
     std::atomic<bool> instaMeasurementBroadcast{false};

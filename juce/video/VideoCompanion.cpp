@@ -204,14 +204,20 @@ bool VideoCompanion::launchCompanion(const juce::String& serverAddr,
     float bpm = processor_.uiSnapshot.bpm.load(std::memory_order_relaxed);
     int bpi = processor_.uiSnapshot.bpi.load(std::memory_order_relaxed);
     if (bpm > 0.0f && bpi > 0 && !std::isnan(bpm))
-        cachedDelayMs_ = static_cast<int>((60.0 / static_cast<double>(bpm)) * bpi * 1000.0);
+    {
+        int computedDelayMs = static_cast<int>((60.0 / static_cast<double>(bpm)) * bpi * 1000.0);
+        if (computedDelayMs > 0)
+        {
+            std::lock_guard<std::mutex> lock(wsMutex_);
+            if (cachedSyncMode_ != "measured" || cachedDelayMs_ <= 0)
+            {
+                cachedDelayMs_ = computedDelayMs;
+                cachedSyncMode_ = "calculated";
+            }
+        }
+    }
 
-    // CR-01 fix: Snapshot session config before starting WS server.
-    // The IXWebSocket callback fires on its own thread; passing a value snapshot
-    // avoids a data race on currentRoom_, currentPush_, wsPort_, cachedDelayMs_.
-    SessionSnapshot snap { currentRoom_, currentPush_, wsPort_, cachedDelayMs_, cachedSyncMode_ };
-
-    if (!startWebSocketServer(snap))
+    if (!startWebSocketServer())
     {
         DBG("VideoCompanion: Failed to start WebSocket server on port " + juce::String(wsPort_));
         return false;
@@ -219,8 +225,8 @@ bool VideoCompanion::launchCompanion(const juce::String& serverAddr,
 
     currentDerivedPassword_ = deriveRoomPassword(password, currentRoom_);
     currentCompanionUrl_ = buildCompanionUrl(currentRoom_, currentPush_, wsPort_, currentDerivedPassword_);
-    juce::URL(currentCompanionUrl_).launchInDefaultBrowser();
     active_.store(true, std::memory_order_relaxed);
+    juce::URL(currentCompanionUrl_).launchInDefaultBrowser();
 
     // Store launch parameters for OSC relaunch (Phase 13)
     storedServerAddr_ = serverAddr;
@@ -242,7 +248,7 @@ void VideoCompanion::relaunchBrowser()
 
 // ── WebSocket Server Lifecycle ─────────────────────────────────────────────
 
-bool VideoCompanion::startWebSocketServer(const SessionSnapshot& snap)
+bool VideoCompanion::startWebSocketServer()
 {
     std::lock_guard<std::mutex> lock(wsMutex_);
 
@@ -270,16 +276,15 @@ bool VideoCompanion::startWebSocketServer(const SessionSnapshot& snap)
     // (KERNEL_SECURITY_CHECK_FAILURE 0x139) via network driver pool corruption.
     wsServer_->disablePerMessageDeflate();
 
-    // CR-01 fix: Capture snapshot by value so the callback reads a thread-safe copy
-    // instead of unsynchronized shared members. IXWebSocket fires this callback on
-    // its own internal thread.
+    // Build a fresh snapshot on each client Open. IXWebSocket fires this callback
+    // on its own thread, so shared session/cache fields are copied under wsMutex_.
     // Poison-pill pattern (adopted from Ninja-VST3): capture alive_ flag and check it
     // at the top of the callback to prevent use-after-free during shutdown. Without this,
     // the callback can fire between alive_->store(false) and wsServer_->stop() in the
     // destructor, accessing a partially-destroyed VideoCompanion via `this`.
     auto aliveFlag = alive_;
     wsServer_->setOnClientMessageCallback(
-        [this, aliveFlag, snap](std::shared_ptr<ix::ConnectionState> /*connectionState*/,
+        [this, aliveFlag](std::shared_ptr<ix::ConnectionState> /*connectionState*/,
                ix::WebSocket& webSocket,
                const ix::WebSocketMessagePtr& msg)
         {
@@ -287,6 +292,11 @@ bool VideoCompanion::startWebSocketServer(const SessionSnapshot& snap)
                 return;
             if (msg->type == ix::WebSocketMessageType::Open)
             {
+                SessionSnapshot snap;
+                {
+                    std::lock_guard<std::mutex> lock(wsMutex_);
+                    snap = { currentRoom_, currentPush_, wsPort_, cachedDelayMs_, cachedSyncMode_ };
+                }
                 sendConfigToClient(webSocket, snap);
             }
             // Close: no-op (client disconnected)
@@ -481,6 +491,7 @@ void VideoCompanion::broadcastBufferDelay(float bpm, int bpi)
 
     std::lock_guard<std::mutex> lock(wsMutex_);
     if (!wsServer_) return;
+    if (cachedSyncMode_ == "measured" && cachedDelayMs_ > 0) return;
     cachedDelayMs_ = computed;
     cachedSyncMode_ = "calculated";
     auto clients = wsServer_->getClients();
@@ -497,7 +508,6 @@ void VideoCompanion::broadcastBufferDelay(float bpm, int bpi)
 void VideoCompanion::broadcastMeasuredDelay(int measuredDelayMs)
 {
     if (measuredDelayMs <= 0) return;
-    if (!isActive()) return;
 
     // D-11: measured overrides calculated. Store so new WS clients get it.
     // D-12: include syncMode so companion displays "Sync: measured (Xms)"
@@ -506,9 +516,9 @@ void VideoCompanion::broadcastMeasuredDelay(int measuredDelayMs)
                         + ",\"syncMode\":\"measured\"}";
 
     std::lock_guard<std::mutex> lock(wsMutex_);
-    if (!wsServer_) return;
     cachedDelayMs_ = measuredDelayMs;
     cachedSyncMode_ = "measured";
+    if (!isActive() || !wsServer_) return;
     auto clients = wsServer_->getClients();
     for (auto& client : clients)
     {
@@ -612,6 +622,7 @@ void VideoCompanion::deactivate()
     currentPassword_.clear();
     currentDerivedPassword_.clear();
     cachedDelayMs_ = 0;
+    cachedSyncMode_.clear();
     lastBroadcastBeat_ = -1;
     cachedRoster_.clear();
     // NOTE: storedServerAddr_, storedUsername_, storedPassword_, hasLaunchedThisSession_

@@ -424,4 +424,16 @@ if(JAMWIDE_BUILD_TESTS)
     )
     add_test(NAME remote_user_mirror COMMAND test_remote_user_mirror)
 
+    # 15.1-07c DecodeMediaBuffer SPSC: DecodeChunk byte-stream roundtrip,
+    # partial-read consumer buffer, concurrent writer/reader FIFO, atomic
+    # refcnt UAF-safety, overflow drop policy, Size() legacy semantics
+    # (CR-12). Pure-C++ (no NJClient link). Designed to run cleanly under
+    # -fsanitize=thread.
+    add_executable(test_decode_media_buffer_spsc tests/test_decode_media_buffer_spsc.cpp)
+    target_include_directories(test_decode_media_buffer_spsc PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME decode_media_buffer_spsc COMMAND test_decode_media_buffer_spsc)
+
 endif()

@@ -436,4 +436,16 @@ if(JAMWIDE_BUILD_TESTS)
     )
     add_test(NAME decode_media_buffer_spsc COMMAND test_decode_media_buffer_spsc)
 
+    # 15.1-09 DecodeState arming + Codex HIGH-1 audit-invariant: arm-request
+    # round-trip, capacity bound, concurrent producer/consumer, decode_fp ==
+    # nullptr post-publish (HIGH-1 audit invariant), refill-loop byte-stream
+    # integrity, dead-entry reaper (CR-08, H-04). Pure-C++ (no NJClient link).
+    # Designed to run cleanly under -fsanitize=thread.
+    add_executable(test_decode_state_arming tests/test_decode_state_arming.cpp)
+    target_include_directories(test_decode_state_arming PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    add_test(NAME decode_state_arming COMMAND test_decode_state_arming)
+
 endif()

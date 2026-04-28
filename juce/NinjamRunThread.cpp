@@ -668,6 +668,30 @@ void NinjamRunThread::run()
             pollInstamodeDelay(client);           // Phase 14.2: consume measurement
             updateSessionAndVuSnapshot(client);
 
+            // 15.1-09 CR-08 + Codex HIGH-1: drain sessionmode-arming requests.
+            // Constructs DecodeStates on the run thread, inverts the FILE*
+            // off the audio-thread DecodeState (decode_fp = nullptr),
+            // registers SessionmodeFileReader entries, and publishes the
+            // freshly-decoded DecodeStates via PeerNextDsUpdate. Drained
+            // BEFORE drainDeferredDelete so newly-armed states reach the
+            // audio thread before any same-tick stale states are reaped.
+            //
+            // Currently a no-op under today's UI flow (the audio-thread
+            // sessionmode rearm is an early-return no-op post-15.1-07a);
+            // wired so a future sessionmode re-enable doesn't have to
+            // re-architect the run-thread side.
+            client->drainArmRequests();
+
+            // 15.1-09 + Codex HIGH-1: per-tick refill loop. Reads bytes from
+            // every active sessionmode FILE* and pushes them into the
+            // corresponding DecodeMediaBuffer (lock-free SPSC push from
+            // 15.1-07c). The audio thread's runDecode → decode_buf->Read
+            // is fed by THIS method; without it, file-backed playback would
+            // silence as the buffer drained. Also reaps dead entries
+            // (refcnt == 1 → audio side has Released) and fclose's their
+            // FILE*.
+            client->refillSessionmodeBuffers();
+
             // 15.1-05 CR-05/06/07: drain deferred-delete queue (DecodeState*
             // pointers from audio thread). Runs ~DecodeState() off the audio
             // thread. Drained LAST per RESEARCH § "Drain order" — any future
@@ -708,12 +732,14 @@ void NinjamRunThread::run()
         wait(lastStatus_ == NJClient::NJC_STATUS_OK ? 20 : 50);
     }
 
-    // 15.1-05 + 15.1-06 + 15.1-07a + 15.1-07b: graceful shutdown drain. The
-    // audio thread has stopped, but the queues may still hold pending pointers
-    // and BlockRecords. Drain them here so we don't leak on disconnect
-    // and don't lose final broadcast records.
+    // 15.1-05 + 15.1-06 + 15.1-07a + 15.1-07b + 15.1-09: graceful shutdown
+    // drain. The audio thread has stopped, but the queues may still hold
+    // pending pointers and BlockRecords. Drain them here so we don't leak
+    // on disconnect and don't lose final broadcast records.
     if (auto* finalClient = processor.getClient())
     {
+        finalClient->drainArmRequests();                // 15.1-09 HIGH-1
+        finalClient->refillSessionmodeBuffers();        // 15.1-09 HIGH-1: reap dead entries / final flush
         finalClient->drainDeferredDelete();
         finalClient->drainLocalChannelDeferredDelete();
         finalClient->drainRemoteUserDeferredDelete();   // 15.1-07a HIGH-3

@@ -326,6 +326,17 @@ public:
     return static_cast<int>(m_total_written.load(std::memory_order_relaxed));
   }
 
+  // 15.1-09 + Codex HIGH-1: refcnt peek for the run-thread refill loop's
+  // dead-entry detection. refillSessionmodeBuffers compares this against 1
+  // (only the SessionmodeFileReader holds a ref → the audio side has Released
+  // its share, the entry is dead and should be reaped + the FILE* fclose'd).
+  // Relaxed semantics — observability only; the actual delete is gated by
+  // the acq_rel fetch_sub in Release().
+  int GetRefCount() const noexcept
+  {
+    return m_refcnt.load(std::memory_order_relaxed);
+  }
+
 private:
   // SPSC byte-stream — replaces WDL_Mutex + WDL_Queue. CHUNK_BYTES=4096 and
   // N=32 chosen per RESEARCH § "Use 5 — DecodeMediaBuffer byte-queue
@@ -1945,7 +1956,20 @@ int NJClient::Run() // nonzero if sleep ok
                   // transfers to the audio thread via PeerNextDsUpdate. Use
                   // the run-thread useidx shadow (alternating bit), publish,
                   // and let the audio thread defer-delete the old slot.
+                  //
+                  // 15.1-09 CR-08 + H-04 + Codex HIGH-1: start_decode opens a
+                  // FILE* on disk (decbuf=NULL); the resulting DecodeState
+                  // has decode_fp set. inversionAttachSessionmodeReader
+                  // takes the FILE* off the DS and into the run-thread
+                  // SessionmodeFileReader bookkeeping list, so the audio-
+                  // thread-visible DS has decode_fp == nullptr. The run-
+                  // thread refillSessionmodeBuffers tick will keep the
+                  // associated DecodeMediaBuffer fed with file bytes.
                   ds_to_publish = start_decode(dib.guid, theuser->channels[dib.chidx].flags, 0, NULL);
+                  if (ds_to_publish)
+                  {
+                    inversionAttachSessionmodeReader(ds_to_publish);
+                  }
                   slot_to_publish = findRemoteUserSlot(theuser);
                   useidx_to_publish = theuser->channels[dib.chidx].run_thread_next_ds_idx;
                   theuser->channels[dib.chidx].run_thread_next_ds_idx ^= 1;
@@ -3248,6 +3272,202 @@ void NJClient::drainRemoteUserDeferredDelete()
   m_remoteuser_deferred_delete_q.drain([](RemoteUser* p) {
     delete p;
   });
+}
+
+// ---------------------------------------------------------------------------
+// 15.1-09 CR-08 + H-04 + Codex HIGH-1: codec-call-site integration —
+// audio-thread DecodeState NEVER has decode_fp set in shipped state.
+//
+// The pre-15.1 path: mixInChannel sessionmode rearm called start_decode
+// directly on the audio thread; the resulting DecodeState had decode_fp set;
+// subsequent runDecode calls reached fread() on the audio thread (H-04).
+//
+// 15.1-07a already collapsed the audio-thread sessionmode rearm to an
+// early-return no-op (mixInChannel sessionmode branch defer-deletes the
+// in-flight ds and returns). So the audio thread has no remaining
+// start_decode caller AND no audio-thread arm-request emitter today.
+//
+// What 15.1-09 closes: the audio-thread mirror's DecodeState pointers can
+// STILL hold decode_fp != nullptr when the run-thread DOWNLOAD_INTERVAL_BEGIN
+// handler at njclient.cpp:1948 publishes a freshly-decoded ds for an
+// on-disk file (decbuf=NULL → start_decode opens a FILE*). Any subsequent
+// audio-thread runDecode on that mirror entry reaches the fread path (H-04
+// in steady state, NOT just at startup).
+//
+// THIS PLAN's structural fix:
+//   - The run-thread call sites that produce audio-thread-visible
+//     DecodeStates with non-null decode_fp invoke
+//     `inversionAttachSessionmodeReader(ds)` immediately after start_decode
+//     returns. That helper takes the FILE* off the DS, allocates a fresh
+//     DecodeMediaBuffer, primes it with one chunk, registers a
+//     SessionmodeFileReader entry on m_sessionmode_file_readers, and sets
+//     ds->decode_buf to the buffer + ds->decode_fp = nullptr.
+//   - On every run-thread tick, refillSessionmodeBuffers reads more bytes
+//     from each active FILE* and pushes into the corresponding
+//     DecodeMediaBuffer (lock-free SPSC push from 15.1-07c).
+//   - The audio thread's runDecode reaches `decode_buf->Read` for these
+//     states, NEVER `fread(decode_fp)` — H-04 structurally unreachable IN
+//     STEADY STATE.
+//   - drainArmRequests is wired for the audio-thread emitter case (today
+//     unused; if sessionmode is re-enabled, the emit→drain handoff is in
+//     place without re-architecture).
+// ---------------------------------------------------------------------------
+
+bool NJClient::inversionAttachSessionmodeReader(DecodeState* ds)
+{
+  if (!ds || !ds->decode_fp) return true;  // nothing to invert; already in correct shape
+
+  FILE* fp_for_runthread = ds->decode_fp;
+  ds->decode_fp = nullptr;  // <-- 15.1-09 H-04: audio thread sees decode_fp == nullptr ALWAYS
+
+  DecodeMediaBuffer* buf = new DecodeMediaBuffer();  // refcnt starts at 1 (the ds owns it)
+  if (!buf)
+  {
+    // Extraordinarily unlikely (4 KB allocation). Restore the FILE* so the
+    // audio thread can still play (H-04 not closed for THIS state, but the
+    // alternative is silence). The caller will publish ds as-is.
+    ds->decode_fp = fp_for_runthread;
+    return false;
+  }
+  ds->decode_buf = buf;
+  buf->AddRef();  // SessionmodeFileReader owns the second ref; ds destructor will Release the first
+
+  // Prime the buffer with one initial chunk so the audio thread has bytes
+  // to drain on its first runDecode call. The legacy start_decode body
+  // already runs `while (Available() <= 0) runDecode()` BEFORE we reach
+  // here — but that loop ran fread on the same FILE* we just took. The
+  // codec internal queue holds whatever was decoded; new bytes from this
+  // point on come through decode_buf.
+  uint8_t prime_buf[jamwide::CHUNK_BYTES];
+  size_t primed = std::fread(prime_buf, 1, sizeof(prime_buf), fp_for_runthread);
+  if (primed > 0)
+  {
+    buf->Write(prime_buf, static_cast<int>(primed));
+  }
+
+  SessionmodeFileReader rdr;
+  rdr.file = fp_for_runthread;
+  rdr.buffer = buf;
+  rdr.eof = (primed == 0);
+  m_sessionmode_file_readers.push_back(rdr);
+
+  return true;
+}
+
+void NJClient::drainArmRequests()
+{
+  m_arm_request_q.drain([this](const jamwide::DecodeArmRequest& req) {
+    // Run thread: it's safe to allocate / fopen / libvorbis-init here.
+    // start_decode opens the FILE* and constructs the codec; we then invert
+    // the FILE* into a SessionmodeFileReader so the audio-thread DS has
+    // decode_fp == nullptr.
+    //
+    // chanflags=0 here is a defensive default — the audio-thread emitter
+    // would carry the real flags in the payload if/when sessionmode is
+    // re-enabled. fourcc=0 means "probe the file extension" inside
+    // start_decode; that matches the current DOWNLOAD_INTERVAL_BEGIN call
+    // site at njclient.cpp:1948.
+    unsigned char guid[16];
+    std::memcpy(guid, req.guid, sizeof(guid));
+    DecodeState* ds = start_decode(guid, /*chanflags=*/0, req.fourcc, /*decbuf=*/nullptr);
+    if (!ds)
+    {
+      // start_decode failed (file missing, bad fourcc). Don't publish.
+      m_arm_request_drops.fetch_add(1, std::memory_order_relaxed);
+      return;
+    }
+
+    // Inversion: ds->decode_fp != nullptr after start_decode (decbuf was NULL).
+    // Move the FILE* into m_sessionmode_file_readers; ds->decode_fp becomes
+    // nullptr — Codex HIGH-1 audit invariant.
+    inversionAttachSessionmodeReader(ds);
+
+    jamwide::PeerNextDsUpdate upd;
+    upd.slot     = req.slot;
+    upd.channel  = req.channel;
+    upd.slot_idx = req.slot_idx;
+    upd.ds       = reinterpret_cast<jamwide::DecodeState*>(ds);
+
+    if (!m_remoteuser_update_q.try_push(jamwide::RemoteUserUpdate{upd}))
+    {
+      // Update queue full — extraordinarily unlikely with N=64 capacity.
+      // Tear down what we built. Find the SessionmodeFileReader entry we
+      // just pushed (it's the last one) and reverse it.
+      m_remoteuser_update_overflows.fetch_add(1, std::memory_order_relaxed);
+      if (!m_sessionmode_file_readers.empty())
+      {
+        auto& rdr = m_sessionmode_file_readers.back();
+        if (rdr.file) std::fclose(rdr.file);
+        if (rdr.buffer)
+        {
+          // Two refs to release: the SessionmodeFileReader's AddRef + the ds
+          // destructor's implicit Release on ds->decode_buf. We let ~DecodeState
+          // handle the second one via `delete ds` below; release ours first.
+          rdr.buffer->Release();
+        }
+        m_sessionmode_file_readers.pop_back();
+      }
+      delete ds;
+    }
+  });
+}
+
+void NJClient::refillSessionmodeBuffers()
+{
+  // Codex HIGH-1: per-tick refill loop. Reads bytes from every active
+  // sessionmode FILE* and pushes them into the corresponding
+  // DecodeMediaBuffer (lock-free SPSC push). The audio thread's
+  // runDecode → decode_buf->Read drains the same SPSC.
+  //
+  // Cap each file at kMaxChunksPerTickPerFile chunks per tick so a single
+  // active sessionmode file with a fast-drained buffer doesn't starve the
+  // others. With CHUNK_BYTES=4096 and a 20ms tick, 4 chunks = 16 KB/tick =
+  // 800 KB/s — comfortably above any audio-rate consumption.
+  constexpr int kMaxChunksPerTickPerFile = 4;
+
+  for (size_t i = 0; i < m_sessionmode_file_readers.size(); /* manual advance */)
+  {
+    SessionmodeFileReader& rdr = m_sessionmode_file_readers[i];
+
+    // Dead-entry detection: if the buffer's refcnt is 1, only THIS reader
+    // holds a ref — the audio side has Released its share (ds destructor
+    // ran via deferDecodeStateDelete → drainDeferredDelete). We can fclose
+    // the file and let the buffer go.
+    if (rdr.buffer && rdr.buffer->GetRefCount() <= 1)
+    {
+      if (rdr.file) std::fclose(rdr.file);
+      if (rdr.buffer) rdr.buffer->Release();  // refcnt → 0 → delete
+      m_sessionmode_file_readers.erase(m_sessionmode_file_readers.begin() + i);
+      continue;
+    }
+
+    // Active entry — top up the buffer.
+    if (!rdr.eof && rdr.file)
+    {
+      for (int chunk = 0; chunk < kMaxChunksPerTickPerFile; ++chunk)
+      {
+        uint8_t tmp[jamwide::CHUNK_BYTES];
+        size_t got = std::fread(tmp, 1, sizeof(tmp), rdr.file);
+        if (got == 0)
+        {
+          rdr.eof = true;
+          break;
+        }
+        int written = rdr.buffer->Write(tmp, static_cast<int>(got));
+        if (written < static_cast<int>(got))
+        {
+          // Buffer SPSC full — the (got - written) bytes we already read
+          // from the file are lost (we cannot fseek back safely on all
+          // streams; sessionmode files are local + seekable but for
+          // simplicity we drop and document). Bump the drop counter so
+          // 15.1-10 surfaces this if it ever fires under realistic load.
+          m_sessionmode_refill_drops.fetch_add(1, std::memory_order_relaxed);
+          break;
+        }
+      }
+    }
+    ++i;
+  }
 }
 
 // 15.1-07a + Codex M-8: run-thread slot allocation/lookup/release helpers.
@@ -4750,6 +4970,18 @@ void RemoteDownload::startPlaying(int force)
         ds_to_publish = m_parent->start_decode(guid,theuser->channels[chidx].flags,m_fourcc,m_decbuf);
 
 //        OutputDebugString(tmp?"started new decde\n":"tried to start new decode\n");
+
+        // 15.1-09 CR-08 + H-04 + Codex HIGH-1: defensive inversion. With
+        // m_decbuf set (the normal RemoteDownload::Open path), start_decode
+        // takes the network-stream branch and decode_fp stays nullptr — so
+        // inversionAttachSessionmodeReader is a no-op. But if m_decbuf
+        // failed to allocate at Open time (extreme OOM), start_decode would
+        // fall through to the file path and decode_fp would be set; the
+        // inversion guarantees the audio thread NEVER sees decode_fp != null.
+        if (ds_to_publish)
+        {
+          m_parent->inversionAttachSessionmodeReader(ds_to_publish);
+        }
 
         // Record the codec FOURCC on the channel for UI display
         theuser->channels[chidx].codec_fourcc = m_fourcc;

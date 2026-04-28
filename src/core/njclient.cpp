@@ -1965,9 +1965,17 @@ int NJClient::Run() // nonzero if sleep ok
                     publish_silence = true;
                     silence_chidx = dib.chidx;
                     slot_to_publish = findRemoteUserSlot(theuser);
-                    useidx_to_publish = theuser->channels[dib.chidx].run_thread_next_ds_idx;
-                    theuser->channels[dib.chidx].run_thread_next_ds_idx ^= 1;
-//                    OutputDebugString("added silence to channel\n");
+                    // 15.1-07a post-UAT build 288 fix: always publish to slot 0.
+                    // The audio thread's on_new_interval shuffle ALWAYS reads
+                    // next_ds[0] and shifts next_ds[1]→next_ds[0]→nullptr, so
+                    // slot 0 is the only slot the next-interval consumer sees.
+                    // The XOR shadow `run_thread_next_ds_idx ^= 1` produced
+                    // audio every other interval (slot 1 publishes were
+                    // unreachable to the next shuffle until the interval AFTER
+                    // they were published). Always-slot-0 collapses to the
+                    // legacy `useidx = !!next_ds[0]` semantics' steady-state
+                    // behavior without reading mirror state from the run thread.
+                    useidx_to_publish = 0;
                   }
                   //else OutputDebugString("woulda added silence to channel\n");
                 }
@@ -2006,8 +2014,10 @@ int NJClient::Run() // nonzero if sleep ok
                     inversionAttachSessionmodeReader(ds_to_publish);
                   }
                   slot_to_publish = findRemoteUserSlot(theuser);
-                  useidx_to_publish = theuser->channels[dib.chidx].run_thread_next_ds_idx;
-                  theuser->channels[dib.chidx].run_thread_next_ds_idx ^= 1;
+                  // 15.1-07a post-UAT build 288 fix: see silence-marker branch
+                  // above. Always publish to slot 0 — the audio thread shuffle
+                  // is deterministic and only reads next_ds[0].
+                  useidx_to_publish = 0;
                 }
 
               }
@@ -5043,12 +5053,17 @@ void RemoteDownload::startPlaying(int force)
         fourcc_to_publish = m_fourcc;
 
         // 15.1-07a CR-01: ownership of the freshly-decoded ds transfers to
-        // the audio thread via PeerNextDsUpdate. Use the run-thread useidx
-        // shadow (alternating bit) to pick a slot; the audio-thread apply
+        // the audio thread via PeerNextDsUpdate. The audio-thread apply
         // visitor defer-deletes the previous occupant of that slot.
+        //
+        // 15.1-07a post-UAT build 288 fix: always publish to slot 0. The
+        // audio thread's on_new_interval shuffle reads next_ds[0] and shifts
+        // next_ds[1]→next_ds[0]→nullptr, so slot 0 is the only slot the
+        // next-interval consumer sees. The XOR shadow pattern produced
+        // every-other-interval audio cutout. See the dib-handler in
+        // NJClient::Run for the full explanation.
         slot_to_publish = m_parent->findRemoteUserSlot(theuser);
-        useidx_to_publish = theuser->channels[chidx].run_thread_next_ds_idx;
-        theuser->channels[chidx].run_thread_next_ds_idx ^= 1;
+        useidx_to_publish = 0;
         chidx_to_publish = chidx;
       }
     }

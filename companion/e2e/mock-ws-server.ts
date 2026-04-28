@@ -49,6 +49,13 @@ export class MockPluginServer {
     }));
   }
 
+  sendRoster(users: Array<{ idx: number; name: string; streamId: string }>): void {
+    this.broadcast(JSON.stringify({
+      type: 'roster',
+      users,
+    }));
+  }
+
   sendDeactivate(): void {
     this.broadcast(JSON.stringify({ type: 'deactivate' }));
   }

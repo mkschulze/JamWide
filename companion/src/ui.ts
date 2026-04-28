@@ -4,6 +4,16 @@
 
 import type { RosterUser } from './types';
 
+const VDO_NINJA_ALPHA_BASE_URL = 'https://vdo.ninja/alpha/';
+const VDO_NINJA_PRODUCTION_BASE_URL = 'https://vdo.ninja/';
+
+function getVdoNinjaBaseUrl(): string {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('vdoProduction') === '1'
+    ? VDO_NINJA_PRODUCTION_BASE_URL
+    : VDO_NINJA_ALPHA_BASE_URL;
+}
+
 // ── Helper: safe element query ──
 
 function el<T extends HTMLElement>(id: string): T {
@@ -184,18 +194,19 @@ export function buildVdoNinjaUrl(
   const fx = effectToParams(effect ?? getSavedEffect());
 
   // Base URL with chunked mode (Pitfall 2: required for setBufferDelay > 4s)
-  let url = `https://vdo.ninja/?room=${encodeURIComponent(room)}`;
+  let url = `${getVdoNinjaBaseUrl()}?room=${encodeURIComponent(room)}`;
 
   // Phase 13 (VID-07): When viewStreamId is set, this is a view-only popout window.
   // Omit &push= (no outbound camera/audio) and add &view= to filter to one stream.
   if (viewStreamId) {
-    url += `&view=${encodeURIComponent(viewStreamId)}`;
+    url += `&scene&view=${encodeURIComponent(viewStreamId)}`;
   } else {
     url += `&push=${encodeURIComponent(push)}`;
   }
 
   url += '&noaudio&cleanoutput&ad=0'
     + '&chunked'
+    + '&fixedchunkbuffer'
     + '&chunkbufferadaptive=0'
     + '&chunkbufferceil=180000'
     + `&quality=${bw.quality}`
@@ -209,7 +220,7 @@ export function buildVdoNinjaUrl(
   // If null, omit &buffer= entirely -- VDO.Ninja will use its own default.
   if (activeDelayMs !== null && activeDelayMs > 0) {
     console.log('VideoSync: URL includes &buffer=' + activeDelayMs);
-    url += `&buffer=${activeDelayMs}`;
+    url += `&chunkbuffer=${activeDelayMs}&buffer=${activeDelayMs}`;
   }
 
   // D-05: Room derived password forwarded as VDO.Ninja password param in iframe URL
@@ -232,6 +243,7 @@ const VDO_NINJA_ORIGIN = 'https://vdo.ninja';
 let lastAutoDelayMs: number | null = null;
 let activeDelayMs: number | null = null;
 let manualMode = false;
+let delayTargetStreamId: string | null = null;
 // Phase 14.2 (D-12): Track the last auto sync mode separately from manual mode.
 // This preserves the mode label so switchToAuto can restore it correctly.
 // Addresses review concern: separate lastAutoSyncMode from manualMode.
@@ -297,6 +309,10 @@ export function getLastAutoSyncMode(): 'measured' | 'calculated' {
   return lastAutoSyncMode;
 }
 
+export function setBufferDelayTargetStreamId(streamId: string | null): void {
+  delayTargetStreamId = streamId || null;
+}
+
 /** Get formatted display text for the current delay state.
  *  Three-tier display: manual > measured > calculated (D-11, D-12). */
 export function getDelayDisplayText(): string {
@@ -312,10 +328,14 @@ export function getDelayDisplayText(): string {
 }
 
 function sendBufferDelayToIframe(delayMs: number): void {
-  const iframe = document.querySelector('#main-area iframe') as HTMLIFrameElement | null;
+  const iframe = document.querySelector('#main-area iframe, #video-area iframe') as HTMLIFrameElement | null;
   if (!iframe?.contentWindow) return;
   console.log('VideoSync: postMessage setBufferDelay=' + delayMs + ' to ' + VDO_NINJA_ORIGIN);
-  iframe.contentWindow.postMessage({ setBufferDelay: delayMs }, VDO_NINJA_ORIGIN);
+  const payload: { setBufferDelay: number; streamID?: string } = { setBufferDelay: delayMs };
+  if (delayTargetStreamId) {
+    payload.streamID = delayTargetStreamId;
+  }
+  iframe.contentWindow.postMessage(payload, VDO_NINJA_ORIGIN);
 }
 
 /** Call after iframe load event to re-apply active delay (auto or manual).

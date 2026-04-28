@@ -4,7 +4,7 @@
 // postMessage roster updates from the main companion page.
 
 import type { RosterUser } from './types';
-import { buildVdoNinjaUrl } from './ui';
+import { buildVdoNinjaUrl, reapplyActiveDelay, setBufferDelayTargetStreamId, setLastAutoDelay } from './ui';
 import type { BandwidthProfile } from './ui';
 
 const params = new URLSearchParams(window.location.search);
@@ -14,6 +14,16 @@ const viewStreamId = params.get('view') ?? '';
 const username = params.get('name') ?? viewStreamId;
 const password = params.get('password') ?? '';
 const quality = (params.get('quality') ?? 'balanced') as BandwidthProfile;
+setBufferDelayTargetStreamId(viewStreamId || null);
+const bufferDelay = parseInt(params.get('buffer') ?? '', 10);
+const syncModeParam = params.get('syncMode');
+const syncMode = syncModeParam === 'measured' || syncModeParam === 'calculated'
+  ? syncModeParam
+  : undefined;
+
+if (Number.isFinite(bufferDelay) && bufferDelay > 0) {
+  setLastAutoDelay(bufferDelay, syncMode);
+}
 
 document.title = `${username} - JamWide Video`;
 
@@ -35,6 +45,13 @@ if (videoArea) {
   iframe.style.width = '100%';
   iframe.style.height = '100%';
   iframe.style.border = 'none';
+  iframe.addEventListener('load', () => {
+    reapplyActiveDelay();
+    setTimeout(reapplyActiveDelay, 1000);
+    setTimeout(reapplyActiveDelay, 3000);
+    setTimeout(reapplyActiveDelay, 6000);
+    setTimeout(reapplyActiveDelay, 10000);
+  });
   videoArea.insertBefore(iframe, videoArea.firstChild);
 }
 
@@ -57,5 +74,10 @@ window.addEventListener('message', (event: MessageEvent) => {
     if (overlay) {
       overlay.style.display = present ? 'none' : 'flex';
     }
+  } else if (event.data?.type === 'bufferDelay' && typeof event.data.delayMs === 'number') {
+    const incomingSyncMode = event.data.syncMode === 'measured' || event.data.syncMode === 'calculated'
+      ? event.data.syncMode
+      : undefined;
+    setLastAutoDelay(event.data.delayMs, incomingSyncMode);
   }
 });

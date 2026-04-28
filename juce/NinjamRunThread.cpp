@@ -576,10 +576,10 @@ void NinjamRunThread::pollInstamodeDelay(NJClient* client)
     // D-07: Trust unconditionally -- no sanity check against BPM/BPI calc.
     // Transition: MEASURED -> CONSUMED
     client->insta_meas_state_.store(NJClient::kInstaConsumed, std::memory_order_release);
-    processor.instaMeasurementBroadcast.store(true, std::memory_order_relaxed);
-
-    if (processor.videoCompanion && processor.videoCompanion->isActive())
+    if (processor.videoCompanion)
         processor.videoCompanion->broadcastMeasuredDelay(measuredDelayMs);
+
+    processor.instaMeasurementBroadcast.store(true, std::memory_order_relaxed);
 }
 
 void NinjamRunThread::updateSessionAndVuSnapshot(NJClient* client)

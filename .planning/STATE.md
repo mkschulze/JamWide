@@ -128,6 +128,7 @@ Recent decisions affecting current work:
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
 | 260413-udi | Add usernames in server room list and audio prelisten before entering a room | 2026-04-13 | 972885d | Needs Review | [260413-udi-add-usernames-in-server-room-list-and-au](./quick/260413-udi-add-usernames-in-server-room-list-and-au/) |
+| 260502-rcm | Fix orphan mirror fields (flags/volume/pan/out_chan_index) — restore canonical→mirror flow + diagnostic counters; build 295; UAT pending | 2026-05-02 | ac04e17 | UAT Pending | [260502-rcm-fix-orphan-mirror-fields](./quick/260502-rcm-fix-orphan-mirror-fields/) |
 
 ## Session Continuity
 

@@ -1709,11 +1709,22 @@ int NJClient::Run() // nonzero if sleep ok
                   bool        publish_added = false;
                   bool        publish_removed = false;
                   bool        publish_mask_change = true;
+                  // 2026-05-02 RemoteUserMirror orphan-fields fix:
+                  // publish_chinfo gates the new PeerChannelInfoUpdate publish.
+                  // Set true whenever the add-channel path mutates any of
+                  // flags/volume/pan/out_chan_index (i.e. whenever `a` is true
+                  // and cid is valid). Removal does not need it — PeerRemoved
+                  // resets the mirror's per-channel state.
+                  bool        publish_chinfo = false;
                   RemoteUser* victim_for_deferred_delete = nullptr;
                   int         victim_slot = -1;
                   int         user_slot = -1;
                   int         pub_submask = 0, pub_chanpresentmask = 0;
                   int         pub_mutedmask = 0, pub_solomask = 0;
+                  unsigned int pub_chflags = 0;
+                  float        pub_chvol   = 1.0f;
+                  float        pub_chpan   = 0.0f;
+                  int          pub_choutch = 0;
 
                   m_users_cs.Enter();
                   RemoteUser *theuser;
@@ -1803,6 +1814,15 @@ int NJClient::Run() // nonzero if sleep ok
                     pub_chanpresentmask = theuser->chanpresentmask;
                     pub_mutedmask       = theuser->mutedmask;
                     pub_solomask        = theuser->solomask;
+                    // 2026-05-02 RemoteUserMirror orphan-fields fix: capture
+                    // per-channel attrs for PeerChannelInfoUpdate publish below.
+                    // Inside m_users_cs so the read is consistent with the
+                    // canonical writes at lines 1760 / 1791 / 1799 above.
+                    pub_chflags = theuser->channels[cid].flags;
+                    pub_chvol   = theuser->channels[cid].volume;
+                    pub_chpan   = theuser->channels[cid].pan;
+                    pub_choutch = theuser->channels[cid].out_chan_index;
+                    publish_chinfo = true;
                   }
                   else
                   {
@@ -1876,6 +1896,30 @@ int NJClient::Run() // nonzero if sleep ok
                     {
                       m_remoteuser_update_overflows.fetch_add(1, std::memory_order_relaxed);
                       writeLog("WARNING: m_remoteuser_update_q full on PeerAddedUpdate (slot=%d)\n", user_slot);
+                    }
+                  }
+                  // 2026-05-02 RemoteUserMirror orphan-fields fix: publish per-channel
+                  // flags/volume/pan/out_chan_index. Ordered AFTER PeerAddedUpdate (mirror
+                  // slot is active=true before per-channel attrs land) and BEFORE
+                  // PeerChannelMaskUpdate (per-channel attributes precede mask-driven
+                  // present/mute/solo apply). Preserves both the legacy 1863-1871 invariant
+                  // and the new ChannelInfo-before-NextDs invariant. PeerNextDsUpdate is
+                  // published from start_decode callsites (separate publisher); SPSC FIFO
+                  // across publishers guarantees the audio thread sees ChannelInfo first.
+                  // See .planning/debug/remote-channels-cutoff.md.
+                  if (publish_chinfo && user_slot >= 0)
+                  {
+                    if (m_remoteuser_update_q.try_push(jamwide::RemoteUserUpdate{
+                          jamwide::PeerChannelInfoUpdate{user_slot, cid, pub_chflags,
+                                                         pub_chvol, pub_chpan, pub_choutch}}))
+                    {
+                      m_chinfo_publishes_observed[user_slot][cid]
+                          .fetch_add(1, std::memory_order_relaxed);
+                    }
+                    else
+                    {
+                      m_remoteuser_update_overflows.fetch_add(1, std::memory_order_relaxed);
+                      writeLog("WARNING: m_remoteuser_update_q full on PeerChannelInfoUpdate (slot=%d ch=%d)\n", user_slot, cid);
                     }
                   }
                   if (publish_mask_change && user_slot >= 0)
@@ -3324,6 +3368,25 @@ void NJClient::drainRemoteUserUpdates()
           chan.next_ds[1] = incoming_ds;
         }
       }
+      else if constexpr (std::is_same_v<T, jamwide::PeerChannelInfoUpdate>) {
+        // 2026-05-02 RemoteUserMirror orphan-fields fix. Apply per-channel
+        // flags/volume/pan/out_chan_index onto the mirror. These fields are
+        // read by the audio thread on EVERY block at njclient.cpp process_samples
+        // / mixInChannel sites. Without this branch they were stuck at
+        // PeerRemovedUpdate-reset defaults (1.0/0.0/0/0) — instamode peers
+        // starved after 1-2 NINJAM intervals; user-set output routing was
+        // silently bypassed. Same bounds-check shape as PeerCodecSwapUpdate.
+        // See .planning/debug/remote-channels-cutoff.md.
+        if (u.slot < 0 || u.slot >= MAX_PEERS) return;
+        if (u.channel < 0 || u.channel >= MAX_USER_CHANNELS) return;
+        auto& chan = m_remoteuser_mirror[u.slot].chans[u.channel];
+        chan.flags          = u.flags;
+        chan.volume         = u.volume;
+        chan.pan            = u.pan;
+        chan.out_chan_index = u.out_chan_index;
+        m_chinfo_applies_observed[u.slot][u.channel]
+            .fetch_add(1, std::memory_order_relaxed);
+      }
       else if constexpr (std::is_same_v<T, jamwide::PeerCodecSwapUpdate>) {
         if (u.slot < 0 || u.slot >= MAX_PEERS) return;
         if (u.channel < 0 || u.channel >= MAX_USER_CHANNELS) return;
@@ -4294,6 +4357,16 @@ void NJClient::SetUserChannelState(int useridx, int channelidx,
   int slot = -1;
   int pub_submask = 0, pub_chanpresentmask = 0, pub_mutedmask = 0, pub_solomask = 0;
   bool publish_mask = false;
+  // 2026-05-02 RemoteUserMirror orphan-fields fix: publish per-channel
+  // flags/volume/pan/out_chan_index when any of setvol/setpan/setoutch fires.
+  // Coalesces into ONE PeerChannelInfoUpdate per call (no flags-change here —
+  // SetUserChannelState's API doesn't carry flags; the user-info-change-notify
+  // publisher A covers flag mutations).
+  bool publish_chinfo = false;
+  unsigned int pub_chflags = 0;
+  float        pub_chvol   = 1.0f;
+  float        pub_chpan   = 0.0f;
+  int          pub_choutch = 0;
   {
     WDL_MutexLock lock(&m_users_cs);
     WDL_MutexLock lock2(&m_remotechannel_rd_mutex);
@@ -4373,6 +4446,35 @@ void NJClient::SetUserChannelState(int useridx, int channelidx,
     pub_mutedmask       = user->mutedmask;
     pub_solomask        = user->solomask;
     slot = findRemoteUserSlot(user);
+    // 2026-05-02 RemoteUserMirror orphan-fields fix: capture per-channel
+    // post-write values inside the lock (consistent with the canonical writes
+    // at setvol/setpan/setoutch above). publish_chinfo coalesces — one
+    // PeerChannelInfoUpdate covers all changed fields per call.
+    publish_chinfo = (setvol || setpan || setoutch);
+    pub_chflags = p->flags;
+    pub_chvol   = p->volume;
+    pub_chpan   = p->pan;
+    pub_choutch = p->out_chan_index;
+  }
+  // 2026-05-02 RemoteUserMirror orphan-fields fix — see Publisher A comment
+  // at the user-info-change-notify site. Ordered BEFORE PeerChannelMaskUpdate
+  // so the audio thread sees vol/pan/outch updates before any same-tick
+  // mute/solo apply. SPSC FIFO + drain-order semantics make this trivially
+  // true given enqueue order.
+  if (publish_chinfo && slot >= 0)
+  {
+    if (m_remoteuser_update_q.try_push(jamwide::RemoteUserUpdate{
+          jamwide::PeerChannelInfoUpdate{slot, channelidx, pub_chflags,
+                                         pub_chvol, pub_chpan, pub_choutch}}))
+    {
+      m_chinfo_publishes_observed[slot][channelidx]
+          .fetch_add(1, std::memory_order_relaxed);
+    }
+    else
+    {
+      m_remoteuser_update_overflows.fetch_add(1, std::memory_order_relaxed);
+      writeLog("WARNING: m_remoteuser_update_q full on PeerChannelInfoUpdate (slot=%d ch=%d)\n", slot, channelidx);
+    }
   }
   // 15.1-07a CR-01: publish channel-mask change to mirror so the audio thread
   // sees mute/solo/subscribe toggles immediately on the next AudioProc drain.

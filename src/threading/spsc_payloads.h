@@ -2,8 +2,13 @@
     JamWide Plugin - spsc_payloads.h
     Audio-thread SPSC payload records for run-thread <-> audio-thread state transfer
 
-    Phase 15.1-04 (Wave 0). FINALIZED at this revision per Codex M-9 — no later
-    sub-plan (15.1-05 / 06 / 07a / 07b / 07c / 08 / 09) modifies this header.
+    Phase 15.1-04 (Wave 0). Originally FINALIZED at 15.1-04 per Codex M-9 — no
+    later sub-plan (15.1-05 / 06 / 07a / 07b / 07c / 08 / 09) modified this
+    header. SUPERSEDED 2026-05-02 to add PeerChannelInfoUpdate — see deviation
+    block at the new struct definition and `.planning/debug/remote-channels-cutoff.md`
+    for authority. The header remained stable across 15.1-05/06/07a/07b/07c/08/09;
+    this is a post-15.1 stabilization patch closing the orphan-fields gap left
+    by 15.1-07a.
 
     Codex HIGH-2 response: NO raw-pointer escape hatches into run-thread-owned
     state. Mirrors are populated by VALUE — payload structs deliberately do
@@ -106,13 +111,45 @@ struct PeerCodecSwapUpdate {
     unsigned int new_fourcc = 0;
 };
 
+// -------------------------------------------------------------------------
+// DEVIATION FROM CODEX M-9 "FINAL" — 2026-05-02.
+//
+// Authority: .planning/debug/remote-channels-cutoff.md (gsd-debugger,
+// status=diagnosed, root cause CONFIRMED).
+//
+// 15.1-07a's RemoteUserMirror migration moved the audio-thread reads of
+// four per-channel fields (flags, volume, pan, out_chan_index) onto the
+// mirror but shipped no SPSC payload to carry them. Audio mixed every
+// remote channel as if flags=0 / volume=1.0 / pan=0.0 / out_chan_index=0
+// regardless of canonical state — instamode peers starved after 1-2
+// NINJAM intervals; user-set output routing was silently bypassed.
+//
+// Same shape as the three already-fixed 15.1-07a regressions (b9899a0,
+// e827453, e151dd8) and matches the legacy-invariant audit pattern in
+// memory `feedback_legacy_invariant_audit.md`.
+//
+// Closing this gap requires breaking the M-9 FINAL marker on this header.
+// The header-level FINAL annotation has been updated to mark the
+// supersession explicitly. RT-safety review by realtime-audio-reviewer
+// is the gating pre-commit step (see PLAN Task 3).
+// -------------------------------------------------------------------------
+struct PeerChannelInfoUpdate {
+    int          slot = 0;
+    int          channel = 0;
+    unsigned int flags = 0;
+    float        volume = 1.0f;
+    float        pan = 0.0f;
+    int          out_chan_index = 0;
+};
+
 using RemoteUserUpdate = std::variant<
     PeerAddedUpdate,
     PeerRemovedUpdate,
     PeerChannelMaskUpdate,
     PeerVolPanUpdate,
     PeerNextDsUpdate,
-    PeerCodecSwapUpdate
+    PeerCodecSwapUpdate,
+    PeerChannelInfoUpdate
 >;
 
 static_assert(std::is_trivially_copyable_v<RemoteUserUpdate>,

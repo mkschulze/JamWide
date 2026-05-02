@@ -4446,6 +4446,23 @@ float NJClient::GetUserChannelPeak(int useridx, int channelidx, int whichch)
   return (l + r) * 0.5f;
 }
 
+// 2026-05-02 RemoteUserMirror orphan-fields fix: falsifiable UAT readout.
+// Both accessors are relaxed-load and bounds-checked; safe to call from any
+// thread (UI / debugger / lldb). See .planning/debug/remote-channels-cutoff.md.
+uint64_t NJClient::GetChannelInfoPublishCount(int slot, int channel) const noexcept
+{
+  if (slot < 0 || slot >= MAX_PEERS) return 0;
+  if (channel < 0 || channel >= MAX_USER_CHANNELS) return 0;
+  return m_chinfo_publishes_observed[slot][channel].load(std::memory_order_relaxed);
+}
+
+uint64_t NJClient::GetChannelInfoApplyCount(int slot, int channel) const noexcept
+{
+  if (slot < 0 || slot >= MAX_PEERS) return 0;
+  if (channel < 0 || channel >= MAX_USER_CHANNELS) return 0;
+  return m_chinfo_applies_observed[slot][channel].load(std::memory_order_relaxed);
+}
+
 unsigned int NJClient::GetUserChannelCodec(int useridx, int channelidx)
 {
   WDL_MutexLock lock(&m_users_cs);

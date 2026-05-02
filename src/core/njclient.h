@@ -429,6 +429,14 @@ public:
   void GetRemoteUsersSnapshot(std::vector<RemoteUserInfo>& out);
 
   float GetUserChannelPeak(int useridx, int channelidx, int whichch=-1);
+
+  // Falsifiable UAT readout for the 2026-05-02 RemoteUserMirror orphan-fields
+  // fix. Returns the per-(slot,channel) count of PeerChannelInfoUpdate
+  // publishes (run thread) / applies (audio thread). Both relaxed-load.
+  // See .planning/debug/remote-channels-cutoff.md.
+  uint64_t GetChannelInfoPublishCount(int slot, int channel) const noexcept;
+  uint64_t GetChannelInfoApplyCount  (int slot, int channel) const noexcept;
+
   unsigned int GetUserChannelCodec(int useridx, int channelidx);
   double GetUserSessionPos(int useridx, time_t *lastupdatetime, double *maxlen);
   const char *GetUserChannelState(int useridx, int channelidx, bool *sub=0, float *vol=0, float *pan=0, bool *mute=0, bool *solo=0, int *outchannel=0, int *flags=0);
@@ -734,6 +742,13 @@ protected:
   // thread side bumps on try_push failure. 15.1-10 phase verification asserts
   // == 0 post-UAT. Relaxed semantics — observability only.
   std::atomic<uint64_t> m_remoteuser_update_overflows{0};
+
+  // Diagnostic counters for the 2026-05-02 RemoteUserMirror orphan-fields fix.
+  // Bumped at PeerChannelInfoUpdate publish (run thread) and apply (audio
+  // thread) sites. Relaxed atomics — purpose is falsifiable UAT readout, not
+  // synchronization. See .planning/debug/remote-channels-cutoff.md.
+  std::atomic<uint64_t> m_chinfo_publishes_observed[MAX_PEERS][MAX_USER_CHANNELS]{};
+  std::atomic<uint64_t> m_chinfo_applies_observed  [MAX_PEERS][MAX_USER_CHANNELS]{};
 
   // 15.1-07a + Codex HIGH-3: deferred-free queue for run-thread-owned
   // RemoteUser objects. The run thread enqueues a RemoteUser* ONLY AFTER:

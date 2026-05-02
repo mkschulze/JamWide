@@ -83,6 +83,8 @@ struct TestRemoteUserChannelMirror {
     bool         solo = false;
     float        volume = 1.0f;
     float        pan = 0.0f;
+    int          out_chan_index = 0;       // 2026-05-02 orphan-fields fix
+    unsigned int flags = 0;                // 2026-05-02 orphan-fields fix
     unsigned int codec_fourcc = 0;
     jamwide::DecodeState* ds = nullptr;
     jamwide::DecodeState* next_ds[2] = {nullptr, nullptr};
@@ -157,6 +159,17 @@ static void apply_one(jamwide::RemoteUserUpdate&& upd) {
             if (u.slot < 0 || u.slot >= MAX_PEERS) return;
             if (u.channel < 0 || u.channel >= MAX_USER_CHANNELS) return;
             g_mirror[u.slot].chans[u.channel].codec_fourcc = u.new_fourcc;
+        }
+        else if constexpr (std::is_same_v<T, jamwide::PeerChannelInfoUpdate>) {
+            // 2026-05-02 RemoteUserMirror orphan-fields fix — production
+            // parity with njclient.cpp drainRemoteUserUpdates apply visitor.
+            if (u.slot < 0 || u.slot >= MAX_PEERS) return;
+            if (u.channel < 0 || u.channel >= MAX_USER_CHANNELS) return;
+            auto& chan = g_mirror[u.slot].chans[u.channel];
+            chan.flags          = u.flags;
+            chan.volume         = u.volume;
+            chan.pan            = u.pan;
+            chan.out_chan_index = u.out_chan_index;
         }
     }, upd);
 }
@@ -476,6 +489,195 @@ static void test_remote_user_gate_rejects_premature_free()
 }
 
 // ============================================================================
+// Test 9 (2026-05-02 orphan-fields fix): PeerChannelInfoUpdate roundtrip.
+// All four orphan fields (flags, volume, pan, out_chan_index) propagate to
+// the mirror through the apply visitor.
+// ============================================================================
+
+static void test_chinfo_roundtrip()
+{
+    TEST("PeerChannelInfoUpdate apply roundtrip: all four fields propagate");
+    test_njclient::reset_mirror();
+
+    jamwide::SpscRing<jamwide::RemoteUserUpdate, 64> q;
+    q.try_push(jamwide::RemoteUserUpdate{
+        jamwide::PeerAddedUpdate{/*slot=*/3, /*user_index=*/9}});
+    q.try_push(jamwide::RemoteUserUpdate{
+        jamwide::PeerChannelInfoUpdate{/*slot=*/3, /*channel=*/5,
+                                       /*flags=*/2u, /*volume=*/0.7f,
+                                       /*pan=*/-0.25f, /*out_chan_index=*/4}});
+    q.drain([](jamwide::RemoteUserUpdate&& u){ test_njclient::apply_one(std::move(u)); });
+
+    auto& chan = test_njclient::g_mirror[3].chans[5];
+    if (chan.flags != 2u) { FAIL("flags did not propagate"); return; }
+    if (chan.volume != 0.7f) { FAIL("volume did not propagate"); return; }
+    if (chan.pan != -0.25f) { FAIL("pan did not propagate"); return; }
+    if (chan.out_chan_index != 4) { FAIL("out_chan_index did not propagate"); return; }
+    PASS();
+}
+
+// ============================================================================
+// Test 10 (2026-05-02 orphan-fields fix): concurrent producer/consumer with
+// PeerChannelInfoUpdate mixed into the variant stream. 1000 cycles. Final
+// mirror state must reflect last-published-wins semantics.
+// ============================================================================
+
+static void test_chinfo_concurrent()
+{
+    TEST("PeerChannelInfoUpdate concurrent (1000 cycles): no torn fields under producer/consumer");
+    test_njclient::reset_mirror();
+
+    constexpr int CYCLES = 1000;
+    constexpr int SLOT = 7;
+    constexpr int CH = 3;
+    jamwide::SpscRing<jamwide::RemoteUserUpdate, 64> q;
+    std::atomic<bool> producer_done{false};
+
+    // Pre-add the peer once so the mirror slot is active throughout.
+    q.try_push(jamwide::RemoteUserUpdate{
+        jamwide::PeerAddedUpdate{SLOT, /*user_index=*/0}});
+
+    std::thread producer([&]() {
+        for (int i = 0; i < CYCLES; ++i) {
+            // Mix all six (well — five; we keep the peer alive) variant types.
+            jamwide::RemoteUserUpdate mask{jamwide::PeerChannelMaskUpdate{
+                SLOT, /*submask=*/i & 0xFF, /*chanpresentmask=*/0xFFu,
+                /*mutedmask=*/(i >> 1) & 0x07, /*solomask=*/0}};
+            while (!q.try_push(mask)) std::this_thread::yield();
+
+            jamwide::RemoteUserUpdate vp{jamwide::PeerVolPanUpdate{
+                SLOT, (i & 1) != 0, (float)i * 0.001f, (float)((i & 7) - 4) * 0.1f}};
+            while (!q.try_push(vp)) std::this_thread::yield();
+
+            // The new variant — drives the field-by-field copy at every cycle.
+            jamwide::RemoteUserUpdate ci{jamwide::PeerChannelInfoUpdate{
+                SLOT, CH,
+                /*flags=*/(unsigned int)(i & 0x06),  // bits 1 (instamode) and 2 (sessionmode)
+                /*volume=*/(float)((i % 100) + 1) * 0.01f,  // 0.01 .. 1.00
+                /*pan=*/(float)((i & 0x0F) - 8) * 0.125f,   // -1.0 .. 0.875
+                /*out_chan_index=*/i & 0x07}};
+            while (!q.try_push(ci)) std::this_thread::yield();
+
+            jamwide::RemoteUserUpdate nds{jamwide::PeerNextDsUpdate{
+                SLOT, /*channel=*/CH, /*slot_idx=*/i & 1, /*ds=*/nullptr}};
+            while (!q.try_push(nds)) std::this_thread::yield();
+        }
+        producer_done.store(true, std::memory_order_release);
+    });
+
+    while (!producer_done.load(std::memory_order_acquire) || !q.empty()) {
+        q.drain([](jamwide::RemoteUserUpdate&& u){ test_njclient::apply_one(std::move(u)); });
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    q.drain([](jamwide::RemoteUserUpdate&& u){ test_njclient::apply_one(std::move(u)); });
+    producer.join();
+
+    // Last cycle is i=CYCLES-1=999. Compute expected last-published values.
+    const int last = CYCLES - 1;
+    const unsigned int exp_flags  = (unsigned int)(last & 0x06);
+    const float        exp_volume = (float)((last % 100) + 1) * 0.01f;
+    const float        exp_pan    = (float)((last & 0x0F) - 8) * 0.125f;
+    const int          exp_outch  = last & 0x07;
+
+    auto& chan = test_njclient::g_mirror[SLOT].chans[CH];
+    if (chan.flags != exp_flags) { FAIL("concurrent: flags torn or wrong (last-write-wins broken)"); return; }
+    if (chan.volume != exp_volume) { FAIL("concurrent: volume torn or wrong"); return; }
+    if (chan.pan != exp_pan) { FAIL("concurrent: pan torn or wrong"); return; }
+    if (chan.out_chan_index != exp_outch) { FAIL("concurrent: out_chan_index torn or wrong"); return; }
+    PASS();
+}
+
+// ============================================================================
+// Test 11 (2026-05-02 orphan-fields fix): out-of-range slot/channel indices on
+// PeerChannelInfoUpdate are silently ignored. No UB, mirror state untouched.
+// ============================================================================
+
+static void test_chinfo_bounds_check()
+{
+    TEST("PeerChannelInfoUpdate bounds-check: OOB slot/channel ignored, no UB");
+    test_njclient::reset_mirror();
+
+    jamwide::SpscRing<jamwide::RemoteUserUpdate, 64> q;
+
+    // Push four malformed updates with poison values that, if applied, would
+    // be detectable in the resulting mirror state.
+    q.try_push(jamwide::RemoteUserUpdate{
+        jamwide::PeerChannelInfoUpdate{
+            /*slot=*/test_njclient::MAX_PEERS, /*channel=*/0,
+            /*flags=*/0xDEAD, 99.0f, 99.0f, 999}});
+    q.try_push(jamwide::RemoteUserUpdate{
+        jamwide::PeerChannelInfoUpdate{
+            /*slot=*/-1, /*channel=*/0,
+            /*flags=*/0xDEAD, 99.0f, 99.0f, 999}});
+    q.try_push(jamwide::RemoteUserUpdate{
+        jamwide::PeerChannelInfoUpdate{
+            /*slot=*/0, /*channel=*/test_njclient::MAX_USER_CHANNELS,
+            /*flags=*/0xDEAD, 99.0f, 99.0f, 999}});
+    q.try_push(jamwide::RemoteUserUpdate{
+        jamwide::PeerChannelInfoUpdate{
+            /*slot=*/0, /*channel=*/-1,
+            /*flags=*/0xDEAD, 99.0f, 99.0f, 999}});
+
+    q.drain([](jamwide::RemoteUserUpdate&& u){ test_njclient::apply_one(std::move(u)); });
+
+    // Mirror must remain at construction defaults — no slot got the poison.
+    for (int s = 0; s < test_njclient::MAX_PEERS; ++s) {
+        for (int c = 0; c < test_njclient::MAX_USER_CHANNELS; ++c) {
+            auto& chan = test_njclient::g_mirror[s].chans[c];
+            if (chan.flags == 0xDEAD || chan.volume == 99.0f ||
+                chan.pan == 99.0f || chan.out_chan_index == 999) {
+                FAIL("OOB PeerChannelInfoUpdate wrote to mirror"); return;
+            }
+        }
+    }
+    PASS();
+}
+
+// ============================================================================
+// Test 12 (2026-05-02 orphan-fields fix): ordering invariant. PeerChannelInfoUpdate
+// published BEFORE PeerNextDsUpdate for the same channel is observed in that
+// order on the mirror after a single drain. This is trivially true given SPSC
+// FIFO + straight-line drain semantics; the test guards against future
+// regressions that reorder or split the drain loop.
+// ============================================================================
+
+static void test_chinfo_orders_before_nextds()
+{
+    TEST("PeerChannelInfoUpdate orders before PeerNextDsUpdate for same channel");
+    test_njclient::reset_mirror();
+
+    jamwide::SpscRing<jamwide::RemoteUserUpdate, 64> q;
+    auto* fake_ds_marker = new jamwide::DecodeState{};
+    fake_ds_marker->marker = 0xCAFE;
+
+    q.try_push(jamwide::RemoteUserUpdate{
+        jamwide::PeerAddedUpdate{/*slot=*/2, /*user_index=*/0}});
+    // ChannelInfo first — the audio thread MUST observe flags=2 BEFORE the
+    // next_ds slot becomes populated, because real-production audio reads
+    // mirror.chans[ch].flags on the SAME block it picks up next_ds.
+    q.try_push(jamwide::RemoteUserUpdate{
+        jamwide::PeerChannelInfoUpdate{/*slot=*/2, /*channel=*/1,
+                                       /*flags=*/2u, /*volume=*/1.0f,
+                                       /*pan=*/0.0f, /*out_chan_index=*/0}});
+    q.try_push(jamwide::RemoteUserUpdate{
+        jamwide::PeerNextDsUpdate{/*slot=*/2, /*channel=*/1,
+                                  /*slot_idx=*/0, /*ds=*/fake_ds_marker}});
+    q.drain([](jamwide::RemoteUserUpdate&& u){ test_njclient::apply_one(std::move(u)); });
+
+    auto& chan = test_njclient::g_mirror[2].chans[1];
+    if (chan.flags != 2u) {
+        FAIL("ordering: flags=2 not observed (ChannelInfo apply lost)");
+        delete fake_ds_marker; return;
+    }
+    if (chan.next_ds[0] != fake_ds_marker) {
+        FAIL("ordering: next_ds[0] not populated (NextDs apply lost)");
+        delete fake_ds_marker; return;
+    }
+    delete fake_ds_marker;
+    PASS();
+}
+
+// ============================================================================
 // Codex HIGH-2 static checks: no escape-hatch pointer in payload.
 // ============================================================================
 
@@ -491,6 +693,8 @@ static_assert(std::is_trivially_copyable_v<jamwide::PeerNextDsUpdate>,
               "PeerNextDsUpdate must be trivially copyable (HIGH-2 contract)");
 static_assert(std::is_trivially_copyable_v<jamwide::PeerCodecSwapUpdate>,
               "PeerCodecSwapUpdate must be trivially copyable (HIGH-2 contract)");
+static_assert(std::is_trivially_copyable_v<jamwide::PeerChannelInfoUpdate>,
+              "PeerChannelInfoUpdate must be trivially copyable (HIGH-2 contract)");
 // The slot/user_index fields must be by-value scalars, not pointers:
 static_assert(!std::is_pointer_v<decltype(std::declval<jamwide::PeerAddedUpdate>().slot)>,
               "PeerAddedUpdate.slot must not be a pointer (HIGH-2 sanity check)");
@@ -525,6 +729,11 @@ int main()
     test_bounded_indices();
     test_remote_user_generation_gate();
     test_remote_user_gate_rejects_premature_free();
+    // 2026-05-02 RemoteUserMirror orphan-fields fix coverage.
+    test_chinfo_roundtrip();
+    test_chinfo_concurrent();
+    test_chinfo_bounds_check();
+    test_chinfo_orders_before_nextds();
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

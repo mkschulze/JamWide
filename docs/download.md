@@ -14,8 +14,8 @@ The new JUCE-based version of JamWide is available as a beta. This is a complete
 **This is beta software** — it may contain bugs. Please report issues on [GitHub](https://github.com/mkschulze/JamWide/issues).
 
 <div class="download-section">
-  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.1" class="btn btn-primary btn-large">
-    Download v1.1-beta.20.1
+  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.2" class="btn btn-primary btn-large">
+    Download v1.1-beta.20.2
   </a>
   <p class="version-info">macOS (Universal) / Windows (x64) / Linux (x64)</p>
 </div>

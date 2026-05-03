@@ -123,6 +123,19 @@ bool parseChatInput(const juce::String& input, jamwide::SendChatCommand& cmd)
 
 constexpr float kFontSize = 13.0f;
 
+// JUCE TextEditor owns its scrolling Viewport as a private member but adds
+// it as a child Component. Walk the children to grab a pointer so we can
+// drive the viewport directly — bypasses the caret-driven scroll logic
+// (scrollToMakeSureCursorIsVisible) which doesn't model "scroll to bottom"
+// or "preserve viewport position" cleanly on a read-only chat log.
+juce::Viewport* findInternalViewport(juce::Component& c)
+{
+    for (int i = 0; i < c.getNumChildComponents(); ++i)
+        if (auto* vp = dynamic_cast<juce::Viewport*>(c.getChildComponent(i)))
+            return vp;
+    return nullptr;
+}
+
 } // anonymous namespace
 
 //==============================================================================
@@ -280,6 +293,15 @@ void ChatPanel::resized()
 
     // Chat log takes remaining space
     chatLog.setBounds(area);
+
+    // Re-snap to bottom when auto-scrolling. Resize re-wraps text and shifts
+    // line breaks, so the previous "bottom" pixel position no longer maps to
+    // the latest message. Without this, toggling the chat sidebar or
+    // resizing the host window can leave the latest message clipped above
+    // the visible area until the next message arrives.
+    if (autoScroll)
+        if (auto* vp = findInternalViewport(chatLog))
+            vp->setViewPosition(0, vp->getViewedComponent()->getHeight());
 }
 
 void ChatPanel::paint(juce::Graphics& g)
@@ -322,12 +344,8 @@ void ChatPanel::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheel
 
 void ChatPanel::addMessage(const ChatMessage& msg)
 {
-    // 2026-05-03 chat-scroll fix: use leading newline instead of trailing
-    // newline so the caret never lands on an empty line below the most
-    // recent message. With the previous trailing-"\n" pattern, JUCE scrolled
-    // to keep the caret visible — and the caret was on an empty line below
-    // the latest message, so the visible viewport ended in blank space and
-    // the actual message appeared "lifted up" by 1+ lines.
+    // Use a leading newline (no trailing newline) so the caret ends on the
+    // line with the last message text, never on an empty line below it.
     juce::String text = formatMessage(msg);
     const bool first = chatLog.getText().isEmpty();
     juce::String toInsert = first ? text : (juce::String("\n") + text);
@@ -338,30 +356,38 @@ void ChatPanel::addMessage(const ChatMessage& msg)
 
     chatLog.setColour(juce::TextEditor::textColourId, colorForType(msg.type));
 
+    auto* vp = findInternalViewport(chatLog);
+
     if (autoScroll)
     {
         chatLog.moveCaretToEnd();
         chatLog.insertTextAtCaret(toInsert);
-        // Force scroll to absolute end. JUCE's TextEditor sometimes
-        // leaves a partial-line offset after insertTextAtCaret; setting
-        // the caret by absolute character index reliably triggers
-        // scrollToMakeSureCursorIsVisible against the very last char.
-        chatLog.setCaretPosition(chatLog.getText().length());
+        // Snap viewport to absolute bottom. scrollToMakeSureCursorIsVisible
+        // (caret-driven) leaves a 2px margin and can clip a descender; this
+        // setViewPosition is clamped to max scroll so it always lands flush.
+        if (vp != nullptr)
+            vp->setViewPosition(0, vp->getViewedComponent()->getHeight());
     }
     else
     {
-        // Append at end without disturbing the user's scroll/selection position.
-        // All calls are synchronous so only the final state is painted.
+        // Preserve the user's actual viewport scroll, NOT the hidden caret
+        // position. The previous version saved/restored caretPosition, but
+        // on a read-only / setCaretVisible(false) editor the caret silently
+        // tracks wherever the user last clicked — usually mid-history. The
+        // restore then called scrollToMakeSureCursorIsVisible which yanked
+        // the viewport to that click point, making every new message
+        // "jump back to almost middle" even though it was actually
+        // appended at the end.
+        const int savedY = vp != nullptr ? vp->getViewPosition().y : 0;
         auto savedSel = chatLog.getHighlightedRegion();
-        int savedPos = chatLog.getCaretPosition();
 
         chatLog.moveCaretToEnd();
         chatLog.insertTextAtCaret(toInsert);
 
         if (!savedSel.isEmpty())
             chatLog.setHighlightedRegion(savedSel);
-        else
-            chatLog.setCaretPosition(savedPos);
+        if (vp != nullptr)
+            vp->setViewPosition(0, savedY);
     }
 }
 
@@ -417,6 +443,13 @@ void ChatPanel::handleSend()
     auto text = chatInput.getText();
     if (text.isEmpty())
         return;
+
+    // The user pressed Send — they want to see their message and any
+    // responses. If they had previously scrolled up (autoScroll latched
+    // off via mouseDown / mouseWheelMove), re-enable so the new content
+    // scrolls into view via addMessage's autoScroll branch.
+    autoScroll = true;
+    jumpToBottomButton.setVisible(false);
 
     // Local-only diagnostic commands handled before parseChatInput so they
     // work in any connection state and never reach the server.

@@ -322,7 +322,15 @@ void ChatPanel::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheel
 
 void ChatPanel::addMessage(const ChatMessage& msg)
 {
-    auto text = formatMessage(msg) + "\n";
+    // 2026-05-03 chat-scroll fix: use leading newline instead of trailing
+    // newline so the caret never lands on an empty line below the most
+    // recent message. With the previous trailing-"\n" pattern, JUCE scrolled
+    // to keep the caret visible — and the caret was on an empty line below
+    // the latest message, so the visible viewport ended in blank space and
+    // the actual message appeared "lifted up" by 1+ lines.
+    juce::String text = formatMessage(msg);
+    const bool first = chatLog.getText().isEmpty();
+    juce::String toInsert = first ? text : (juce::String("\n") + text);
 
     // Store in processor's persistent chat history
     ChatMessage copy = msg;
@@ -333,7 +341,12 @@ void ChatPanel::addMessage(const ChatMessage& msg)
     if (autoScroll)
     {
         chatLog.moveCaretToEnd();
-        chatLog.insertTextAtCaret(text);
+        chatLog.insertTextAtCaret(toInsert);
+        // Force scroll to absolute end. JUCE's TextEditor sometimes
+        // leaves a partial-line offset after insertTextAtCaret; setting
+        // the caret by absolute character index reliably triggers
+        // scrollToMakeSureCursorIsVisible against the very last char.
+        chatLog.setCaretPosition(chatLog.getText().length());
     }
     else
     {
@@ -343,7 +356,7 @@ void ChatPanel::addMessage(const ChatMessage& msg)
         int savedPos = chatLog.getCaretPosition();
 
         chatLog.moveCaretToEnd();
-        chatLog.insertTextAtCaret(text);
+        chatLog.insertTextAtCaret(toInsert);
 
         if (!savedSel.isEmpty())
             chatLog.setHighlightedRegion(savedSel);
@@ -355,11 +368,14 @@ void ChatPanel::addMessage(const ChatMessage& msg)
 void ChatPanel::loadHistory(const std::vector<ChatMessage>& history)
 {
     chatLog.clear();
+    bool first = true;
     for (auto& msg : history)
     {
         chatLog.setColour(juce::TextEditor::textColourId, colorForType(msg.type));
         chatLog.moveCaretToEnd();
-        chatLog.insertTextAtCaret(formatMessage(msg) + "\n");
+        const juce::String line = formatMessage(msg);
+        chatLog.insertTextAtCaret(first ? line : (juce::String("\n") + line));
+        first = false;
     }
     chatLog.moveCaretToEnd();
     autoScroll = true;
@@ -433,10 +449,9 @@ void ChatPanel::handleSend()
     chatInput.grabKeyboardFocus();
 }
 
-// /rcmstats — dump the diagnostic counter arrays + per-(slot,channel) mirror
-// state snapshot for the tx-silent-and-orphan-cutoff debug session. Read-only;
-// no audio-path impact. Output is local-only (System messages, never sent to
-// the server).
+// /rcmstats — dump the four diagnostic counter arrays added in commit 5b745ab
+// for the tx-silent-and-orphan-cutoff debug session. Read-only; no audio-path
+// impact. Output is local-only (System messages, never sent to the server).
 bool ChatPanel::handleRcmStats()
 {
     std::string ts;
@@ -486,6 +501,8 @@ bool ChatPanel::handleRcmStats()
         pushSystem(buf);
 
         int nonzero = 0;
+        // Track which peer-slots have any non-zero counter so we can dump
+        // their peer-level snapshot once at the end without duplicating per-channel.
         bool slot_seen[MAX_PEERS] = {};
         for (int slot = 0; slot < MAX_PEERS; ++slot)
         {

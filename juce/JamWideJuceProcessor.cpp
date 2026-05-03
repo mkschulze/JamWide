@@ -789,7 +789,11 @@ std::string JamWideJuceProcessor::buildDiagnosticReport() const
     localtime_r(&t, &tm_buf);
 #endif
     char ts[32] = {};
+#ifdef _WIN32
+    strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tm_buf);  // WDL redefines strftime to strftimeUTF8 on Windows
+#else
     std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tm_buf);
+#endif
 
     os << "=== JamWide Debug Snapshot ===\n";
     os << "timestamp: " << ts << "\n";
@@ -901,7 +905,11 @@ juce::File JamWideJuceProcessor::writeDebugSnapshot() const
     localtime_r(&t, &tm_buf);
 #endif
     char fname[64] = {};
+#ifdef _WIN32
+    strftime(fname, sizeof(fname), "jamwide-debug-%Y%m%d-%H%M%S.log", &tm_buf);  // WDL redefines strftime to strftimeUTF8 on Windows
+#else
     std::strftime(fname, sizeof(fname), "jamwide-debug-%Y%m%d-%H%M%S.log", &tm_buf);
+#endif
 
     juce::File logsDir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
                              .getChildFile("JamWide")

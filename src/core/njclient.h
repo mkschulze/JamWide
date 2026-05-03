@@ -437,6 +437,42 @@ public:
   uint64_t GetChannelInfoPublishCount(int slot, int channel) const noexcept;
   uint64_t GetChannelInfoApplyCount  (int slot, int channel) const noexcept;
 
+  // 2026-05-03 tx-silent-and-orphan-cutoff: read-only mirror-state inspector
+  // for /rcmstats. Reads RemoteUserMirror[slot] and chans[channel] with
+  // relaxed semantics — observability only, audio-thread races are accepted
+  // (single-shot diagnostic, same risk profile as peak_vol_l/r reads from
+  // GetUserChannelPeak). DecodeState* fields are reported as bool "active"
+  // (non-null) only — the pointer values themselves are never exposed.
+  // Returns false if (slot, channel) is out of bounds.
+  struct MirrorChannelSnapshot {
+      bool present;
+      bool muted;
+      bool solo;
+      float volume;
+      float pan;
+      int out_chan_index;
+      unsigned int flags;
+      unsigned int codec_fourcc;
+      bool ds_active;
+      bool next_ds0_active;
+      bool next_ds1_active;
+      int dump_samples;
+      double curds_lenleft;
+  };
+  struct MirrorPeerSnapshot {
+      bool active;
+      int user_index;
+      int submask;
+      int chanpresentmask;
+      int mutedmask;
+      int solomask;
+      bool muted;
+      float volume;
+      float pan;
+  };
+  bool GetMirrorChannelSnapshot(int slot, int channel, MirrorChannelSnapshot* out) const noexcept;
+  bool GetMirrorPeerSnapshot   (int slot,              MirrorPeerSnapshot*    out) const noexcept;
+
   unsigned int GetUserChannelCodec(int useridx, int channelidx);
   double GetUserSessionPos(int useridx, time_t *lastupdatetime, double *maxlen);
   const char *GetUserChannelState(int useridx, int channelidx, bool *sub=0, float *vol=0, float *pan=0, bool *mute=0, bool *solo=0, int *outchannel=0, int *flags=0);

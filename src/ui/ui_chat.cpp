@@ -12,8 +12,11 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <ctime>
+#include <mutex>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -105,6 +108,90 @@ std::string format_line(const ChatMessage& message) {
     }
 }
 
+void push_system_line(UiState& state, std::string content, const std::string& timestamp) {
+    ChatMessage msg;
+    msg.type = ChatMessageType::System;
+    msg.content = std::move(content);
+    msg.timestamp = timestamp;
+    state.chat_history[state.chat_history_index] = std::move(msg);
+    state.chat_history_index =
+        (state.chat_history_index + 1) % UiState::kChatHistorySize;
+    if (state.chat_history_count < UiState::kChatHistorySize) {
+        state.chat_history_count++;
+    }
+}
+
+// /rcmstats — dump the four diagnostic counter arrays added in commit 5b745ab
+// for the tx-silent-and-orphan-cutoff debug session. Read-only; no audio-path
+// impact. Output is local-only (System messages, never sent to the server).
+bool handle_rcmstats(jamwide::JamWidePlugin* plugin, UiState& state) {
+    const std::string ts = [] {
+        auto now = std::chrono::system_clock::now();
+        std::time_t t = std::chrono::system_clock::to_time_t(now);
+        std::tm tm_buf{};
+#if defined(_WIN32)
+        localtime_s(&tm_buf, &t);
+#else
+        localtime_r(&t, &tm_buf);
+#endif
+        char buf[6] = {};
+#ifdef _WIN32
+        strftime(buf, sizeof(buf), "%H:%M", &tm_buf);
+#else
+        std::strftime(buf, sizeof(buf), "%H:%M", &tm_buf);
+#endif
+        return std::string(buf);
+    }();
+
+    std::vector<std::string> lines;
+    lines.reserve(16);
+    lines.emplace_back("--- rcm counter readout ---");
+
+    {
+        std::unique_lock<std::mutex> client_lock(plugin->client_mutex);
+        NJClient* client = plugin->client.get();
+        if (!client) {
+            lines.emplace_back("(no NJClient instance)");
+        } else {
+            char buf[160];
+            std::snprintf(buf, sizeof(buf),
+                "overflows: bq_drops=%llu rmuser_upd=%llu defer_del=%llu",
+                (unsigned long long) client->GetBlockQueueDropCount(),
+                (unsigned long long) client->GetRemoteUserUpdateOverflowCount(),
+                (unsigned long long) client->GetDeferredDeleteOverflowCount());
+            lines.emplace_back(buf);
+
+            int nonzero = 0;
+            for (int slot = 0; slot < MAX_PEERS; ++slot) {
+                for (int ch = 0; ch < MAX_USER_CHANNELS; ++ch) {
+                    const uint64_t pub = client->GetChannelInfoPublishCount(slot, ch);
+                    const uint64_t app = client->GetChannelInfoApplyCount(slot, ch);
+                    if (!pub && !app) continue;
+                    const long long delta = (long long) app - (long long) pub;
+                    std::snprintf(buf, sizeof(buf),
+                        "slot %2d ch %2d: pub=%llu app=%llu delta=%+lld%s",
+                        slot, ch,
+                        (unsigned long long) pub,
+                        (unsigned long long) app,
+                        delta,
+                        delta != 0 ? " <-- GAP" : "");
+                    lines.emplace_back(buf);
+                    ++nonzero;
+                }
+            }
+            if (nonzero == 0) {
+                lines.emplace_back("(no chinfo publishes/applies observed yet)");
+            }
+        }
+    }
+
+    for (auto& line : lines) {
+        push_system_line(state, std::move(line), ts);
+    }
+    state.chat_scroll_to_bottom = true;
+    return true;
+}
+
 std::string make_timestamp() {
     auto now = std::chrono::system_clock::now();
     std::time_t now_time = std::chrono::system_clock::to_time_t(now);
@@ -184,6 +271,19 @@ void ui_render_chat(jamwide::JamWidePlugin* plugin) {
     }
 
     if (send) {
+        // Local-only commands handled before the connected-state check so
+        // they work in any state (rcm counter readout works while connected
+        // and immediately after a Disconnect, when state.status flips).
+        {
+            std::string text = trim_left(state.chat_input);
+            if (text == "/rcmstats" || text == "/rcm") {
+                handle_rcmstats(plugin, state);
+                state.chat_input[0] = '\0';
+                state.chat_refocus_input = true;
+                ImGui::Unindent();
+                return;
+            }
+        }
         if (state.status != NJClient::NJC_STATUS_OK) {
             ChatMessage msg;
             msg.type = ChatMessageType::System;

@@ -4,7 +4,11 @@
 #include "threading/ui_command.h"
 
 #include <cctype>
+#include <chrono>
+#include <cstdio>
+#include <ctime>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -398,6 +402,19 @@ void ChatPanel::handleSend()
     if (text.isEmpty())
         return;
 
+    // Local-only diagnostic commands handled before parseChatInput so they
+    // work in any connection state and never reach the server.
+    {
+        const auto trimmed = text.trim();
+        if (trimmed == "/rcmstats" || trimmed == "/rcm")
+        {
+            handleRcmStats();
+            chatInput.clear();
+            chatInput.grabKeyboardFocus();
+            return;
+        }
+    }
+
     jamwide::SendChatCommand cmd;
     if (parseChatInput(text, cmd))
     {
@@ -414,4 +431,125 @@ void ChatPanel::handleSend()
 
     chatInput.clear();
     chatInput.grabKeyboardFocus();
+}
+
+// /rcmstats — dump the diagnostic counter arrays + per-(slot,channel) mirror
+// state snapshot for the tx-silent-and-orphan-cutoff debug session. Read-only;
+// no audio-path impact. Output is local-only (System messages, never sent to
+// the server).
+bool ChatPanel::handleRcmStats()
+{
+    std::string ts;
+    {
+        auto now = std::chrono::system_clock::now();
+        std::time_t t = std::chrono::system_clock::to_time_t(now);
+        std::tm tm_buf{};
+#if defined(_WIN32)
+        localtime_s(&tm_buf, &t);
+#else
+        localtime_r(&t, &tm_buf);
+#endif
+        char buf[6] = {};
+#ifdef _WIN32
+        strftime(buf, sizeof(buf), "%H:%M", &tm_buf);
+#else
+        std::strftime(buf, sizeof(buf), "%H:%M", &tm_buf);
+#endif
+        ts = buf;
+    }
+
+    auto pushSystem = [&](std::string content) {
+        ChatMessage m;
+        m.type = ChatMessageType::System;
+        m.content = std::move(content);
+        m.timestamp = ts;
+        addMessage(m);
+    };
+
+    pushSystem("--- rcm counter readout ---");
+
+    {
+        const juce::ScopedLock lock(processorRef.getClientLock());
+        NJClient* client = processorRef.getClient();
+        if (!client)
+        {
+            pushSystem("(no NJClient instance)");
+            return true;
+        }
+
+        char buf[160];
+        std::snprintf(buf, sizeof(buf),
+            "overflows: bq_drops=%llu rmuser_upd=%llu defer_del=%llu",
+            (unsigned long long) client->GetBlockQueueDropCount(),
+            (unsigned long long) client->GetRemoteUserUpdateOverflowCount(),
+            (unsigned long long) client->GetDeferredDeleteOverflowCount());
+        pushSystem(buf);
+
+        int nonzero = 0;
+        bool slot_seen[MAX_PEERS] = {};
+        for (int slot = 0; slot < MAX_PEERS; ++slot)
+        {
+            for (int ch = 0; ch < MAX_USER_CHANNELS; ++ch)
+            {
+                const uint64_t pub = client->GetChannelInfoPublishCount(slot, ch);
+                const uint64_t app = client->GetChannelInfoApplyCount(slot, ch);
+                if (!pub && !app) continue;
+                const long long delta = (long long) app - (long long) pub;
+                std::snprintf(buf, sizeof(buf),
+                    "slot %2d ch %2d: pub=%llu app=%llu delta=%+lld%s",
+                    slot, ch,
+                    (unsigned long long) pub,
+                    (unsigned long long) app,
+                    delta,
+                    delta != 0 ? " <-- GAP" : "");
+                pushSystem(buf);
+
+                NJClient::MirrorChannelSnapshot cs{};
+                if (client->GetMirrorChannelSnapshot(slot, ch, &cs))
+                {
+                    std::snprintf(buf, sizeof(buf),
+                        "  vol=%.4f pan=%+.3f flags=0x%x outch=%d codec=0x%08x",
+                        cs.volume, cs.pan, cs.flags, cs.out_chan_index, cs.codec_fourcc);
+                    pushSystem(buf);
+                    std::snprintf(buf, sizeof(buf),
+                        "  present=%d muted=%d solo=%d ds=%c next=[%c %c] dump=%d curds=%.2f",
+                        cs.present ? 1 : 0,
+                        cs.muted   ? 1 : 0,
+                        cs.solo    ? 1 : 0,
+                        cs.ds_active        ? 'Y' : '-',
+                        cs.next_ds0_active  ? 'Y' : '-',
+                        cs.next_ds1_active  ? 'Y' : '-',
+                        cs.dump_samples,
+                        cs.curds_lenleft);
+                    pushSystem(buf);
+                }
+
+                slot_seen[slot] = true;
+                ++nonzero;
+            }
+        }
+        if (nonzero == 0)
+        {
+            pushSystem("(no chinfo publishes/applies observed yet)");
+        }
+        else
+        {
+            for (int slot = 0; slot < MAX_PEERS; ++slot)
+            {
+                if (!slot_seen[slot]) continue;
+                NJClient::MirrorPeerSnapshot ps{};
+                if (!client->GetMirrorPeerSnapshot(slot, &ps)) continue;
+                std::snprintf(buf, sizeof(buf),
+                    "peer %2d: active=%d uidx=%d vol=%.4f pan=%+.3f muted=%d "
+                    "subm=0x%x presm=0x%x mutm=0x%x solm=0x%x",
+                    slot, ps.active ? 1 : 0, ps.user_index,
+                    ps.volume, ps.pan, ps.muted ? 1 : 0,
+                    (unsigned) ps.submask, (unsigned) ps.chanpresentmask,
+                    (unsigned) ps.mutedmask, (unsigned) ps.solomask);
+                pushSystem(buf);
+            }
+        }
+    }
+
+    return true;
 }

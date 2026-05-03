@@ -24,6 +24,7 @@ public:
 
 private:
     void handleSend();
+    bool handleRcmStats();  // Local /rcmstats command — diagnostic counter readout
 
     JamWideJuceProcessor& processorRef;
     juce::Label topicLabel;

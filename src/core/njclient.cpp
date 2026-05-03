@@ -3354,6 +3354,16 @@ void NJClient::drainRemoteUserUpdates()
         //     (this apply visitor AND the on_new_interval shuffle) run on
         //     the audio thread; no run-thread state read needed.
         auto& chan = m_remoteuser_mirror[u.slot].chans[u.channel];
+        // 2026-05-03 REVERTED mid-interval ds recovery. Installing late
+        // publishes directly into chan.ds caused 1-second-audible-per-
+        // 12-second-interval jerky output for peers whose data consistently
+        // arrives near the end of the interval window: the recovery ds was
+        // defer-deleted by the very next on_new_interval (since next_ds[0]
+        // was still null). The original next_ds-queue logic gives smooth
+        // audio with a one-interval delay for that case, which is far
+        // better. Snapshot evidence in .planning/debug/
+        // tx-silent-and-orphan-cutoff.md Evidence "01:31 / 01:32 — fix
+        // worsened consistent-late-publish case".
         if (chan.next_ds[0] == nullptr) {
           chan.next_ds[0] = incoming_ds;
         } else if (chan.next_ds[1] == nullptr) {
@@ -4563,6 +4573,51 @@ uint64_t NJClient::GetChannelInfoApplyCount(int slot, int channel) const noexcep
   if (slot < 0 || slot >= MAX_PEERS) return 0;
   if (channel < 0 || channel >= MAX_USER_CHANNELS) return 0;
   return m_chinfo_applies_observed[slot][channel].load(std::memory_order_relaxed);
+}
+
+// 2026-05-03 tx-silent-and-orphan-cutoff: best-effort relaxed snapshot of
+// audio-thread mirror state. Observability only — torn reads of non-atomic
+// POD fields are accepted (single-shot diagnostic, same risk profile as
+// existing peak_vol_l/r reads from GetUserChannelPeak). DecodeState* fields
+// are reduced to bool "active" (non-null) so the pointer values themselves
+// never escape the audio thread.
+bool NJClient::GetMirrorChannelSnapshot(int slot, int channel, MirrorChannelSnapshot* out) const noexcept
+{
+  if (!out) return false;
+  if (slot < 0 || slot >= MAX_PEERS) return false;
+  if (channel < 0 || channel >= MAX_USER_CHANNELS) return false;
+  const auto& c = m_remoteuser_mirror[slot].chans[channel];
+  out->present          = c.present;
+  out->muted            = c.muted;
+  out->solo             = c.solo;
+  out->volume           = c.volume;
+  out->pan              = c.pan;
+  out->out_chan_index   = c.out_chan_index;
+  out->flags            = c.flags;
+  out->codec_fourcc     = c.codec_fourcc;
+  out->ds_active        = (c.ds        != nullptr);
+  out->next_ds0_active  = (c.next_ds[0] != nullptr);
+  out->next_ds1_active  = (c.next_ds[1] != nullptr);
+  out->dump_samples     = c.dump_samples;
+  out->curds_lenleft    = c.curds_lenleft;
+  return true;
+}
+
+bool NJClient::GetMirrorPeerSnapshot(int slot, MirrorPeerSnapshot* out) const noexcept
+{
+  if (!out) return false;
+  if (slot < 0 || slot >= MAX_PEERS) return false;
+  const auto& m = m_remoteuser_mirror[slot];
+  out->active           = m.active;
+  out->user_index       = m.user_index;
+  out->submask          = m.submask;
+  out->chanpresentmask  = m.chanpresentmask;
+  out->mutedmask        = m.mutedmask;
+  out->solomask         = m.solomask;
+  out->muted            = m.muted;
+  out->volume           = m.volume;
+  out->pan              = m.pan;
+  return true;
 }
 
 unsigned int NJClient::GetUserChannelCodec(int useridx, int channelidx)

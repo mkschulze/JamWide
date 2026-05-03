@@ -802,6 +802,30 @@ std::string JamWideJuceProcessor::buildDiagnosticReport() const
         return os.str();
     }
 
+    os << "\n--- connection ---\n";
+    os << "m_netcon:      " << (c->IsNetConnected() ? "connected" : "NULL (not connected)") << "\n";
+
+    os << "\n--- local channel mirror (TX side) ---\n";
+    char lbuf[200];
+    int local_active_count = 0;
+    for (int ch = 0; ch < 8; ++ch) // first 8 cover typical use; extend if needed
+    {
+        NJClient::LocalChannelMirrorSnapshot lc{};
+        if (!c->GetLocalChannelMirrorSnapshot(ch, &lc)) continue;
+        if (!lc.active) continue;
+        ++local_active_count;
+        std::snprintf(lbuf, sizeof(lbuf),
+            "local %d: active=%d bcast=%d bcast_active=%d mute=%d solo=%d "
+            "srcch=%d outch=%d flags=0x%x bitrate=%d vol=%.4f pan=%+.3f peak=[%.4f %.4f]\n",
+            ch, lc.active ? 1 : 0, lc.bcast ? 1 : 0, lc.bcast_active ? 1 : 0,
+            lc.mute ? 1 : 0, lc.solo ? 1 : 0,
+            lc.srcch, lc.outch, lc.flags, lc.bitrate,
+            lc.volume, lc.pan, lc.peak_l, lc.peak_r);
+        os << lbuf;
+    }
+    if (local_active_count == 0)
+        os << "(no active local channels — TX impossible)\n";
+
     os << "\n--- overflow counters ---\n";
     os << "bq_drops:      " << c->GetBlockQueueDropCount() << "\n";
     os << "rmuser_upd:    " << c->GetRemoteUserUpdateOverflowCount() << "\n";

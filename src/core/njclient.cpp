@@ -4685,6 +4685,32 @@ bool NJClient::GetMirrorPeerSnapshot(int slot, MirrorPeerSnapshot* out) const no
   return true;
 }
 
+bool NJClient::GetLocalChannelMirrorSnapshot(int ch, LocalChannelMirrorSnapshot* out) const noexcept
+{
+  if (!out) return false;
+  if (ch < 0 || ch >= MAX_LOCAL_CHANNELS) return false;
+  const auto& m = m_locchan_mirror[ch];
+  out->active        = m.active;
+  out->bcast         = m.bcast;
+  out->bcast_active  = m.bcast_active;
+  out->mute          = m.mute;
+  out->solo          = m.solo;
+  out->srcch         = m.srcch;
+  out->bitrate       = m.bitrate;
+  out->outch         = m.outch;
+  out->flags         = m.flags;
+  out->volume        = m.volume;
+  out->pan           = m.pan;
+  out->peak_l        = m.peak_vol_l.load(std::memory_order_relaxed);
+  out->peak_r        = m.peak_vol_r.load(std::memory_order_relaxed);
+  return true;
+}
+
+bool NJClient::IsNetConnected() const noexcept
+{
+  return m_netcon != nullptr;
+}
+
 unsigned int NJClient::GetUserChannelCodec(int useridx, int channelidx)
 {
   WDL_MutexLock lock(&m_users_cs);

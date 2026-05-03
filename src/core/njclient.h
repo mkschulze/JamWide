@@ -487,6 +487,32 @@ public:
   bool GetMirrorChannelSnapshot(int slot, int channel, MirrorChannelSnapshot* out) const noexcept;
   bool GetMirrorPeerSnapshot   (int slot,              MirrorPeerSnapshot*    out) const noexcept;
 
+  // 2026-05-03 TX-silent investigation: local channel mirror snapshot for
+  // diagnosing transmit-side bugs. Audio-thread-writes / UI-thread-reads,
+  // relaxed semantics. Returns false if `ch` is out of bounds.
+  struct LocalChannelMirrorSnapshot {
+      bool active;
+      bool bcast;
+      bool bcast_active;
+      bool mute;
+      bool solo;
+      int srcch;
+      int bitrate;
+      int outch;
+      unsigned int flags;
+      float volume;
+      float pan;
+      float peak_l;
+      float peak_r;
+  };
+  bool GetLocalChannelMirrorSnapshot(int ch, LocalChannelMirrorSnapshot* out) const noexcept;
+
+  // True if the run-thread JNL_Connection is non-null (i.e. NJClient::Run
+  // has a transport to encode-and-send into). Relaxed-equivalent — m_netcon
+  // is a plain pointer set/cleared on the run thread; the UI thread observes
+  // a one-bit liveness flag for diagnostic purposes only.
+  bool IsNetConnected() const noexcept;
+
   unsigned int GetUserChannelCodec(int useridx, int channelidx);
   double GetUserSessionPos(int useridx, time_t *lastupdatetime, double *maxlen);
   const char *GetUserChannelState(int useridx, int channelidx, bool *sub=0, float *vol=0, float *pan=0, bool *mute=0, bool *solo=0, int *outchannel=0, int *flags=0);

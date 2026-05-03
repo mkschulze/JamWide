@@ -339,11 +339,21 @@ public:
   }
 
 private:
-  // SPSC byte-stream — replaces WDL_Mutex + WDL_Queue. CHUNK_BYTES=4096 and
-  // N=32 chosen per RESEARCH § "Use 5 — DecodeMediaBuffer byte-queue
-  // replacement" (32 * 4 KB = 128 KB outstanding budget, comfortably above
-  // typical NINJAM block sizes).
-  jamwide::SpscRing<jamwide::DecodeChunk, 32> m_chunks;
+  // SPSC byte-stream — replaces WDL_Mutex + WDL_Queue. CHUNK_BYTES=4096.
+  //
+  // Capacity bumped 32 → 256 (2026-05-03). The original 128 KB outstanding
+  // budget was sized against "typical NINJAM block sizes" but UAT showed
+  // sustained ring saturation under multi-peer real-world load (decbuf_drops
+  // counter climbing at >1 drop/sec — see /Users/cell/Library/JamWide/Logs/
+  // jamwide-debug-20260503-032629.log and ...032657.log). Each
+  // DecodeMediaBuffer is per-RemoteDownload (per peer per interval), so the
+  // ring needs to absorb one interval's worth of bursty server delivery
+  // even at high bitrates: 320 kbps stereo × 12 s interval = 480 KB, which
+  // exceeded the old 128 KB capacity and dropped tail-of-interval bytes the
+  // codec needed. 256 × 4 KB = 1 MB gives 2× headroom over that worst case.
+  // Memory cost: 1 MB per concurrent RemoteDownload; with 30-peer rooms that
+  // is ~30 MB transient, acceptable.
+  jamwide::SpscRing<jamwide::DecodeChunk, 256> m_chunks;
 
   // Audio-thread-owned linear buffer — absorbs partial-chunk reads when the
   // codec asks for fewer bytes than CHUNK_BYTES at a time. Sized to 2x

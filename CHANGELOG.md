@@ -5,6 +5,34 @@ All notable changes to JamWide will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1 Beta Series
+
+The 1.1 line is a complete JUCE rewrite (1.0 was CLAP/ImGui). Per-beta release notes for `1.1-beta.1` through `1.1-beta.20` are on the [GitHub Releases page](https://github.com/mkschulze/JamWide/releases) and are not duplicated here. Entries are tracked below starting with `1.1-beta.20.1`.
+
+## [1.1.0-beta.20.2] - 2026-05-03
+
+### Fixed
+- **Chat**: Scrolling back through history is now sticky — new messages no longer yank the viewport down to a hidden caret
+- **Windows**: Build unbroken (`std::strftime` collision with WDL macro from beta.20.1's diagnostic-counter additions)
+
+## [1.1.0-beta.20.1] - 2026-05-03
+
+### Added
+- **Diagnostics**: DBG button in UI dumps counters to a log file for bug reports
+- **Diagnostics**: `/rcmstats` chat command types remote-channel-mirror counters into chat for live triage
+- **Diagnostics**: Local-channel mirror snapshot and `IsNetConnected` accessor for UI use without piercing audio-thread state
+
+### Changed
+- **Audio**: `DecodeMediaBuffer`'s SPSC ring grew from 32 to 256 chunks for more head-room under codec/network timing variance
+
+### Fixed
+- **UI**: VU meter scale now matches the fader scale (was using a different dB-to-pixel mapping)
+- **UI**: Chat auto-scrolls on new messages
+- **UI**: Local strip TX button visual stays in sync with `localTransmit[0]`
+- **UI**: Strip-keyed remote params reset cleanly on plugin load (no more ghost values from prior sessions)
+- **Audio**: `dump_samples` skip-debt accumulation removed; codec underruns recover cleanly without biasing subsequent intervals
+- **Network**: `PeerChannelInfoUpdate` now wired through the SPSC mirror, fixing stale UI when a remote user renames a channel mid-session
+
 ## [1.0.0] - 2026-01-14
 
 ### 🎉 First Stable Release

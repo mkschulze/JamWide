@@ -731,6 +731,27 @@ void JamWideJuceProcessor::setStateInformation(const void* data, int sizeInBytes
     // Missing parameters get their defaults (forward-compatible, per pitfall 3)
     apvts.replaceState(tree);
 
+    // 2026-05-03 fix: per-strip remote channel params (remoteVol_N etc.)
+    // are saved by strip POSITION, but the strip→peer mapping is NOT stable
+    // across sessions. A saved +2.7 dB or solo=true on strip N from a prior
+    // session would apply to whoever lands in strip N next time — typically
+    // a different user with different intent. User-visible symptoms: random
+    // peers auto-soloed or with non-default faders on initial connect.
+    // Reset all remote-strip params to defaults so a fresh session starts
+    // clean. Local-channel and MIDI/OSC state is preserved by NOT being
+    // touched here. See .planning/debug/tx-silent-and-orphan-cutoff.md
+    // Evidence "01:54 — David_Bass auto-soloed, M auto +2.7 dB on join".
+    for (int i = 0; i < 16; ++i)
+    {
+        const juce::String suffix = juce::String(i);
+        for (const char* name : { "remoteVol_", "remotePan_",
+                                  "remoteMute_", "remoteSolo_" })
+        {
+            if (auto* p = apvts.getParameter(name + suffix))
+                p->setValueNotifyingHost(p->getDefaultValue());
+        }
+    }
+
     // STEP 3: Restore MIDI mappings (state version 3)
     // Must happen after replaceState so APVTS parameters exist for validation
     if (midiMapper)

@@ -4034,7 +4034,25 @@ void NJClient::mixInChannel(int slot, int chanidx,
 
     if (needed > 0 && !llmode)
     {
-      chan_mirror.dump_samples += needed * srcnch - chan->decode_codec->Available();
+      // 2026-05-03 cutoff fix: do NOT accumulate skip-debt on codec
+      // underrun. The legacy code incremented chan_mirror.dump_samples
+      // by (needed*srcnch - Available()) here — i.e. the deficit between
+      // what the audio thread asked for and what the codec produced.
+      // That debt was paid down later by silently *discarding* arriving
+      // bytes (line ~3897 dump-paydown branch). Consequence: a network
+      // underrun produced (1) silence during the gap, (2) MORE silence
+      // afterwards while the dump-debt was paid by skipping arrivals.
+      // Multi-second underruns produced multi-second cutoffs, observed
+      // in UAT as "channel cuts off and comes back" with /rcmstats
+      // showing dump_samples values up to 657616 (≈13s at 48 kHz).
+      //
+      // Reference: Ninja-VST3-Plugin (WebRTC+Opus, /Users/cell/dev/
+      // Ninja-VST3-Plugin) has no analogous skip-debt mechanism — it
+      // generates silence on gap (Opus PLC) and resumes normal decode
+      // on next packet. We adopt the same conceptual shape here:
+      // consume what's available, output silence for this block via
+      // the implicit no-mix early-out, let on_new_interval resync at
+      // the next interval boundary.
       chan->decode_codec->Skip(chan->decode_codec->Available());
     }
   }

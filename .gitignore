@@ -58,3 +58,4 @@ logs/
 notarize.env
 companion/node_modules/
 companion/dist/
+.claude/settings.local.json

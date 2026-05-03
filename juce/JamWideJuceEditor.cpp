@@ -142,6 +142,23 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
         videoPrivacyDialog.show(showBrowserWarning);
     };
 
+    // 2026-05-03 tx-silent-and-orphan-cutoff: debug snapshot button writes
+    // a timestamped log file with the full diagnostic report. Less intrusive
+    // alternative to the /rcmstats chat command. Confirms via a System chat
+    // message naming the saved file path so the user can find / share it.
+    connectionBar.onDebugSnapshotClicked = [this]() {
+        const juce::File saved = processorRef.writeDebugSnapshot();
+        ChatMessage msg;
+        msg.type = ChatMessageType::System;
+        msg.timestamp = ""; // not relevant for status messages
+        if (saved.existsAsFile()) {
+            msg.content = ("debug snapshot saved: " + saved.getFullPathName()).toStdString();
+        } else {
+            msg.content = "debug snapshot failed (could not create log file)";
+        }
+        chatPanel.addMessage(msg);
+    };
+
     // Restore state if already connected (editor recreated while session active).
     // HasUserInfoChanged() is destructive — the flag was consumed before the old
     // editor was destroyed, so no UserInfoChangedEvent will fire. We must

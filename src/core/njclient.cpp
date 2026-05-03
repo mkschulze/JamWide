@@ -268,6 +268,7 @@ public:
         // Ring full — producer drops the rest. NINJAM frame loss handled by
         // the codec; the run-thread caller sees a short return.
         m_write_drops.fetch_add(1, std::memory_order_relaxed);
+        s_total_write_drops.fetch_add(1, std::memory_order_relaxed);
         return len - remaining;
       }
       in += chunk.len;
@@ -377,7 +378,22 @@ private:
   // 15.1-10 phase-verification may expose it. Written only from Write() on
   // the run thread.
   std::atomic<uint64_t> m_write_drops{0};
+
+public:
+  // 2026-05-03 tx-silent-and-orphan-cutoff diagnostic: aggregate write-drop
+  // count across ALL DecodeMediaBuffer instances. Surfaces ring-saturation
+  // events that produce mid-interval codec underruns (which in turn cause
+  // dump_samples skip-debt accumulation, audible as "channel cuts off and
+  // comes back" several seconds later when the debt is paid down).
+  static uint64_t TotalWriteDrops() noexcept {
+    return s_total_write_drops.load(std::memory_order_relaxed);
+  }
+
+private:
+  static std::atomic<uint64_t> s_total_write_drops;
 };
+
+std::atomic<uint64_t> DecodeMediaBuffer::s_total_write_drops{0};
 
 struct overlapFadeState {
   overlapFadeState() { fade_nch=fade_sz=0; }
@@ -3912,6 +3928,15 @@ void NJClient::mixInChannel(int slot, int chanidx,
         if (skip > 512)
         {
           chan_mirror.dump_samples += nch * skip;
+          // 2026-05-03 diagnostic: track peak dump_samples per (slot,channel).
+          // Single-writer (audio thread). Relaxed; observability only.
+          if (slot >= 0 && slot < MAX_PEERS && chanidx >= 0 && chanidx < MAX_USER_CHANNELS)
+          {
+            auto& peak = m_dump_samples_peak[slot][chanidx];
+            const int cur = chan_mirror.dump_samples;
+            if (cur > peak.load(std::memory_order_relaxed))
+              peak.store(cur, std::memory_order_relaxed);
+          }
         }
       }
     }
@@ -4601,6 +4626,18 @@ uint64_t NJClient::GetChannelInfoApplyCount(int slot, int channel) const noexcep
   if (slot < 0 || slot >= MAX_PEERS) return 0;
   if (channel < 0 || channel >= MAX_USER_CHANNELS) return 0;
   return m_chinfo_applies_observed[slot][channel].load(std::memory_order_relaxed);
+}
+
+int NJClient::GetDumpSamplesPeak(int slot, int channel) const noexcept
+{
+  if (slot < 0 || slot >= MAX_PEERS) return 0;
+  if (channel < 0 || channel >= MAX_USER_CHANNELS) return 0;
+  return m_dump_samples_peak[slot][channel].load(std::memory_order_relaxed);
+}
+
+uint64_t NJClient::GetDecodeBufWriteDropTotal() const noexcept
+{
+  return DecodeMediaBuffer::TotalWriteDrops();
 }
 
 // 2026-05-03 tx-silent-and-orphan-cutoff: best-effort relaxed snapshot of

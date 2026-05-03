@@ -215,6 +215,18 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
         if (onVideoClicked) onVideoClicked();
     };
     addAndMakeVisible(videoButton);
+
+    // Debug snapshot button (small, unobtrusive — to the right of Video)
+    debugButton.setButtonText("DBG");
+    debugButton.setColour(juce::TextButton::buttonColourId,
+        juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
+    debugButton.setColour(juce::TextButton::textColourOffId,
+        juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    debugButton.setTooltip("Save debug snapshot to a log file (for bug reports)");
+    debugButton.onClick = [this]() {
+        if (onDebugSnapshotClicked) onDebugSnapshotClicked();
+    };
+    addAndMakeVisible(debugButton);
 }
 
 void ConnectionBar::resized()
@@ -287,6 +299,8 @@ void ConnectionBar::resized()
     // was calibrated against a different font and clipped on Windows.
     videoButton.setBounds(rightX - 54, y, 54, h);
     rightX -= 54 + gap;
+    debugButton.setBounds(rightX - 36, y, 36, h);
+    rightX -= 36 + gap;
     fitButton.setBounds(rightX - 36, y, 36, h);
 }
 

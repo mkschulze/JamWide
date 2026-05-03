@@ -437,6 +437,20 @@ public:
   uint64_t GetChannelInfoPublishCount(int slot, int channel) const noexcept;
   uint64_t GetChannelInfoApplyCount  (int slot, int channel) const noexcept;
 
+  // 2026-05-03 tx-silent-and-orphan-cutoff diagnostic: peak dump_samples ever
+  // reached for this (slot,channel) since session start. dump_samples is the
+  // skip-debt accumulator in mixInChannel — when codec underruns, the audio
+  // thread bumps it by `needed*srcnch` and skips incoming samples to pay
+  // down. A high peak indicates a single-shot underrun episode that produced
+  // a multi-second silent gap. Audio-thread-writes / UI-thread-reads, relaxed.
+  int GetDumpSamplesPeak(int slot, int channel) const noexcept;
+
+  // Aggregate count of DecodeMediaBuffer SPSC ring-saturation drops since
+  // session start. A non-zero value means the run thread was bursting bytes
+  // into a per-channel decode buffer faster than the audio thread could drain
+  // them — likely root cause of repeated codec underruns.
+  uint64_t GetDecodeBufWriteDropTotal() const noexcept;
+
   // 2026-05-03 tx-silent-and-orphan-cutoff: read-only mirror-state inspector
   // for /rcmstats. Reads RemoteUserMirror[slot] and chans[channel] with
   // relaxed semantics — observability only, audio-thread races are accepted
@@ -785,6 +799,11 @@ protected:
   // synchronization. See .planning/debug/remote-channels-cutoff.md.
   std::atomic<uint64_t> m_chinfo_publishes_observed[MAX_PEERS][MAX_USER_CHANNELS]{};
   std::atomic<uint64_t> m_chinfo_applies_observed  [MAX_PEERS][MAX_USER_CHANNELS]{};
+
+  // 2026-05-03: peak dump_samples per (slot,channel). Audio-thread-writes
+  // (single-writer — only mixInChannel mutates), UI-thread-reads via
+  // GetDumpSamplesPeak. Relaxed atomic; observability only.
+  std::atomic<int> m_dump_samples_peak[MAX_PEERS][MAX_USER_CHANNELS]{};
 
   // 15.1-07a + Codex HIGH-3: deferred-free queue for run-thread-owned
   // RemoteUser objects. The run thread enqueues a RemoteUser* ONLY AFTER:

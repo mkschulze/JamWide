@@ -3,6 +3,12 @@
 #include "NinjamRunThread.h"
 #include "core/njclient.h"
 #include "ui/ui_state.h"
+#include "build_number.h"
+
+#include <chrono>
+#include <cstdio>
+#include <ctime>
+#include <sstream>
 
 #ifndef MAKE_NJ_FOURCC
 #define MAKE_NJ_FOURCC(A,B,C,D) ((A) | ((B)<<8) | ((C)<<16) | ((D)<<24))
@@ -764,6 +770,127 @@ void JamWideJuceProcessor::setStateInformation(const void* data, int sizeInBytes
         midiMapper->openMidiInput(midiInputDeviceId);
     if (midiMapper && midiOutputDeviceId.isNotEmpty())
         midiMapper->openMidiOutput(midiOutputDeviceId);
+}
+
+//==============================================================================
+// 2026-05-03 tx-silent-and-orphan-cutoff: diagnostic report + log-file dump.
+// Single source of truth — ChatPanel /rcmstats and ConnectionBar Debug button
+// both call buildDiagnosticReport().
+std::string JamWideJuceProcessor::buildDiagnosticReport() const
+{
+    std::ostringstream os;
+
+    auto now = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_buf{};
+#if defined(_WIN32)
+    localtime_s(&tm_buf, &t);
+#else
+    localtime_r(&t, &tm_buf);
+#endif
+    char ts[32] = {};
+    std::strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tm_buf);
+
+    os << "=== JamWide Debug Snapshot ===\n";
+    os << "timestamp: " << ts << "\n";
+    os << "build:     " << JAMWIDE_BUILD_NUMBER << "\n";
+
+    const juce::ScopedLock lock(clientLock);
+    const NJClient* c = client.get();
+    if (!c) {
+        os << "(no NJClient instance)\n";
+        return os.str();
+    }
+
+    os << "\n--- overflow counters ---\n";
+    os << "bq_drops:      " << c->GetBlockQueueDropCount() << "\n";
+    os << "rmuser_upd:    " << c->GetRemoteUserUpdateOverflowCount() << "\n";
+    os << "defer_del:     " << c->GetDeferredDeleteOverflowCount() << "\n";
+    os << "decbuf_drops:  " << c->GetDecodeBufWriteDropTotal() << "\n";
+
+    os << "\n--- per-(slot,channel) chinfo + mirror state ---\n";
+    int nonzero = 0;
+    bool slot_seen[MAX_PEERS] = {};
+    char buf[240];
+    for (int slot = 0; slot < MAX_PEERS; ++slot) {
+        for (int ch = 0; ch < MAX_USER_CHANNELS; ++ch) {
+            const uint64_t pub = c->GetChannelInfoPublishCount(slot, ch);
+            const uint64_t app = c->GetChannelInfoApplyCount(slot, ch);
+            if (!pub && !app) continue;
+            const long long delta = (long long) app - (long long) pub;
+            std::snprintf(buf, sizeof(buf),
+                "slot %2d ch %2d: pub=%llu app=%llu delta=%+lld%s\n",
+                slot, ch,
+                (unsigned long long) pub, (unsigned long long) app,
+                delta, delta != 0 ? " <-- GAP" : "");
+            os << buf;
+
+            NJClient::MirrorChannelSnapshot cs{};
+            if (c->GetMirrorChannelSnapshot(slot, ch, &cs)) {
+                std::snprintf(buf, sizeof(buf),
+                    "  vol=%.4f pan=%+.3f flags=0x%x outch=%d codec=0x%08x\n",
+                    cs.volume, cs.pan, cs.flags, cs.out_chan_index, cs.codec_fourcc);
+                os << buf;
+                const int dump_peak = c->GetDumpSamplesPeak(slot, ch);
+                std::snprintf(buf, sizeof(buf),
+                    "  present=%d muted=%d solo=%d ds=%c next=[%c %c] dump=%d (peak=%d) curds=%.2f\n",
+                    cs.present ? 1 : 0, cs.muted ? 1 : 0, cs.solo ? 1 : 0,
+                    cs.ds_active ? 'Y' : '-',
+                    cs.next_ds0_active ? 'Y' : '-',
+                    cs.next_ds1_active ? 'Y' : '-',
+                    cs.dump_samples, dump_peak, cs.curds_lenleft);
+                os << buf;
+            }
+            slot_seen[slot] = true;
+            ++nonzero;
+        }
+    }
+    if (nonzero == 0) {
+        os << "(no chinfo publishes/applies observed yet)\n";
+    } else {
+        os << "\n--- per-peer mirror summary ---\n";
+        for (int slot = 0; slot < MAX_PEERS; ++slot) {
+            if (!slot_seen[slot]) continue;
+            NJClient::MirrorPeerSnapshot ps{};
+            if (!c->GetMirrorPeerSnapshot(slot, &ps)) continue;
+            std::snprintf(buf, sizeof(buf),
+                "peer %2d: active=%d uidx=%d vol=%.4f pan=%+.3f muted=%d "
+                "subm=0x%x presm=0x%x mutm=0x%x solm=0x%x\n",
+                slot, ps.active ? 1 : 0, ps.user_index,
+                ps.volume, ps.pan, ps.muted ? 1 : 0,
+                (unsigned) ps.submask, (unsigned) ps.chanpresentmask,
+                (unsigned) ps.mutedmask, (unsigned) ps.solomask);
+            os << buf;
+        }
+    }
+    return os.str();
+}
+
+juce::File JamWideJuceProcessor::writeDebugSnapshot() const
+{
+    auto now = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_buf{};
+#if defined(_WIN32)
+    localtime_s(&tm_buf, &t);
+#else
+    localtime_r(&t, &tm_buf);
+#endif
+    char fname[64] = {};
+    std::strftime(fname, sizeof(fname), "jamwide-debug-%Y%m%d-%H%M%S.log", &tm_buf);
+
+    juce::File logsDir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                             .getChildFile("JamWide")
+                             .getChildFile("Logs");
+    if (!logsDir.exists()) {
+        const auto result = logsDir.createDirectory();
+        if (result.failed()) return {};
+    }
+    juce::File outFile = logsDir.getChildFile(fname);
+
+    const std::string report = buildDiagnosticReport();
+    if (!outFile.replaceWithText(juce::String(report))) return {};
+    return outFile;
 }
 
 //==============================================================================

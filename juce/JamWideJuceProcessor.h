@@ -93,6 +93,21 @@ public:
     NJClient* getClient() { return client.get(); }
     juce::CriticalSection& getClientLock() { return clientLock; }
 
+    // 2026-05-03: build a multi-line diagnostic report (counters + per-(slot,
+    // channel) mirror snapshot + per-peer summary). Acquires clientLock,
+    // reads relaxed-load counter / mirror state — same risk profile as
+    // GetUserChannelPeak. Returned as a single std::string with "\n"
+    // separators. Used by both:
+    //  - ChatPanel /rcmstats command (split into System messages for chat)
+    //  - ConnectionBar Debug-Snapshot button (written to a log file)
+    std::string buildDiagnosticReport() const;
+
+    // Write the diagnostic report to a timestamped file under
+    // userLogsDirectory()/JamWide/. Returns the file path (or empty
+    // string on failure). Includes build/connection/timing context that
+    // the chat-only readout omits.
+    juce::File writeDebugSnapshot() const;
+
     // OSC server (owned by processor, UI accesses via reference)
     std::unique_ptr<OscServer> oscServer;
 

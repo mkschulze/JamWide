@@ -492,12 +492,13 @@ bool ChatPanel::handleRcmStats()
             return true;
         }
 
-        char buf[160];
+        char buf[200];
         std::snprintf(buf, sizeof(buf),
-            "overflows: bq_drops=%llu rmuser_upd=%llu defer_del=%llu",
+            "overflows: bq_drops=%llu rmuser_upd=%llu defer_del=%llu decbuf_drops=%llu",
             (unsigned long long) client->GetBlockQueueDropCount(),
             (unsigned long long) client->GetRemoteUserUpdateOverflowCount(),
-            (unsigned long long) client->GetDeferredDeleteOverflowCount());
+            (unsigned long long) client->GetDeferredDeleteOverflowCount(),
+            (unsigned long long) client->GetDecodeBufWriteDropTotal());
         pushSystem(buf);
 
         int nonzero = 0;
@@ -528,8 +529,9 @@ bool ChatPanel::handleRcmStats()
                         "  vol=%.4f pan=%+.3f flags=0x%x outch=%d codec=0x%08x",
                         cs.volume, cs.pan, cs.flags, cs.out_chan_index, cs.codec_fourcc);
                     pushSystem(buf);
+                    const int dump_peak = client->GetDumpSamplesPeak(slot, ch);
                     std::snprintf(buf, sizeof(buf),
-                        "  present=%d muted=%d solo=%d ds=%c next=[%c %c] dump=%d curds=%.2f",
+                        "  present=%d muted=%d solo=%d ds=%c next=[%c %c] dump=%d (peak=%d) curds=%.2f",
                         cs.present ? 1 : 0,
                         cs.muted   ? 1 : 0,
                         cs.solo    ? 1 : 0,
@@ -537,6 +539,7 @@ bool ChatPanel::handleRcmStats()
                         cs.next_ds0_active  ? 'Y' : '-',
                         cs.next_ds1_active  ? 'Y' : '-',
                         cs.dump_samples,
+                        dump_peak,
                         cs.curds_lenleft);
                     pushSystem(buf);
                 }

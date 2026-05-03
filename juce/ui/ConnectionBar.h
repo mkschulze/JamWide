@@ -31,6 +31,7 @@ public:
     std::function<void()> onFitClicked;
     std::function<void(int)> onRouteModeChanged;  // 0=manual, 1=by-channel, 2=by-user
     std::function<void()> onVideoClicked;
+    std::function<void()> onDebugSnapshotClicked;
 
     void setVideoActive(bool active);
 
@@ -69,6 +70,13 @@ private:
 
     // Video button (D-01: in ConnectionBar, D-02: toggle with color states)
     juce::TextButton videoButton;
+
+    // Debug snapshot button — writes current /rcmstats data + extra context
+    // to a timestamped log file under userApplicationDataDirectory()/JamWide/Logs/.
+    // Less intrusive than the chat /rcmstats command; useful for in-session
+    // bug capture without spamming the chat panel. Wired by JamWideJuceEditor
+    // via onDebugSnapshotClicked.
+    juce::TextButton debugButton;
 
     // OSC status dot (between Sync button and right-aligned controls)
     std::unique_ptr<OscStatusDot> oscStatusDot;

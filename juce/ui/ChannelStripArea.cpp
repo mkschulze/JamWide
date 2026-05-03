@@ -75,6 +75,19 @@ ChannelStripArea::ChannelStripArea(JamWideJuceProcessor& processor)
         cmd.transmit = tx;
         processorRef.cmd_queue.try_push(std::move(cmd));
     };
+    // 2026-05-03 fix: sync parent local strip's TX visual state from the
+    // persisted localTransmit[0] array, matching the children loop below
+    // (line ~106). Without this, a saved Bitwig project with localCh0Tx=false
+    // restores localTransmit[0]=false BUT the parent strip's TX button
+    // visually shows engaged (its widget default) — the user perceives TX
+    // as ON while the underlying flag is OFF, and their audio is silently
+    // dropped at the broadcast gate. UAT confirmed in
+    // /Users/cell/Library/JamWide/Logs/jamwide-debug-20260503-035537.log:
+    // local 0 had peak=[0.0082, 0.0082] (audio arriving) but bcast=0 (not
+    // broadcasting), while children locals 1-3 with bcast=1 had no audio
+    // source. Two clicks were needed to engage TX (click 1 = no-op due to
+    // visual lying; click 2 = real on-toggle).
+    localStrip.setTransmitting(processorRef.localTransmit[0]);
 
     // Make expand button visible on local strip (4ch badge)
     localStrip.onExpandToggled = [this]() {

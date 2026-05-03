@@ -1,6 +1,26 @@
 #include "VuMeter.h"
 #include "JamWideLookAndFeel.h"
 
+#include <cmath>
+
+namespace {
+
+// 2026-05-03 VU calibration fix: the fader scale runs 0..2.0 linear (= -inf
+// to +6 dB) with a pow(norm, 1/2.5) visual curve. The meter's segments must
+// match the fader's tick spacing, otherwise a 0 dBFS input (peak amp = 1.0)
+// draws at the top segment where +6 dB should be — observed in UAT as the
+// meter clipping over +6 dB on a 0 dB SPAN-Plus reference signal. Mirror the
+// VbFader::valueToY transform here so the 0 dB tick on the fader aligns with
+// the 0 dB position on the meter.
+float linearAmpToMeterPos(float amp)
+{
+    constexpr float kMaxLinear = 2.0f;  // +6 dB at top, matches VbFader::kMaxLinear
+    const float norm = juce::jlimit(0.0f, 1.0f, amp / kMaxLinear);
+    return std::pow(norm, 1.0f / 2.5f);
+}
+
+} // namespace
+
 VuMeter::VuMeter()
 {
     setOpaque(true);
@@ -8,8 +28,8 @@ VuMeter::VuMeter()
 
 void VuMeter::setLevels(float left, float right)
 {
-    targetLeft = juce::jlimit(0.0f, 1.0f, left);
-    targetRight = juce::jlimit(0.0f, 1.0f, right);
+    targetLeft  = linearAmpToMeterPos(left);
+    targetRight = linearAmpToMeterPos(right);
 }
 
 void VuMeter::tick()

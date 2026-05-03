@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-04-29T05:06:29Z",
+  "timestamp": "2026-05-03T13:38:49Z",
   "phase": "15.1",
   "phase_name": "rt-safety-hardening",
   "phase_dir": ".planning/phases/15.1-rt-safety-hardening",
@@ -19,30 +19,37 @@
     {"id": "15.1-07c", "name": "decode-media-buffer (DecodeMediaBuffer SPSC, CR-12)", "status": "done", "commit": "ba29cd0"},
     {"id": "15.1-09", "name": "codec-call-site-integration (file-reader inversion, HIGH-1)", "status": "done", "commit": "e89f94f"},
     {"id": "15.1-08", "name": "prealloc-hardening (M-01/M-02/M-03/CR-11-partial)", "status": "done", "commit": "f7d3f6c"},
-    {"id": "15.1-10", "name": "phase-verification — mechanical signals 1a/1b/2/4/5/6 GREEN; HUMAN signals 1c/3/6/7 awaiting bundled multi-user UAT", "status": "in_progress", "progress": "v1.1-beta.20 shipped to provide the build for multi-user UAT; user-side has only seen single-DAW play-test"}
+    {"id": "15.1-10", "name": "phase-verification — mechanical signals 1a/1b/2/4/5/6 GREEN; HUMAN signals 1c/3/6/7 awaiting bundled multi-user UAT", "status": "in_progress", "progress": "v1.1-beta.20 + .20.1 + .20.2 shipped to provide builds for multi-user UAT"},
+    {"id": "post-260502-rcm", "name": "PeerChannelInfoUpdate orphan-mirror-fields fix (quick task)", "status": "done", "commit": "ac04e17"},
+    {"id": "post-beta.20.1", "name": "v1.1-beta.20.1 cut (build 311) — bundles withdrawn-beta.21 changes + TX-button sync + diagnostic accessors", "status": "done", "commit": "1bff4d2"},
+    {"id": "post-beta.20.2", "name": "v1.1-beta.20.2 cut (build 313) — chat scroll preservation + Windows std::strftime/WDL macro fix", "status": "done", "commit": "93cd039"},
+    {"id": "post-release-notes", "name": "Release notes pushed for .20.1 and .20.2 + CHANGELOG.md 1.1 Beta Series opened", "status": "in_progress", "progress": "GitHub release bodies pushed; CHANGELOG.md modified, uncommitted at save time — picked up by this WIP commit"}
   ],
   "remaining_tasks": [
-    {"id": "15.1-10/Signal-1c", "name": "Manual standalone UAT under TSan, populated server, 30+ min", "status": "deferred to multi-user beta UAT"},
+    {"id": "15.1-10/Signal-1c", "name": "Manual standalone UAT under TSan, populated server, 30+ min — now also covers beta.20.1/.20.2 deltas", "status": "deferred to multi-user beta UAT"},
     {"id": "15.1-10/Signal-3", "name": "Audible glitches + CPU history pattern check", "status": "deferred to multi-user beta UAT"},
     {"id": "15.1-10/Signal-6", "name": "lldb attach + read 6 production drop-counter accessors at session-end (all must == 0)", "status": "not_started — quick mechanical follow-up"},
     {"id": "15.1-10/Signal-7", "name": "Instruments Time Profiler 60s under broadcast load — BlockRecord memcpy CPU < 5%", "status": "not_started — Instruments measurement needed"}
   ],
   "blockers": [
-    {"description": "User-reported high cache writes — investigation incomplete; no JamWide-specific writes found in ~/Library or /tmp; vscode-cpptools at 5.7GB stood out but not confirmed. User has not yet reported back which process/path is writing.", "type": "external", "workaround": "Asked user for Activity Monitor → Disk view (process + bytes written) and target path. Suspect vscode-cpptools clangd indexing churning over 15+ commits to njclient.cpp."}
+    {"description": "User-reported high cache writes (from 04-29 session) — investigation incomplete; no JamWide-specific writes found in ~/Library or /tmp; vscode-cpptools at 5.7GB stood out but not confirmed. User has not reported back.", "type": "external", "workaround": "Asked user for Activity Monitor → Disk view (process + bytes written) and target path. Suspect vscode-cpptools clangd indexing churning over the heavy commit cadence on njclient.cpp."}
   ],
   "human_actions_pending": [
-    {"action": "Multi-user populated-server UAT on v1.1-beta.20 — bundled UAT for 07a/07c/09/08 + 07b regression check + broadcast continuity", "context": "Phase 15.1 cannot formally close without Signals 1c/3/6/7. v1.1-beta.20 shipped specifically to enable other beta testers to install and join sessions.", "blocking": true},
-    {"action": "Localize cache-write source (Activity Monitor → Disk view, sort by Bytes Written, identify process + path)", "context": "User reported extremely high cache writes; investigation found no JamWide-specific source. Need user to point at the writer.", "blocking": false},
-    {"action": "Optional: lldb counter readout (Signal 6) and Instruments perf budget (Signal 7) on local build", "context": "Quick mechanical signals that can be done without multi-user; useful if multi-user UAT is delayed.", "blocking": false}
+    {"action": "Multi-user populated-server UAT on v1.1-beta.20.2 — bundled UAT for 07a/07c/09/08 + 07b broadcast regression check + .20.1/.20.2 deltas (chat scroll, peer rename propagation, VU/fader scale, underrun recovery)", "context": "Phase 15.1 cannot formally close without Signals 1c/3/6/7. v1.1-beta.20.x is the build for other beta testers to install and join sessions on.", "blocking": true},
+    {"action": "Localize cache-write source (Activity Monitor → Disk view, sort by Bytes Written, identify process + path)", "context": "User reported extremely high cache writes during 04-29 session; investigation found no JamWide-specific source. Pointer needed.", "blocking": false},
+    {"action": "Optional: lldb counter readout (Signal 6) and Instruments perf budget (Signal 7) on local build", "context": "Quick mechanical signals doable without multi-user; useful if multi-user UAT is delayed. Requires rebuild — installed VST3 is build 291, latest is 313.", "blocking": false}
   ],
   "decisions": [
     {"decision": "Bundled UAT scope: 07a + 07c + 09 + 08 deferred to 15.1-10 phase-end UAT (not per-plan)", "rationale": "User direction at start of 07c work. Cost: 3 stabilization cycles when 07a regressions surfaced in single-user UAT. Acceptable given each cycle was diagnose→surgical-fix→rebuild→verify (no patch piles).", "phase": "15.1"},
     {"decision": "PR #14 (steveseguin VDO sync) merged BEFORE pushing 15.1 work", "rationale": "PR was opened pre-15.1; clean rebase placed PR commits below 15.1 in history, preserving authorship and CI signal separation.", "phase": "15.1"},
     {"decision": "Beta numbering continued v1.1-beta.20 (skipping 19 since v1.1-beta.19-no-video was a one-off variant) instead of starting v1.2-beta.1", "rationale": "Respects existing convention. v1.2.0 stable can come later when milestone formally closes.", "phase": "15.1"},
     {"decision": "Architecture-mirror dead-but-live finding (njclient.cpp:1648 lobby renormalize) flagged in deferred-items.md as VERIFIED-UNREACHABLE rather than fixed", "rationale": ".continue-here.md option (b) — currently dead in modern JamWide; one-line surgical fix can land in v1.3 cleanup.", "phase": "15.1"},
-    {"decision": "VST3 rebuilt locally to build 291 (post-PR #14 merge) for parity with CI artifacts", "rationale": "User asked for parity so they can DAW-test exactly what other beta testers receive.", "phase": "15.1"}
+    {"decision": "VST3 rebuilt locally to build 291 (post-PR #14 merge) for parity with CI artifacts", "rationale": "User asked for parity so they can DAW-test exactly what other beta testers receive.", "phase": "15.1"},
+    {"decision": "v1.1-beta.21 withdrawn before public download; changes rolled into v1.1-beta.20.1 instead", "rationale": "The codec-underrun + ring-buffer changes were riskier than wanted for a late-night release cut. Re-bundled under the .20.x patch line for clearer scope. Commit history retains the bump-to-21 + revert pair; this is expected, not noise to clean up.", "phase": "15.1-post"},
+    {"decision": "v1.1-beta.20.2 hotfix scope kept to 2 commits (chat scroll preservation + Windows build unbreak)", "rationale": "Same-day hotfix on top of .20.1; the Windows fix unblocks CI for the other platforms while the chat-scroll fix was a quick UX win the user wanted in the next public build.", "phase": "15.1-post"},
+    {"decision": "Release notes for .20.1 and .20.2 pushed via gh release edit (.20.1 marked 'Superseded by .20.2'); CHANGELOG.md opened a 1.1 Beta Series section but did NOT back-fill betas 1-20", "rationale": "Two sources of truth (GitHub Releases + CHANGELOG.md) drift; back-filling 18 betas costs hours and would force re-derivation from commit history with low signal-to-noise. GitHub Releases stays authoritative for older betas; CHANGELOG.md tracks .20.1 forward.", "phase": "15.1-post"}
   ],
-  "uncommitted_files": [],
-  "next_action": "Resume by checking gh release v1.1-beta.20 status (CI artifacts uploaded?), then either: (a) wait for multi-user UAT feedback from beta testers; (b) execute Signal 6 (lldb counter readout) + Signal 7 (Instruments) locally to close the mechanical signals; (c) investigate user's cache-write report when they reply with localization info.",
-  "context_notes": "Phase 15.1 implementation is FUNCTIONALLY COMPLETE. All 10 plans landed, 3 post-UAT stabilization fixes shipped, beta released. Open: bundled multi-user UAT (intentionally requires beta installation by other users) + cache-write investigation (awaiting user info). The three 07a stabilization fixes (b9899a0/e827453/e151dd8 in pushed history; b8ca083/7e69e1a/00dfee7 in local pre-rebase history) all share root cause — slot picking placed on wrong thread; the apply-visitor fix is the architecturally correct one. feedback_legacy_invariant_audit.md updated with all three Direction A/B/C patterns from this session."
+  "uncommitted_files": ["CHANGELOG.md (about to be committed by this WIP commit)"],
+  "next_action": "Resume by reading the 'Update 2026-05-03' section at the top of .planning/phases/15.1-rt-safety-hardening/.continue-here.md, then triage: (a) check gh release v1.1-beta.20.2 download counts / issue traffic for early UAT signal; (b) if user has provided cache-write info, investigate; (c) if UAT feedback has arrived, triage; (d) if no UAT yet, offer Signal 6 (lldb counter readout, ~2 min) and Signal 7 (Instruments perf budget, ~5 min) on a fresh local build (current VST3 install is build 291, latest is 313 — rebuild needed first).",
+  "context_notes": "Phase 15.1 implementation is FUNCTIONALLY COMPLETE. The 04-29 handoff still holds for the phase work itself. This update layers the post-04-29 patch cycle on top: PeerChannelInfoUpdate orphan-mirror fix (quick task), v1.1-beta.21 cut and withdrawn, .20.1 cut bundling withdrawn-.21 changes + a TX-button sync + diagnostic accessors, .20.2 same-day hotfix for chat-scroll + Windows build, and finally release-notes catch-up across both patch betas + opening CHANGELOG.md's 1.1 Beta Series section. CHANGELOG.md is uncommitted at save time and will be picked up by the WIP commit. Bundled multi-user UAT remains the gating action."
 }

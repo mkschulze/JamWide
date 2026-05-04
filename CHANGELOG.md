@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The 1.1 line is a complete JUCE rewrite (1.0 was CLAP/ImGui). Per-beta release notes for `1.1-beta.1` through `1.1-beta.20` are on the [GitHub Releases page](https://github.com/mkschulze/JamWide/releases) and are not duplicated here. Entries are tracked below starting with `1.1-beta.20.1`.
 
+## [1.1.0-beta.20.5] - 2026-05-05 — DIAGNOSTIC BUILD (pool + profiling)
+
+> **Recommended diagnostic build for the multi-peer CPU-spike regression test.** Supersedes `.20.3` and `.20.4`. The `.20.4` ABTEST 1 (ring 256→32) was redesigned because reverting the size re-introduced the original cutoff bug at typical bitrates, which mixed in a different audio-drop mechanism and confused the test signal. This build keeps the 256-chunk capacity (cutoff fix preserved) and instead **pools `DecodeMediaBuffer` instances** so per-interval allocation is eliminated entirely after warm-up.
+
+### Changed (vs .20.4)
+- **ABTEST 1 redesigned**: instead of reverting `SpscRing<DecodeChunk, N>` from 256 to 32 chunks, we keep N=256 *and* introduce `DecodeMediaBufferPool`. `RemoteDownload::Open` now acquires from the pool (`new` only on cold path, when the free list is empty); `DecodeMediaBuffer::Release()` returns to the pool instead of `delete this`. `DecodeMediaBuffer::ResetForReuse()` drains any leftover SPSC chunks and zeroes per-instance counters before recycling. Pool capped at 64 instances (~64 MB resident; covers 64-peer rooms).
+- **Side effect of the pivot**: cutoff bug from `.20.3`/`.20.4` is **no longer re-introduced**. The pool preserves 0e9cbae's cutoff fix.
+
+### Same as .20.4 (still active)
+- **ABTEST 2**: `broadcastBeatHeartbeat` stubbed (heartbeat baseline-CPU test). Side effect: video companion sync indicator stops updating.
+- **Profiling**: `client->Run()`, `RemoteDownload::Open` acquisition, and `JamWideJuceEditor::timerCallback` instrumented with count/total_ns/max_ns counters. Surfaced in `/rcmstats` and DBG button output.
+
+### What the profiling now reveals
+With the pool, the `decbuf_alloc avg_ns` metric should trend toward **drain-and-reset cost** (sub-µs) not **mach_vm_allocate cost** (often hundreds of µs). If the spike still occurs despite this, the allocation hypothesis is falsified and we'd look elsewhere. If the spike resolves, this build is essentially the production fix candidate.
+
+### Tester protocol
+Same as .20.4: DBG at start, jam 30 min with 4+ peers, DBG at end, diff the two log files.
+
+Key signals to look at:
+- **`decbuf_alloc avg_ns`** delta across the session: pool hot path should be < 10 µs (was ~hundreds of µs on .20.2 / .20.3 cold path)
+- **`client_run max_ns`**: should drop significantly if allocation churn was the spike source
+- Audible glitches and remote-peer reports: should be absent if hypothesis confirmed
+
+### v1.1-beta.20.4 status
+Tag `v1.1-beta.20.4` exists on the remote but no GitHub release was created — its CI was cancelled before the release job ran, in favor of this redesign. The commit (`f36a4a6`) remains in `main`'s history as the prior diagnostic checkpoint.
+
 ## [1.1.0-beta.20.4] - 2026-05-04 — DIAGNOSTIC BUILD (with profiling)
 
 > Same diagnostic intent as `.20.3` (CPU-spike A/B test) plus profiling counters that the log file can carry. **Recommended diagnostic build** — supersedes `.20.3` for testing.

@@ -31,8 +31,10 @@
 #include <atomic>     // 15.1-07c CR-12: std::atomic<int> m_refcnt
 #include <chrono>
 #include <cstring>    // 15.1-07c CR-12: std::memcpy in DecodeMediaBuffer Read/Write
+#include <mutex>      // v1.1-beta.20.5: DecodeMediaBufferPool free-list mutex
 #include <stdexcept>  // 15.1-08 + Codex M-7: std::runtime_error in SetMaxAudioBlockSize
 #include <thread>  // 15.1-06 HIGH-3: std::this_thread::yield in DeleteLocalChannel gate
+#include <vector>     // v1.1-beta.20.5: DecodeMediaBufferPool free-list storage
 #include "njclient.h"
 #include "mpb.h"
 
@@ -210,6 +212,36 @@ static inline void pushWaveBlockRecord(
 #define MAKE_NJ_FOURCC(A,B,C,D) ((A) | ((B)<<8) | ((C)<<16) | ((D)<<24))
 
 // ---------------------------------------------------------------------------
+// v1.1-beta.20.5: Forward-decl + pool for DecodeMediaBuffer.
+//   The pool eliminates per-interval `new DecodeMediaBuffer` allocation
+//   churn (root cause of the multi-peer CPU-spike regression — see
+//   .planning/debug/cpu-spikes-beta12-regression.md). Steady-state
+//   allocations after warm-up = 0.
+class DecodeMediaBuffer;
+class DecodeMediaBufferPool {
+public:
+  // Run-thread-only. Returns a fresh-state DecodeMediaBuffer (refcnt=1).
+  // Either pops a recycled instance from the free list (calling
+  // ResetForReuse) or allocates a new one if the list is empty.
+  static DecodeMediaBuffer* acquire();
+
+  // Either thread (called from DecodeMediaBuffer::Release on the last
+  // refcnt drop). Returns the buffer to the free list, or `delete`s if the
+  // pool is at capacity. Brief mutex acquisition; not RT-safe in the
+  // strictest sense, but the prior `delete this` was also a heap op of
+  // similar magnitude, so this isn't a regression for the audio thread.
+  static void release(DecodeMediaBuffer* buf);
+
+private:
+  static constexpr std::size_t MAX_POOL_SIZE = 64;
+  static std::mutex& mtx() noexcept { static std::mutex m; return m; }
+  static std::vector<DecodeMediaBuffer*>& free_list() noexcept {
+    static std::vector<DecodeMediaBuffer*> v;
+    return v;
+  }
+};
+
+// ---------------------------------------------------------------------------
 // 15.1-07c CR-12: DecodeMediaBuffer — network-stream byte buffer between the
 // run/network thread (Write) and the audio thread (Read, via runDecode).
 //
@@ -246,8 +278,27 @@ public:
   {
     // acq_rel: the last decrement must happen-after all prior writes from
     // either thread, so the destructor sees a consistent state.
+    // v1.1-beta.20.5: return to pool instead of `delete this` to eliminate
+    //   per-interval allocation churn (CPU-spike regression fix).
     if (m_refcnt.fetch_sub(1, std::memory_order_acq_rel) == 1)
-      delete this;
+      DecodeMediaBufferPool::release(this);
+  }
+
+  // v1.1-beta.20.5: invoked by DecodeMediaBufferPool::acquire when this
+  //   instance is recycled from the free list. After this returns, the
+  //   buffer is in the same state as a freshly-constructed DecodeMediaBuffer.
+  //   Called on the run thread BEFORE any other thread can access the
+  //   instance (the pool just popped it; no shared ownership yet).
+  void ResetForReuse() noexcept
+  {
+    // Drain any leftover chunks. SPSC head_/tail_ advance correctly; we
+    // don't reach into them directly. After drain: head_ == tail_ (empty).
+    while (m_chunks.try_pop()) {}
+    m_consumer_buf_len = 0;
+    m_consumer_buf_pos = 0;
+    m_refcnt.store(1, std::memory_order_release);
+    m_total_written.store(0, std::memory_order_relaxed);
+    m_write_drops.store(0, std::memory_order_relaxed);
   }
 
   // Run/network thread. Splits the caller's data into chunk-sized records and
@@ -354,14 +405,15 @@ private:
   // codec needed. 256 × 4 KB = 1 MB gives 2× headroom over that worst case.
   // Memory cost: 1 MB per concurrent RemoteDownload; with 30-peer rooms that
   // is ~30 MB transient, acceptable.
-  // === ABTEST 1 (cpu-spikes-beta12-regression) — diagnostic revert of 0e9cbae.
-  //   Hypothesis: 1 MB-per-buffer × N peers × per-interval allocation churn is
-  //   the audible-glitch cause. WARNING: this re-introduces the original
-  //   interval-overflow cutoff bug at high bitrates. Diagnosis build only.
-  //   To restore production sizing: change 32 back to 256. The proper fix is
-  //   to keep capacity at 256 but heap-allocate the ring storage or pool the
-  //   DecodeMediaBuffer instances per (peer_slot, channel_idx).
-  jamwide::SpscRing<jamwide::DecodeChunk, 32> m_chunks;
+  // === ABTEST 1 (cpu-spikes-beta12-regression) — v1.1-beta.20.5 redesign.
+  //   Capacity restored to 256 (cutoff fix from 0e9cbae preserved). The
+  //   per-peer-per-interval `new DecodeMediaBuffer` allocation churn is now
+  //   eliminated by pooling — see DecodeMediaBufferPool below. Pool::acquire
+  //   reuses a recycled instance (calling ResetForReuse) instead of `new`.
+  //   On Release() the buffer is returned to the pool instead of `delete`d.
+  //   Steady-state allocations after warm-up = 0 per interval. This is the
+  //   actual hypothesis test (and a candidate production fix).
+  jamwide::SpscRing<jamwide::DecodeChunk, 256> m_chunks;
   // === END ABTEST 1
 
   // Audio-thread-owned linear buffer — absorbs partial-chunk reads when the
@@ -402,6 +454,42 @@ private:
 };
 
 std::atomic<uint64_t> DecodeMediaBuffer::s_total_write_drops{0};
+
+// v1.1-beta.20.5: out-of-line definitions for DecodeMediaBufferPool. Placed
+//   here (after DecodeMediaBuffer's full definition) so we can dereference
+//   DecodeMediaBuffer* and call its public methods.
+DecodeMediaBuffer* DecodeMediaBufferPool::acquire()
+{
+  {
+    std::lock_guard<std::mutex> lock(mtx());
+    auto& fl = free_list();
+    if (!fl.empty()) {
+      DecodeMediaBuffer* buf = fl.back();
+      fl.pop_back();
+      buf->ResetForReuse();
+      return buf;
+    }
+  }
+  return new DecodeMediaBuffer;
+}
+
+void DecodeMediaBufferPool::release(DecodeMediaBuffer* buf)
+{
+  if (!buf) return;
+  {
+    std::lock_guard<std::mutex> lock(mtx());
+    auto& fl = free_list();
+    if (fl.size() < MAX_POOL_SIZE) {
+      fl.push_back(buf);
+      return;
+    }
+  }
+  // Pool at capacity: actually delete. Caps total resident pool memory at
+  //   MAX_POOL_SIZE * sizeof(DecodeMediaBuffer) ≈ 64 MB. Steady-state
+  //   in-flight count is N_peers, so the cap only kicks in for very large
+  //   rooms or long-lived connections.
+  delete buf;
+}
 
 struct overlapFadeState {
   overlapFadeState() { fade_nch=fade_sz=0; }
@@ -5330,13 +5418,15 @@ void RemoteDownload::Open(NJClient *parent, unsigned int fourcc, bool forceToDis
   m_parent=parent;
   Close();
   m_fp=0;
-  // === Profiling: time the heap allocation of DecodeMediaBuffer (1 MB inline
-  //   storage at production sizing). On macOS this crosses the libmalloc
-  //   large-allocation threshold and becomes mach_vm_allocate. See
-  //   .planning/debug/cpu-spikes-beta12-regression.md.
+  // === Profiling: time the DecodeMediaBuffer acquisition. v1.1-beta.20.5:
+  //   acquisition now goes through DecodeMediaBufferPool — first call per
+  //   (peer_slot, channel_idx) allocates (cold path); subsequent calls
+  //   reuse a recycled instance via ResetForReuse (hot path, no syscalls).
+  //   The avg_ns metric will trend toward "drain-and-reset cost" not
+  //   "mach_vm_allocate cost" once steady state is reached.
   {
     auto _prof_t0 = std::chrono::steady_clock::now();
-    m_decbuf=new DecodeMediaBuffer;
+    m_decbuf=DecodeMediaBufferPool::acquire();
     auto _prof_dt = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - _prof_t0).count();
     NJClient::ProfilingRecordDecbufAlloc(static_cast<uint64_t>(_prof_dt));

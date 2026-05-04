@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The 1.1 line is a complete JUCE rewrite (1.0 was CLAP/ImGui). Per-beta release notes for `1.1-beta.1` through `1.1-beta.20` are on the [GitHub Releases page](https://github.com/mkschulze/JamWide/releases) and are not duplicated here. Entries are tracked below starting with `1.1-beta.20.1`.
 
+## [1.1.0-beta.20.3] - 2026-05-04 — DIAGNOSTIC BUILD
+
+> **⚠ This is not a regular beta.** It is a diagnostic build for the multi-peer CPU-spike investigation tracked in `.planning/debug/cpu-spikes-beta12-regression.md`. Two suspect code paths are temporarily neutralized to confirm whether they are the regression source. Do **not** use this build for normal jamming — at high bitrates the original audio-cutoff bug that beta.20.1 fixed is intentionally re-introduced. Use beta.20.2 for normal use.
+
+### Diagnostic changes (NOT shipping fixes)
+- **ABTEST 1**: `DecodeMediaBuffer`'s SPSC ring temporarily reverted from 256 → 32 chunks. Confirms whether per-peer-per-interval 1 MB heap allocation churn (introduced by beta.20.1's ring bump) is the cause of audible CPU spikes that grow with peer count. Side effect: original interval-overflow cutoff bug returns at high bitrates (≥192 kbps stereo on 12 s intervals); `decbuf_drops` will climb in `/rcmstats`.
+- **ABTEST 2**: `broadcastBeatHeartbeat` call in `JamWideJuceEditor::timerCallback` is stubbed. Confirms whether ~1.5 Hz JSON build + WebSocket send on the message thread is the source of the baseline CPU bump that started showing in beta.12. Side effect: video companion sync indicator stops updating; no other functional impact.
+
+### Notes for testers
+- A/B compare baseline (beta.20.2) against this build under the same load (4+ peers, 30+ min session)
+- Watch for: (a) audible-glitch cadence change, (b) Activity Monitor CPU% baseline, (c) `decbuf_drops` counter via `/rcmstats`
+- Report findings to inform the proper fix (pool DecodeMediaBuffer + rate-limit/move heartbeat off message thread)
+
 ## [1.1.0-beta.20.2] - 2026-05-03
 
 ### Fixed

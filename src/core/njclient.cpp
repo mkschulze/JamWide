@@ -354,7 +354,15 @@ private:
   // codec needed. 256 × 4 KB = 1 MB gives 2× headroom over that worst case.
   // Memory cost: 1 MB per concurrent RemoteDownload; with 30-peer rooms that
   // is ~30 MB transient, acceptable.
-  jamwide::SpscRing<jamwide::DecodeChunk, 256> m_chunks;
+  // === ABTEST 1 (cpu-spikes-beta12-regression) — diagnostic revert of 0e9cbae.
+  //   Hypothesis: 1 MB-per-buffer × N peers × per-interval allocation churn is
+  //   the audible-glitch cause. WARNING: this re-introduces the original
+  //   interval-overflow cutoff bug at high bitrates. Diagnosis build only.
+  //   To restore production sizing: change 32 back to 256. The proper fix is
+  //   to keep capacity at 256 but heap-allocate the ring storage or pool the
+  //   DecodeMediaBuffer instances per (peer_slot, channel_idx).
+  jamwide::SpscRing<jamwide::DecodeChunk, 32> m_chunks;
+  // === END ABTEST 1
 
   // Audio-thread-owned linear buffer — absorbs partial-chunk reads when the
   // codec asks for fewer bytes than CHUNK_BYTES at a time. Sized to 2x

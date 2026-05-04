@@ -327,11 +327,18 @@ void JamWideJuceEditor::timerCallback()
     beatBar.update(bpi, beat, iPos, iLen);
 
     // Broadcast beat position to video companion page for sync indicator
+    // === ABTEST 2 (cpu-spikes-beta12-regression) — heartbeat broadcast stubbed.
+    //   Hypothesis: ~1.5 Hz JSON build + wsMutex_ acquisition + WebSocket send
+    //   is the source of the beta-12-onward baseline-CPU bump that users have
+    //   reported. Diagnosis build only. To restore: uncomment the if-block.
+    /*
     if (processorRef.videoCompanion && processorRef.videoCompanion->isActive())
     {
         int intervalCount = processorRef.uiSnapshot.interval_count.load(std::memory_order_relaxed);
         processorRef.videoCompanion->broadcastBeatHeartbeat(beat, bpi, intervalCount);
     }
+    */
+    // === END ABTEST 2
 
     // Update BeatBar BPM for label area display
     beatBar.setBpm(processorRef.uiSnapshot.bpm.load(std::memory_order_relaxed));

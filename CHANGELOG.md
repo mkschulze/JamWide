@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The 1.1 line is a complete JUCE rewrite (1.0 was CLAP/ImGui). Per-beta release notes for `1.1-beta.1` through `1.1-beta.20` are on the [GitHub Releases page](https://github.com/mkschulze/JamWide/releases) and are not duplicated here. Entries are tracked below starting with `1.1-beta.20.1`.
 
+## [1.1.0-beta.20.4] - 2026-05-04 — DIAGNOSTIC BUILD (with profiling)
+
+> Same diagnostic intent as `.20.3` (CPU-spike A/B test) plus profiling counters that the log file can carry. **Recommended diagnostic build** — supersedes `.20.3` for testing.
+
+### Added (profiling)
+- `client->Run()` cycle time — count, total, max ns (run thread)
+- `RemoteDownload::Open` `new DecodeMediaBuffer` allocation time — count, total, max ns (run thread)
+- `JamWideJuceEditor::timerCallback` end-to-end time — count, total, max ns (message thread)
+- All counters surfaced via `/rcmstats` chat command and DBG button — appended to existing diagnostic report under `--- profiling (cumulative; compare deltas) ---`
+
+### Same as .20.3 (still active)
+- ABTEST 1: SPSC ring 256 → 32 (allocation churn test)
+- ABTEST 2: `broadcastBeatHeartbeat` stubbed (message-thread baseline test)
+
+### How to use the profiling
+1. Connect to a populated server, wait for steady state (4+ peers)
+2. Run `/rcmstats` — note the three profiling rows; this is your **start snapshot**
+3. Jam for 30 minutes
+4. Run `/rcmstats` again — note the three profiling rows; this is your **end snapshot**
+5. Compute deltas (end − start). Key metrics:
+   - **`decbuf_alloc avg_ns`** — if it's > 100 µs (100,000 ns) on production sizing, libmalloc is going to mach_vm_allocate. Confirms hypothesis.
+   - **`decbuf_alloc max_ns`** — peak single-allocation time. > 1 ms means a single alloc was a real spike.
+   - **`client_run max_ns`** — peak run-thread cycle. > 5 ms means audio data was withheld from the encoder upload.
+   - **`timer_cb avg_ns`** — message-thread baseline cost. Compare ABTEST-2-on vs ABTEST-2-off builds.
+
+### Tester protocol
+Side-by-side test: `v1.1-beta.20.2` (no fixes, no profiling) vs `v1.1-beta.20.4` (both fixes + profiling). Both should run against the same room population for the same duration. Note: only .20.4 will show profiling — but the symptom-presence/absence comparison itself is the primary signal.
+
 ## [1.1.0-beta.20.3] - 2026-05-04 — DIAGNOSTIC BUILD
 
 > **⚠ This is not a regular beta.** It is a diagnostic build for the multi-peer CPU-spike investigation tracked in `.planning/debug/cpu-spikes-beta12-regression.md`. Two suspect code paths are temporarily neutralized to confirm whether they are the regression source. Do **not** use this build for normal jamming — at high bitrates the original audio-cutoff bug that beta.20.1 fixed is intentionally re-introduced. Use beta.20.2 for normal use.

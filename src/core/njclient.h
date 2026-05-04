@@ -507,6 +507,28 @@ public:
   };
   bool GetLocalChannelMirrorSnapshot(int ch, LocalChannelMirrorSnapshot* out) const noexcept;
 
+  // === Profiling (cpu-spikes-beta12-regression) — added in v1.1-beta.20.4.
+  //   Cumulative atomic counters for steady_clock-measured durations of three
+  //   hot paths used to confirm/falsify the CPU-spike regression hypotheses.
+  //   Recording functions are RT-safe (3 relaxed atomic ops, no locks, no
+  //   allocation). Snapshot is read from the message thread via /rcmstats or
+  //   the DBG button. Static — counters are process-global.
+  struct ProfilingSnapshot {
+    uint64_t run_count;            // NJClient::Run() invocations (run thread)
+    uint64_t run_total_ns;
+    uint64_t run_max_ns;
+    uint64_t decbuf_alloc_count;   // `new DecodeMediaBuffer` (run thread)
+    uint64_t decbuf_alloc_total_ns;
+    uint64_t decbuf_alloc_max_ns;
+    uint64_t timer_cb_count;       // JamWideJuceEditor::timerCallback (msg thread)
+    uint64_t timer_cb_total_ns;
+    uint64_t timer_cb_max_ns;
+  };
+  static ProfilingSnapshot GetProfilingSnapshot() noexcept;
+  static void ProfilingRecordRun(uint64_t ns) noexcept;
+  static void ProfilingRecordDecbufAlloc(uint64_t ns) noexcept;
+  static void ProfilingRecordTimerCallback(uint64_t ns) noexcept;
+
   // True if the run-thread JNL_Connection is non-null (i.e. NJClient::Run
   // has a transport to encode-and-send into). Relaxed-equivalent — m_netcon
   // is a plain pointer set/cleared on the run thread; the UI thread observes

@@ -4648,6 +4648,58 @@ uint64_t NJClient::GetDecodeBufWriteDropTotal() const noexcept
   return DecodeMediaBuffer::TotalWriteDrops();
 }
 
+// === Profiling (cpu-spikes-beta12-regression) — file-scope atomics, static
+//   recorders. See njclient.h ProfilingSnapshot doc-comment for context.
+namespace {
+  std::atomic<uint64_t> g_prof_run_count{0};
+  std::atomic<uint64_t> g_prof_run_total_ns{0};
+  std::atomic<uint64_t> g_prof_run_max_ns{0};
+  std::atomic<uint64_t> g_prof_decbuf_alloc_count{0};
+  std::atomic<uint64_t> g_prof_decbuf_alloc_total_ns{0};
+  std::atomic<uint64_t> g_prof_decbuf_alloc_max_ns{0};
+  std::atomic<uint64_t> g_prof_timer_cb_count{0};
+  std::atomic<uint64_t> g_prof_timer_cb_total_ns{0};
+  std::atomic<uint64_t> g_prof_timer_cb_max_ns{0};
+
+  inline void prof_atomic_max(std::atomic<uint64_t>& target, uint64_t v) noexcept {
+    uint64_t cur = target.load(std::memory_order_relaxed);
+    while (v > cur && !target.compare_exchange_weak(cur, v,
+        std::memory_order_relaxed, std::memory_order_relaxed)) {}
+  }
+}
+
+void NJClient::ProfilingRecordRun(uint64_t ns) noexcept {
+  g_prof_run_count.fetch_add(1, std::memory_order_relaxed);
+  g_prof_run_total_ns.fetch_add(ns, std::memory_order_relaxed);
+  prof_atomic_max(g_prof_run_max_ns, ns);
+}
+
+void NJClient::ProfilingRecordDecbufAlloc(uint64_t ns) noexcept {
+  g_prof_decbuf_alloc_count.fetch_add(1, std::memory_order_relaxed);
+  g_prof_decbuf_alloc_total_ns.fetch_add(ns, std::memory_order_relaxed);
+  prof_atomic_max(g_prof_decbuf_alloc_max_ns, ns);
+}
+
+void NJClient::ProfilingRecordTimerCallback(uint64_t ns) noexcept {
+  g_prof_timer_cb_count.fetch_add(1, std::memory_order_relaxed);
+  g_prof_timer_cb_total_ns.fetch_add(ns, std::memory_order_relaxed);
+  prof_atomic_max(g_prof_timer_cb_max_ns, ns);
+}
+
+NJClient::ProfilingSnapshot NJClient::GetProfilingSnapshot() noexcept {
+  return ProfilingSnapshot{
+    g_prof_run_count.load(std::memory_order_relaxed),
+    g_prof_run_total_ns.load(std::memory_order_relaxed),
+    g_prof_run_max_ns.load(std::memory_order_relaxed),
+    g_prof_decbuf_alloc_count.load(std::memory_order_relaxed),
+    g_prof_decbuf_alloc_total_ns.load(std::memory_order_relaxed),
+    g_prof_decbuf_alloc_max_ns.load(std::memory_order_relaxed),
+    g_prof_timer_cb_count.load(std::memory_order_relaxed),
+    g_prof_timer_cb_total_ns.load(std::memory_order_relaxed),
+    g_prof_timer_cb_max_ns.load(std::memory_order_relaxed),
+  };
+}
+
 // 2026-05-03 tx-silent-and-orphan-cutoff: best-effort relaxed snapshot of
 // audio-thread mirror state. Observability only — torn reads of non-atomic
 // POD fields are accepted (single-shot diagnostic, same risk profile as
@@ -5278,7 +5330,17 @@ void RemoteDownload::Open(NJClient *parent, unsigned int fourcc, bool forceToDis
   m_parent=parent;
   Close();
   m_fp=0;
-  m_decbuf=new DecodeMediaBuffer;
+  // === Profiling: time the heap allocation of DecodeMediaBuffer (1 MB inline
+  //   storage at production sizing). On macOS this crosses the libmalloc
+  //   large-allocation threshold and becomes mach_vm_allocate. See
+  //   .planning/debug/cpu-spikes-beta12-regression.md.
+  {
+    auto _prof_t0 = std::chrono::steady_clock::now();
+    m_decbuf=new DecodeMediaBuffer;
+    auto _prof_dt = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - _prof_t0).count();
+    NJClient::ProfilingRecordDecbufAlloc(static_cast<uint64_t>(_prof_dt));
+  }
   if (!m_decbuf || !parent || parent->config_savelocalaudio>0 || forceToDisk)
   {
     WDL_String s;

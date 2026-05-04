@@ -312,6 +312,10 @@ void run_thread_func(std::shared_ptr<JamWidePlugin> plugin) {
         // Run() returns 0 while there's more work to do.
         int run_result;
         NLOG_VERBOSE("[RunThread] Calling client->Run()\n");
+        // === Profiling (cpu-spikes-beta12-regression): see NJClient::Run wrap
+        //   in juce/NinjamRunThread.cpp for context. Same wrap on the legacy
+        //   non-JUCE run path.
+        auto _prof_run_t0 = std::chrono::steady_clock::now();
         while (!(run_result = client->Run())) {
             // Check shutdown between iterations
             if (plugin->shutdown.load(std::memory_order_acquire)) {
@@ -320,6 +324,9 @@ void run_thread_func(std::shared_ptr<JamWidePlugin> plugin) {
                 return;
             }
         }
+        auto _prof_run_dt = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - _prof_run_t0).count();
+        NJClient::ProfilingRecordRun(static_cast<uint64_t>(_prof_run_dt));
         NLOG_VERBOSE("[RunThread] client->Run() returned %d\n", run_result);
 
         current_status = client->GetStatus();

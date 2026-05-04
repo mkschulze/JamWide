@@ -5,6 +5,7 @@
 #include "video/BrowserDetect.h"
 #include "video/VideoCompanion.h"
 
+#include <chrono>
 #include <variant>
 
 JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
@@ -310,6 +311,19 @@ void JamWideJuceEditor::resized()
 
 void JamWideJuceEditor::timerCallback()
 {
+    // === Profiling (cpu-spikes-beta12-regression): RAII wrap of the entire
+    //   message-thread timer callback. Records on every exit path. See
+    //   .planning/debug/cpu-spikes-beta12-regression.md.
+    struct ProfTimerCb {
+        std::chrono::steady_clock::time_point t0;
+        ProfTimerCb() : t0(std::chrono::steady_clock::now()) {}
+        ~ProfTimerCb() {
+            auto dt = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - t0).count();
+            NJClient::ProfilingRecordTimerCallback(static_cast<uint64_t>(dt));
+        }
+    } _prof_timer_cb;
+
     drainEvents();
     pollStatus();
 

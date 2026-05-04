@@ -652,10 +652,17 @@ void NinjamRunThread::run()
 
         {
             const juce::ScopedLock sl(processor.getClientLock());
+            // === Profiling (cpu-spikes-beta12-regression): time the entire
+            //   client->Run() loop. This is the run-thread cycle whose
+            //   spikes the user hears as audio gaps over remote channels.
+            auto _prof_run_t0 = std::chrono::steady_clock::now();
             while (!client->Run())
             {
                 if (threadShouldExit()) return;
             }
+            auto _prof_run_dt = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - _prof_run_t0).count();
+            NJClient::ProfilingRecordRun(static_cast<uint64_t>(_prof_run_dt));
 
             int currentStatus = client->GetStatus();
             client->cached_status.store(currentStatus, std::memory_order_release);

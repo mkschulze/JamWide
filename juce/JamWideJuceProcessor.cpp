@@ -836,6 +836,36 @@ std::string JamWideJuceProcessor::buildDiagnosticReport() const
     os << "defer_del:     " << c->GetDeferredDeleteOverflowCount() << "\n";
     os << "decbuf_drops:  " << c->GetDecodeBufWriteDropTotal() << "\n";
 
+    // === Profiling (cpu-spikes-beta12-regression) — added v1.1-beta.20.4.
+    //   Cumulative since session start. Compare snapshots (run /rcmstats at
+    //   start and end of test) to compute deltas. avg_ns = total_ns / count.
+    {
+        const auto p = NJClient::GetProfilingSnapshot();
+        char pbuf[200];
+        os << "\n--- profiling (cumulative; compare deltas) ---\n";
+        std::snprintf(pbuf, sizeof(pbuf),
+            "client_run:     count=%llu total=%llu ns max=%llu ns  avg=%llu ns\n",
+            (unsigned long long) p.run_count,
+            (unsigned long long) p.run_total_ns,
+            (unsigned long long) p.run_max_ns,
+            (unsigned long long) (p.run_count ? p.run_total_ns / p.run_count : 0));
+        os << pbuf;
+        std::snprintf(pbuf, sizeof(pbuf),
+            "decbuf_alloc:   count=%llu total=%llu ns max=%llu ns  avg=%llu ns\n",
+            (unsigned long long) p.decbuf_alloc_count,
+            (unsigned long long) p.decbuf_alloc_total_ns,
+            (unsigned long long) p.decbuf_alloc_max_ns,
+            (unsigned long long) (p.decbuf_alloc_count ? p.decbuf_alloc_total_ns / p.decbuf_alloc_count : 0));
+        os << pbuf;
+        std::snprintf(pbuf, sizeof(pbuf),
+            "timer_cb:       count=%llu total=%llu ns max=%llu ns  avg=%llu ns\n",
+            (unsigned long long) p.timer_cb_count,
+            (unsigned long long) p.timer_cb_total_ns,
+            (unsigned long long) p.timer_cb_max_ns,
+            (unsigned long long) (p.timer_cb_count ? p.timer_cb_total_ns / p.timer_cb_count : 0));
+        os << pbuf;
+    }
+
     os << "\n--- per-(slot,channel) chinfo + mirror state ---\n";
     int nonzero = 0;
     bool slot_seen[MAX_PEERS] = {};

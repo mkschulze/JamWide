@@ -27,6 +27,16 @@
     SPSC-element-type contract (per src/threading/spsc_ring.h:29):
     every payload MUST be std::is_trivially_copyable. Each variant + POD
     locks this contract via a static_assert below.
+
+    Phase 14.3-02 carve-out: RawDataItem POD + RAWDATA_SEND_QUEUE_CAPACITY
+    constant for the NinjamZap-compatible codec-agnostic transport
+    scaffolding. Producer = any thread (RawDataSendBegin/Write callers,
+    including UI thread and future audio thread for QueueVideoFrame).
+    Consumer = run thread inside NJClient::Run drain block. Payload
+    ownership: the variable-length opaque byte stream is carried via a
+    WDL_HeapBuf* owned-pointer field; producer allocates, drain (or
+    discard-on-Disconnect) deletes. Mirrors the DecodeState* ownership-
+    transfer pattern used by PeerNextDsUpdate.
 */
 
 #ifndef SPSC_PAYLOADS_H
@@ -53,6 +63,17 @@ namespace jamwide {
 class DecodeState;
 class RemoteUser;     // forward-decl ONLY for the deferred-free transport (HIGH-3).
 class Local_Channel;  // forward-decl ONLY for the deferred-free transport (HIGH-3).
+
+} // close namespace jamwide briefly for the global-scope forward-decl below
+
+// 14.3-02: forward-decl for the RawDataItem.payload owned-pointer field.
+// WDL_HeapBuf is defined in `wdl/heapbuf.h`. RawDataItem only stores a
+// pointer to it, never dereferences here — the payload's lifetime is
+// managed by the producer (allocate on RawDataSendWrite), the drain (delete
+// after Send), or the discard branch (delete without sending on null netcon).
+class WDL_HeapBuf;
+
+namespace jamwide {
 
 // ===========================================================================
 // (a) RemoteUserUpdate — Use 2 in 15.1-RESEARCH.md (consumed by 15.1-07a).
@@ -305,6 +326,65 @@ static_assert(std::is_trivially_copyable_v<DecodeArmRequest>,
               "DecodeArmRequest must be trivially copyable for SPSC handoff");
 
 inline constexpr std::size_t ARM_REQUEST_CAPACITY = 256;
+
+// ===========================================================================
+// (h) RawDataItem — Phase 14.3-02 video transport scaffolding.
+//
+// Codec-agnostic upload queue for the NinjamZap-compatible RawDataSendBegin/
+// RawDataSendWrite public API. The send queue (NJClient::m_rawdata_sendq)
+// has producers on ANY thread (RawDataSendBegin/Write public API callers
+// including UI thread and future audio thread for QueueVideoFrame) and a
+// single consumer on the run thread, inside NJClient::Run's drain block
+// lexically adjacent to the existing audio-encoder Send loop. Direct
+// m_netcon->Send from a non-run-thread producer is forbidden — Landmine L2
+// (Net_Connection::Send is NOT thread-safe; see src/core/netmsg.cpp:289).
+//
+// Payload ownership: the variable-length opaque byte stream lives in a
+// WDL_HeapBuf* owned by the queued item. The producer allocates on
+// RawDataSendWrite (only when dataLen > 0; otherwise nullptr). The drain
+// branch deletes after Sending; the discard branch (null m_netcon)
+// deletes without sending and increments the overflow counter. This
+// mirrors the DecodeState* ownership-transfer pattern in PeerNextDsUpdate.
+//
+// Trivially copyable invariant: stored fields are int / unsigned char /
+// unsigned int / unsigned char[16] / pointer — every field is POD. The
+// SpscRing<RawDataItem, N> contract (see spsc_ring.h:29) is satisfied.
+// ===========================================================================
+
+struct RawDataItem {
+    int           type = 0;            // 0 = begin, 1 = data/end
+    unsigned char guid[16] = {0};
+    unsigned int  fourcc = 0;
+    int           chidx = 0;
+    int           estsize = 0;
+    int           flags = 0;           // & 1 = end (for type == 1)
+    WDL_HeapBuf*  payload = nullptr;   // owned; drain or discard deletes.
+                                       // nullptr for type == 0 (begin) and
+                                       // for empty-payload writes.
+};
+
+static_assert(std::is_trivially_copyable_v<RawDataItem>,
+              "RawDataItem must be trivially copyable for SPSC handoff");
+
+// 14.3-02: capacity of the per-NJClient RawData send queue.
+//
+// Producer side: any thread calling NJClient::RawDataSendBegin /
+// RawDataSendWrite (UI thread today; future audio thread for the v1.3
+// QueueVideoFrame path). On try_push failure, the producer bumps
+// m_rawdata_sendq_overflows (atomic, relaxed) and writeLog warns.
+// Consumer side: run thread inside NJClient::Run's drain block
+// (lexically adjacent to the existing audio-encoder Send loop at
+// njclient.cpp:2502 / 2549). Drains, splits payloads into MAX_ENC_BLOCKSIZE
+// chunks, and emits mpb_client_upload_interval_{begin,write} via
+// m_netcon->Send.
+// Capacity rationale: video keyframe upload runs at the NINJAM interval
+// cadence (≤ 2-4 RawData items/sec/peer typical). 64 provides ~16x worst-
+// case headroom over the natural arrival rate. Power-of-2 for SpscRing's
+// mask-based wrap.
+// Post-UAT invariant (14.3 phase verification): the executor asserts
+// GetRawDataSendQueueOverflowCount() == 0 after standard UAT. Non-zero
+// == architectural defect (queue undersized for the workload).
+inline constexpr std::size_t RAWDATA_SEND_QUEUE_CAPACITY = 64;
 
 // ===========================================================================
 // (g) RemoteUser / Local_Channel deferred-free transports — Codex HIGH-3.

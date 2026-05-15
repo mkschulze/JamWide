@@ -423,6 +423,21 @@ if(JAMWIDE_BUILD_TESTS)
     target_link_libraries(test_encryption PRIVATE njclient)
     add_test(NAME encryption COMMAND test_encryption)
 
+    # Phase 14.3-02: RawData send-side public API + SPSC + drain + is_video_fourcc.
+    # Pure-C++ in-process test linking against njclient static library; matches
+    # the test_encryption wiring above. JAMWIDE_BUILD_TESTS is already defined
+    # on the njclient target (line 137) so the test-only helpers
+    # IsVideoFourcc / DrainRawDataSendQueueForTest / ChunkRawDataItem compile
+    # into the library and link cleanly here.
+    add_executable(test_rawdata_send tests/test_rawdata_send.cpp)
+    target_include_directories(test_rawdata_send PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_compile_definitions(test_rawdata_send PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_link_libraries(test_rawdata_send PRIVATE njclient)
+    add_test(NAME rawdata_send_roundtrip COMMAND test_rawdata_send)
+
     add_executable(test_video_sync tests/test_video_sync.cpp)
     target_include_directories(test_video_sync PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_test(NAME video_sync COMMAND test_video_sync)

@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Security & Quality
-status: executing
-stopped_at: "15.1-07b COMPLETE (commits dbdaf98, edb2769) — broadcast restored end-to-end. All 7 audio-thread BufferQueue::AddBlock sites replaced with SPSC try_push (4 process_samples + 1 m_wavebq + 2 on_new_interval); Codex M-7 bounds-check + M-8 drop counter wired; test_block_queue_spsc 5/5 PASSED under both Release + TSan with zero ThreadSanitizer reports; build 251 VST3 + Standalone + TSan-Standalone all green. User-recommended UAT (NOT required by plan): transmit DAW audio for 30s, confirm peers hear it, read GetBlockQueueDropCount() == 0. Advancing to 15.1-07a (m_users_cs mirror, CR-01)."
-last_updated: "2026-05-15T14:51:28.808Z"
-last_activity: 2026-05-15 -- Phase 14.3 execution started
+milestone: v1.3
+milestone_name: Native Video
+status: planning
+last_updated: "2026-05-15T19:02:47.074Z"
+last_activity: 2026-05-15
 progress:
-  total_phases: 5
-  completed_phases: 2
-  total_plans: 13
-  completed_plans: 13
-  percent: 40
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,12 +24,10 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 
 ## Current Position
 
-Phase: 14.3 (native-video-foundation) — COMPLETE (8/8 SCs verified; SC-1 accepted-partial deferral of non-x86_64-mac vendoring to v1.3 per user decision at Task 4 checkpoint)
-Plan: 3 of 3
-Status: Verified — phase 14.3 complete
-Last activity: 2026-05-15 -- Phase 14.3 verified complete (commits cbe2e08→db51e2c)
-
-Progress: [#######...] 73% (v1.2 milestone — 8 of 11 sub-plans complete; advancing to 15.1-07a)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-15 — Milestone v1.3 started
 
 ## Performance Metrics
 

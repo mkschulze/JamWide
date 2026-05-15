@@ -8,14 +8,23 @@ JamWide is a cross-platform NINJAM client for real-time online music collaborati
 
 Musicians can jam together online with lossless audio quality and per-user mixing — in any DAW or standalone.
 
-## Current Milestone: v1.1 OSC + Video
+## Current Milestone: v1.3 Native Video
 
-**Goal:** Add remote control via OSC and video collaboration via VDO.Ninja companion, expanding JamWide from audio-only to a full visual jam experience.
+**Goal:** Replace the VDO.Ninja browser companion with a native in-app/in-plugin video stack using NinjamZap-compatible H264 wire format and GUID-pairing audio-video sync. Reach a testable beta on macOS first; broader platform reach (Linux/Windows packaging, server fork story, VDO.Ninja teardown) deferred until beta UAT closes.
 
 **Target features:**
-- OSC server for remote control via TouchOSC (bidirectional, full parameter mapping)
-- VDO.Ninja video companion synced to NINJAM interval timing
-- Video grid + per-user popout display modes (multi-monitor support)
+- Webcam capture in standalone and DAW-hosted plugin (VST3/AU/CLAP) with permission UX for DAWs that don't carry `com.apple.security.device.camera` themselves (REAPER, Live, Bitwig)
+- H.264 encode/decode via vendored LGPL ffmpeg + Cisco openh264 (substrate landed in Phase 14.3)
+- NinjamZap-compatible wire format: fourCC `H264`, 24-byte interval marker, 4-stage receive pipeline (`accumulating → next → pending → playing`), GUID-pairing decision tree (`kHoldCapDrop = 4`)
+- Native rendering — `juce::Component` grid in main view + `juce::DocumentWindow` per-user popouts (multi-monitor friendly), both active simultaneously
+- macOS arm64 + x86_64 universal binary with per-dylib codesigning and camera entitlement
+
+**Out of beta scope (deferred to v1.3 post-beta or v1.4):**
+- Linux/Windows ffmpeg vendoring (Item B remainder) — macOS-only beta first
+- Linux V4L2 capture (Item K) — Linux receive-only in v1
+- VDO.Ninja teardown (Item H) — kept operational in parallel until native stack is testable
+- ninjamzap-server fork strategy (Item J / Q8) — vanilla NINJAM works for beta
+- Full per-DAW UAT matrix (Item I) — reduced to macOS standalone + REAPER for beta
 
 ## Requirements
 
@@ -36,20 +45,28 @@ Musicians can jam together online with lossless audio quality and per-user mixin
 - ✓ OSC evaluation (viable for REAPER/Bitwig/Ableton, ~37% coverage) — v1.0
 - ✓ MCP assessment (not viable for transport sync, good for workflow tooling) — v1.0
 
-### Active (v1.1)
+### Active (v1.3 — Native Video — beta scope)
 
-- [ ] OSC server for remote control via TouchOSC (bidirectional, full parameter mapping)
-- [ ] VDO.Ninja video companion synced to NINJAM interval timing
-- [ ] Video grid + per-user popout display modes (multi-monitor support)
+- [ ] Webcam capture in standalone + DAW-hosted plugin with permission-denial fallback
+- [ ] H.264 encode/decode end-to-end (capture → encode → wire → decode → display)
+- [ ] NinjamZap-compatible wire format (`H264` fourCC, 24-byte marker, 4-stage receive, GUID-pairing decision tree)
+- [ ] Native rendering: grid view + per-user popout windows (both active simultaneously)
+- [ ] macOS arm64 + x86_64 universal binary with camera entitlement and per-dylib codesigning
+
+### In-flight, parallel to v1.3 (not part of beta gate)
+
+- [ ] OSC server for remote control via TouchOSC (v1.1, Phase 9 partially complete) — paused
+- [ ] Audio prelisten in server browser (v1.1, Phase 14.1, plan 1 of 2 complete) — paused
+- [ ] RT-Safety hardening UAT closure (v1.2, Phase 15.1) — awaiting UAT decision, orthogonal to v1.3
 
 ### Out of Scope
 
-- Video embedded in plugin (WebView) — browser companion approach instead
 - REAPER-specific extension APIs — not portable; OSC is the path
 - Capability negotiation for codecs — deferred to v2
 - Mobile support — desktop first
 - Peer-to-peer audio — NINJAM is server-relayed by design
 - MCP for real-time DAW sync — request/response model incompatible with streaming
+- ~~Video embedded in plugin~~ — **reversed 2026-05-15**; v1.3 supersedes the VDO.Ninja browser approach with a native in-app/in-plugin stack (see Current Milestone)
 
 ## Context
 
@@ -87,9 +104,14 @@ Full codebase analysis at `.planning/codebase/`:
 | ReaNINJAM-style multichannel (both modes) | Users expect per-user routing for DAW mixing | ✓ Good |
 | Default Vorbis (not FLAC) | Interop with legacy Vorbis-only NINJAM clients | ✓ Good — practical |
 | Voicemeeter Banana dark theme | User preference for familiar pro-audio aesthetic | ✓ Good |
-| VDO.Ninja browser companion (not embedded WebView) | Keeps plugin lightweight, browser handles video rendering | — Pending (v1.1) |
+| VDO.Ninja browser companion (not embedded WebView) | Keeps plugin lightweight, browser handles video rendering | — **Superseded by v1.3 native stack (2026-05-15)** |
 | OSC via juce_osc (IEM pattern) | No external deps, proven across 20+ IEM plugins | — Pending (v1.1) |
 | Index-based OSC addressing for remote users | Stable fader mapping, name broadcast on roster change | — Pending (v1.1) |
+| Native ffmpeg + JUCE CameraDevice (v1.3, replaces VDO.Ninja) | Spike measured 5.2 MB / arch, 4% CPU, ~98 kbps @ 320×240; LGPL discipline via `--disable-gpl --disable-libx264 --enable-libopenh264`; substrate landed as Phase 14.3 | ✓ Spike GREEN, substrate complete |
+| NinjamZap wire format (not JamTaba) | fourCC `H264`, 24-byte marker with audio-ch0 GUID, 4-stage pipeline + GUID-pairing decision tree → fixes "video 1 interval ahead of audio" bug that any naive interval-based transport has; gains future NinjamZap-mobile interop, sacrifices JamTaba interop | Locked 2026-05-15 |
+| Native rendering: grid + popouts (no browser in v1.3) | Preserves VDO.Ninja's two strengths (multi-monitor grid + per-user windows) without WebSocket/HTML/TS dependency surface | Locked 2026-05-15 |
+| macOS+Windows full send+receive parity v1; Linux receive-only v1, capture deferred | JUCE `juce_video` has no `juce_CameraDevice_linux.h`; Linux capture is post-v1 (Item K, single phase) | Locked 2026-05-15 |
+| Stay on OGGv (Vorbis-in-Ogg) for v1.3 audio codec | ninjamzap-core has no Opus support (exhaustive grep verified); Opus is tracked separately as Phase 16 in v1.2 | Locked 2026-05-15 |
 
 ## Evolution
 
@@ -109,4 +131,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-11 after Phase 15 (Connection Encryption) complete*
+*Last updated: 2026-05-15 — milestone v1.3 (Native Video) started; substrate Phase 14.3 (NinjamZap-compatible RawData transport API + cross-platform LGPL ffmpeg vendoring) already complete; beta scope is macOS-first*

@@ -73,7 +73,7 @@ case "$OS|$ARCH" in
     LIB_EXT="so"
     OPENH264_SO_NAME="libopenh264.so.6"
     ;;
-  MINGW64_NT-*"|x86_64"|MSYS_NT-*"|x86_64"|CYGWIN_NT-*"|x86_64")
+  "MINGW64_NT-"*"|x86_64"|"MSYS_NT-"*"|x86_64"|"CYGWIN_NT-"*"|x86_64")
     PLATFORM_TAG="windows-x86_64"
     CISCO_PREBUILT="win64"
     LIB_EXT="dll"

@@ -10,21 +10,22 @@ Musicians can jam together online with lossless audio quality and per-user mixin
 
 ## Current Milestone: v1.3 Native Video
 
-**Goal:** Replace the VDO.Ninja browser companion with a native in-app/in-plugin video stack using NinjamZap-compatible H264 wire format and GUID-pairing audio-video sync. Reach a testable beta on macOS first; broader platform reach (Linux/Windows packaging, server fork story, VDO.Ninja teardown) deferred until beta UAT closes.
+**Goal:** Replace the VDO.Ninja browser companion with a native in-app/in-plugin video stack using NinjamZap-compatible H264 wire format and GUID-pairing audio-video sync. Reach a testable beta on **macOS + Windows** (Apple Silicon + Intel + Windows x86_64), backed by **ninjamzap-server** as the recommended reference server (per-room threading + two-pass audio-priority + per-subscriber video congestion drop).
 
 **Target features:**
 - Webcam capture in standalone and DAW-hosted plugin (VST3/AU/CLAP) with permission UX for DAWs that don't carry `com.apple.security.device.camera` themselves (REAPER, Live, Bitwig)
 - H.264 encode/decode via vendored LGPL ffmpeg + Cisco openh264 (substrate landed in Phase 14.3)
 - NinjamZap-compatible wire format: fourCC `H264`, 24-byte interval marker, 4-stage receive pipeline (`accumulating → next → pending → playing`), GUID-pairing decision tree (`kHoldCapDrop = 4`)
 - Native rendering — `juce::Component` grid in main view + `juce::DocumentWindow` per-user popouts (multi-monitor friendly), both active simultaneously
-- macOS arm64 + x86_64 universal binary with per-dylib codesigning and camera entitlement
+- **macOS arm64 + x86_64 universal binary** with per-dylib codesigning and camera entitlement
+- **Windows x86_64 build** with bundled ffmpeg DLLs and signtool codesigning (where applicable)
+- **Reference server** — JamWide ships a `docs/SERVER.md` pointing v1.3 beta testers at the public `video.ninjamzap.com:2049` ninjamzap-server (community-operated, no SLA — users manually enter the address into the existing JamWide server browser), plus instructions for self-hosting upstream `ninjamzap-server` (Docker Compose example) for users who want their own instance
 
 **Out of beta scope (deferred to v1.3 post-beta or v1.4):**
-- Linux/Windows ffmpeg vendoring (Item B remainder) — macOS-only beta first
-- Linux V4L2 capture (Item K) — Linux receive-only in v1
+- Linux full client (capture + receive) — Linux V4L2 capture is Item K, post-v1; Linux receive can ship in a follow-up
 - VDO.Ninja teardown (Item H) — kept operational in parallel until native stack is testable
-- ninjamzap-server fork strategy (Item J / Q8) — vanilla NINJAM works for beta
-- Full per-DAW UAT matrix (Item I) — reduced to macOS standalone + REAPER for beta
+- JamWide-owned ninjamzap-server fork or upstream contributions — for beta we ship docs pointing at upstream (Q8 = option (c))
+- Full per-DAW UAT matrix (Item I) — reduced to macOS standalone + REAPER + Logic + Windows standalone + REAPER for beta
 
 ## Requirements
 
@@ -112,6 +113,9 @@ Full codebase analysis at `.planning/codebase/`:
 | Native rendering: grid + popouts (no browser in v1.3) | Preserves VDO.Ninja's two strengths (multi-monitor grid + per-user windows) without WebSocket/HTML/TS dependency surface | Locked 2026-05-15 |
 | macOS+Windows full send+receive parity v1; Linux receive-only v1, capture deferred | JUCE `juce_video` has no `juce_CameraDevice_linux.h`; Linux capture is post-v1 (Item K, single phase) | Locked 2026-05-15 |
 | Stay on OGGv (Vorbis-in-Ogg) for v1.3 audio codec | ninjamzap-core has no Opus support (exhaustive grep verified); Opus is tracked separately as Phase 16 in v1.2 | Locked 2026-05-15 |
+| Use upstream ninjamzap-server as the reference JamWide server (Q8 = option (c), document-only) | ninjamzap-server is multithreaded (per-room threading + two-pass audio-priority + per-subscriber video-frame congestion drop), already production-quality on iOS/Android. Shipping a JamWide fork or pushing upstream changes adds maintenance burden without proportional value for the beta. Doc-only path is ~1 plan of work vs 2-3 for a fork. | Locked 2026-05-15 (user redirect) |
+| Point v1.3 beta testers at `video.ninjamzap.com:2049` via `docs/SERVER.md` — no UI preset entry needed | Public ninjamzap-server is already running. Eliminates the "deploy server before testing video" friction that would otherwise gate every beta tester. JamWide's existing server browser already supports manual server-address entry (the existing NINJAM server browser is untouched by v1.3), so no UI work is required to support `video.ninjamzap.com:2049` — only docs naming it as the recommended v1.3 beta target. Self-host path also documented for users who want their own latency/privacy guarantees. | Locked 2026-05-15 (user redirect, third pass) |
+| v1.3 beta scope expanded from macOS-only to macOS + Windows | User flagged Windows is a first-class beta platform. JUCE `juce_CameraDevice_windows.h` exists; ffmpeg builds for Windows-x86_64 with the same `--disable-gpl --disable-libx264 --enable-libopenh264` recipe (Item B.2). Adds Windows packaging + codesign + CI lane; no Linux capture. | Locked 2026-05-15 (user redirect) |
 
 ## Evolution
 
@@ -131,4 +135,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-15 — milestone v1.3 (Native Video) started; substrate Phase 14.3 (NinjamZap-compatible RawData transport API + cross-platform LGPL ffmpeg vendoring) already complete; beta scope is macOS-first*
+*Last updated: 2026-05-15 — milestone v1.3 (Native Video) started; substrate Phase 14.3 (NinjamZap-compatible RawData transport API + cross-platform LGPL ffmpeg vendoring) already complete; beta scope is macOS + Windows on ninjamzap-server*

@@ -43,9 +43,9 @@ Requirements for OSC remote control and VDO.Ninja video companion.
 
 ## v1.3 Requirements — Native Video (Testable Beta)
 
-Requirements for replacing the VDO.Ninja browser companion with a native ffmpeg + JUCE video stack using NinjamZap-compatible H264 wire format and GUID-pairing audio-video sync. Substrate (RawDataSend API + cross-platform LGPL ffmpeg + receive-path dispatch) already landed as Phase 14.3 (2026-05-15). Beta is macOS-first; Linux/Windows packaging, server fork, and VDO.Ninja teardown are deferred.
+Requirements for replacing the VDO.Ninja browser companion with a native ffmpeg + JUCE video stack using NinjamZap-compatible H264 wire format and GUID-pairing audio-video sync. Substrate (RawDataSend API + cross-platform LGPL ffmpeg + receive-path dispatch) already landed as Phase 14.3 (2026-05-15). **Beta ships on macOS (arm64 + x86_64 universal) + Windows x86_64, with upstream ninjamzap-server as the recommended reference server.** Linux capture, VDO.Ninja teardown, and a JamWide-owned server fork are deferred.
 
-**Source of truth:** `.planning/quick/260515-0pc-investigate-jamtaba-video-implementation/260515-0pc-deferred-items.md` (Items C, D, E, F.1–F.4, G, reduced B + I; H/J/K deferred).
+**Source of truth:** `.planning/quick/260515-0pc-investigate-jamtaba-video-implementation/260515-0pc-deferred-items.md` (Items C, D, E, F.1–F.4, G, B partial (macOS+Windows only — Linux deferred), reduced I, J = option (c) doc-only; H/K deferred).
 
 ### Camera Capture
 
@@ -73,20 +73,28 @@ Requirements for replacing the VDO.Ninja browser companion with a native ffmpeg 
 - [ ] **DISP-03**: User can have grid and popouts active simultaneously; popouts survive grid toggling
 - [ ] **DISP-04**: User can toggle the grid view on/off without disconnecting from the NINJAM session
 
-### Platform Packaging (macOS-first)
+### Platform Packaging (macOS + Windows)
 
 - [ ] **PKG-01**: macOS arm64 (Apple Silicon) build runs the native video stack end-to-end in JamWide standalone and at least one DAW-hosted plugin format
 - [ ] **PKG-02**: macOS x86_64 (Intel) build runs the same
 - [ ] **PKG-03**: macOS universal binary stitches arm64 + x86_64 dylibs via `lipo` and ships as a single signed artifact
-- [ ] **PKG-04**: JamWide.entitlements declares `com.apple.security.device.camera`, each vendored ffmpeg dylib is codesigned individually before bundle signing, `install_name_tool` rewrites load paths to `@loader_path/../Frameworks/`, and the final bundle passes `--deep --strict` codesign verification
-- [ ] **PKG-05**: CI verifies LGPL discipline (`strings *.dylib | grep -E 'libx264|x264_'` is empty) and clean `otool -L` (no spurious `/usr/local/opt/...` deps) for every vendored dylib on macOS arm64 and x86_64
+- [ ] **PKG-04**: JamWide.entitlements declares `com.apple.security.device.camera`, each vendored ffmpeg dylib is codesigned individually before bundle signing, `install_name_tool` rewrites load paths to `@loader_path/../Frameworks/`, and the final macOS bundle passes `--deep --strict` codesign verification
+- [ ] **PKG-05**: CI verifies LGPL discipline (`strings *.dylib | grep -E 'libx264|x264_'` is empty for macOS, equivalent gate for Windows DLLs) and clean dependency check (`otool -L` for macOS, `dumpbin /dependents` for Windows) for every vendored ffmpeg artifact on every shipping architecture
+- [ ] **PKG-06**: Windows x86_64 build runs the native video stack end-to-end in JamWide standalone and at least one DAW-hosted plugin format (VST3 minimum)
+- [ ] **PKG-07**: Windows installer/bundle ships the vendored ffmpeg DLLs (libavcodec, libavformat, libavutil, libswscale, libopenh264) alongside the plugin/standalone executable with correct load-path resolution; signtool codesigning applied where a code-signing certificate is available
+
+### Reference Server
+
+- [ ] **SRV-01**: JamWide ships `docs/SERVER.md` documenting upstream `ninjamzap-server` as the recommended JamWide reference server: section 1 names `video.ninjamzap.com:2049` as the public shared instance ("Recommended for v1.3 beta — community-operated, no SLA") and explains that beta testers can connect to it via the existing JamWide server browser (manual entry, no new preset infrastructure); section 2 walks through self-hosting `ninjamzap-server` (Docker Compose example for one-command deployment, the minimum required server config `AllowVideoChannels yes` + `PrivateGroupMode N`, latency / privacy rationale for choosing self-host)
 
 ### Beta Validation
 
-- [ ] **BETA-01**: Two JamWide standalone users on macOS can broadcast and receive each other's video in a populated NINJAM session for at least 5 minutes with no audio glitches and no decoder freezes
+- [ ] **BETA-01**: Two JamWide standalone users on macOS connect to `video.ninjamzap.com:2049` (or equivalent ninjamzap-server) via the existing server browser, join the same room, and broadcast + receive each other's video for at least 5 minutes with no audio glitches and no decoder freezes
 - [ ] **BETA-02**: JamWide plugin loaded in REAPER (macOS) reaches the "Camera unavailable" fallback gracefully per SPARTA Issue #82; audio still works for the remote peers
-- [ ] **BETA-03**: JamWide plugin loaded in Logic Pro (macOS) broadcasts video successfully (Logic Pro requests camera permission for itself)
-- [ ] **BETA-04**: At least 20 of the 26 NinjamZap video-sync test scenarios at `/Users/cell/dev/ninjamzap-core/tests/video-sync/scenarios/` are ported to JamWide `tests/` and pass
+- [ ] **BETA-03**: JamWide plugin loaded in Logic Pro (macOS) broadcasts video successfully to `video.ninjamzap.com:2049` (or equivalent) — Logic Pro requests camera permission for itself
+- [ ] **BETA-04**: At least 20 of the 26 NinjamZap video-sync test scenarios at `/Users/cell/dev/ninjamzap-core/tests/video-sync/scenarios/` are ported to JamWide `tests/` and pass under `./scripts/build.sh --tests` on macOS and Windows
+- [ ] **BETA-05**: A macOS user (standalone or DAW-hosted) and a Windows user (standalone or DAW-hosted) both connect to `video.ninjamzap.com:2049` (or equivalent) and successfully broadcast + receive each other's video for at least 5 minutes — cross-platform end-to-end gate
+- [ ] **BETA-06**: JamWide standalone on Windows + REAPER VST3 on Windows both reach the camera happy path and broadcast video to `video.ninjamzap.com:2049` (Windows DAW UAT)
 
 ## v2 Requirements
 
@@ -112,9 +120,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | ~~H.264-over-NINJAM video (JamTaba approach)~~ | ~~0.03-0.13 FPS at typical BPI; VDO.Ninja WebRTC is 30fps at 100-300ms~~ **REVERSED 2026-05-15** — NinjamZap pivot proves H.264-over-NINJAM works at 10 fps / 320×240 / ~98 kbps / 4% CPU. JamTaba's numbers were a JamTaba-specific implementation limit, not a wire-format limit. See v1.3 above. |
 | ~~Real-time video sync with interval audio~~ | ~~NINJAM audio is 8-32s delayed by design; sub-second video sync is fundamentally incompatible~~ **PARTIALLY REVERSED 2026-05-15** — sub-second video sync remains out, but interval-aligned sync via NinjamZap's GUID-pairing decision tree IS in scope as v1.3 WIRE-02 |
 | Linux V4L2 webcam capture (send-side) | JUCE `juce_video` has no Linux camera backend; deferred to Item K (post-v1.3, ~1 plan, separate phase) |
-| Cross-platform vendored ffmpeg (Linux + Windows builds) | macOS-only for the v1.3 beta; cross-platform is deferred to v1.3 post-beta or v1.4 (Item B.2) |
+| Linux receive-only build | Deferred to v1.3 post-beta or v1.4 — v1.3 beta targets macOS + Windows only |
+| ~~Cross-platform vendored ffmpeg (Linux + Windows builds)~~ | ~~macOS-only for the v1.3 beta~~ **REVISED 2026-05-15** — Windows is now in v1.3 beta scope (PKG-06, PKG-07). Linux remains deferred (Item B.2 Linux portion + Item K) |
 | VDO.Ninja teardown | Deferred to v1.3 post-beta or v1.4 (Item H); kept operational in parallel until native stack is testable |
-| ninjamzap-server fork/contribute decision (Q8) | Vanilla NINJAM is wire-compatible for v1.3 beta; server-side adaptation deferred (Item J) |
+| ~~ninjamzap-server fork or upstream contributions (Q8 options (a) and (b))~~ | ~~Vanilla NINJAM is wire-compatible for v1.3 beta; server-side adaptation deferred~~ **REVISED 2026-05-15** — v1.3 commits to upstream ninjamzap-server as the reference server (Q8 = option (c) doc-only, SRV-01). JamWide-owned fork or upstream PRs are deferred to v1.4 if needed. |
 
 ## Traceability
 
@@ -147,34 +156,39 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VID-12 | Phase 12 | Pending |
 | VID-13 | Phase 14.2 | Complete |
 | MIDI-01 | Phase 14 | Complete |
-| CAM-01 | TBD (v1.3) | Pending roadmapper |
-| CAM-02 | TBD (v1.3) | Pending roadmapper |
-| CAM-03 | TBD (v1.3) | Pending roadmapper |
-| COD-01 | TBD (v1.3) | Pending roadmapper |
-| COD-02 | TBD (v1.3) | Pending roadmapper |
-| COD-03 | TBD (v1.3) | Pending roadmapper |
-| WIRE-01 | TBD (v1.3) | Pending roadmapper |
-| WIRE-02 | TBD (v1.3) | Pending roadmapper |
-| WIRE-03 | TBD (v1.3) | Pending roadmapper |
-| WIRE-04 | TBD (v1.3) | Pending roadmapper |
-| DISP-01 | TBD (v1.3) | Pending roadmapper |
-| DISP-02 | TBD (v1.3) | Pending roadmapper |
-| DISP-03 | TBD (v1.3) | Pending roadmapper |
-| DISP-04 | TBD (v1.3) | Pending roadmapper |
-| PKG-01 | TBD (v1.3) | Pending roadmapper |
-| PKG-02 | TBD (v1.3) | Pending roadmapper |
-| PKG-03 | TBD (v1.3) | Pending roadmapper |
-| PKG-04 | TBD (v1.3) | Pending roadmapper |
-| PKG-05 | TBD (v1.3) | Pending roadmapper |
-| BETA-01 | TBD (v1.3) | Pending roadmapper |
-| BETA-02 | TBD (v1.3) | Pending roadmapper |
-| BETA-03 | TBD (v1.3) | Pending roadmapper |
-| BETA-04 | TBD (v1.3) | Pending roadmapper |
+| CAM-01 | Phase 19 | Pending |
+| CAM-02 | Phase 19 | Pending |
+| CAM-03 | Phase 19 | Pending |
+| COD-01 | Phase 20 | Pending |
+| COD-02 | Phase 20 | Pending |
+| COD-03 | Phase 21 | Pending |
+| WIRE-01 | Phase 20 | Pending |
+| WIRE-02 | Phase 21 | Pending |
+| WIRE-03 | Phase 20 | Pending |
+| WIRE-04 | Phase 24 | Pending |
+| DISP-01 | Phase 22 | Pending |
+| DISP-02 | Phase 22 | Pending |
+| DISP-03 | Phase 22 | Pending |
+| DISP-04 | Phase 22 | Pending |
+| PKG-01 | Phase 23 | Pending |
+| PKG-02 | Phase 23 | Pending |
+| PKG-03 | Phase 23 | Pending |
+| PKG-04 | Phase 19 (entitlements) + Phase 23 (codesign) | Pending |
+| PKG-05 | Phase 23 | Pending |
+| BETA-01 | Phase 24 | Pending |
+| BETA-02 | Phase 24 | Pending |
+| BETA-03 | Phase 24 | Pending |
+| BETA-04 | Phase 24 | Pending |
+| PKG-06 | Phase 23 | Pending |
+| PKG-07 | Phase 23 | Pending |
+| SRV-01 | Phase 24 | Pending |
+| BETA-05 | Phase 24 | Pending |
+| BETA-06 | Phase 24 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 25 total — all mapped
-- v1.3 requirements: 23 total — pending roadmapper mapping
+- v1.3 requirements: **28 total** — 28 mapped, 0 pending (SRV-02 preset-entry requirement removed per user 2026-05-15 — existing JamWide server browser already supports manual entry of `video.ninjamzap.com:2049`, no UI work needed)
 
 ---
 *Requirements defined: 2026-04-05 (v1.1)*
-*Last updated: 2026-05-15 — v1.3 Native Video (beta scope) requirements added; traceability pending roadmapper*
+*Last updated: 2026-05-15 (revision pass 3, final) — SRV-02 removed per user clarification (existing JamWide server browser handles manual entry of `video.ninjamzap.com:2049`; no preset-entry UI work needed); BETA-01/05 wording adjusted to drop "via the SRV-02 preset" references. Final coverage: 28/28 v1.3 requirements mapped, 0 pending.*

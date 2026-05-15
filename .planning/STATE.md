@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Native Video
 status: planning
-last_updated: "2026-05-15T19:02:47.074Z"
+last_updated: "2026-05-15T22:30:00.000Z"
 last_activity: 2026-05-15
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
-  total_plans: 0
+  total_plans: 16
   completed_plans: 0
   percent: 0
 ---
@@ -20,21 +20,36 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-05)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Phase 14.3 — native-video-foundation (COMPLETE, verified)
+**Current focus:** v1.3 Native Video — Phase 19 (Camera Capture & Permission UX) is the next target. Substrate Phase 14.3 (RawData transport API + cross-platform LGPL ffmpeg vendoring) is COMPLETE on branch `quick/260515-0pc-jamtaba-video-port` (commit 3494676, milestone-ready).
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-05-15 — Milestone v1.3 started
+Phase: Phase 19 — Camera Capture & Permission UX (Not started)
+Plan: — (awaiting `/gsd:plan-phase 19`)
+Status: Roadmap complete; phase planning pending
+Last activity: 2026-05-15 — v1.3 roadmap REVISED PASS 3 (FINAL): 6 phases, 16 plans, **28 requirements** mapped. `video.ninjamzap.com:2049` recommended in `docs/SERVER.md` for v1.3 beta; users manually enter the address into JamWide's existing untouched NINJAM server browser — **SRV-02 preset-entry requirement removed** per user clarification (no UI changes needed)
+Milestone scope (v1.3 = macOS + Windows testable beta on upstream ninjamzap-server, `video.ninjamzap.com:2049` documented as the recommended public instance — JamWide's existing NINJAM server browser UI is untouched):
+- Phase 19 — Camera Capture & Permission UX (3 plans) — CAM-01, CAM-02, CAM-03, PKG-04 (entitlements). Cross-platform via JUCE `juce_CameraDevice_{mac,windows}.h`; REAPER fallback is macOS-only (SPARTA #82).
+- Phase 20 — H.264 Encoder & Send Pipeline (3 plans) — COD-01, COD-02, WIRE-01, WIRE-03. Cross-platform via libavcodec.
+- Phase 21 — H.264 Decoder & Receive Pipeline (3 plans) — COD-03, WIRE-02. Cross-platform via libavcodec.
+- Phase 22 — Native Video UI (Grid + Popouts) (2 plans) — DISP-01..04. Cross-platform via JUCE.
+- Phase 23 — macOS Universal + Windows Build & Codesign (3 plans) — PKG-01, PKG-02, PKG-03, PKG-04 (codesign + frameworks-path portions), PKG-05, PKG-06, PKG-07. Plans: 23-01 macOS universal stitching + per-dylib codesign; 23-02 Windows build + ffmpeg DLL bundling + signtool; 23-03 CI lanes (macOS arm64 + Windows x86_64 with `dumpbin /dependents` gate).
+- Phase 24 — Beta Validation, Server Docs & Per-DAW UAT (2 plans) — WIRE-04, BETA-01..06, SRV-01. Plans: 24-01 `docs/SERVER.md` two-section frame (public `video.ninjamzap.com:2049` recommended + self-host with Docker Compose + version pin) + 26 NinjamZap test-scenario port + macOS UAT against `video.ninjamzap.com:2049` (BETA-01/02/03); 24-02 Windows UAT against `video.ninjamzap.com:2049` (BETA-06) + cross-platform macOS↔Windows interop (BETA-05) + finalise BETA-04 cross-platform + beta release notes.
+
+Hard exclusions (post-beta / v1.4 territory; do NOT create phases for these):
+- Linux V4L2 capture (Item K)
+- Linux full-client (capture + receive) build (Item B.2 Linux portion)
+- VDO.Ninja teardown (Item H)
+- JamWide-owned ninjamzap-server fork or upstream PRs (Item J options (a) and (b)); only option (c) doc-only is in v1.3 scope
+- Full per-DAW UAT matrix beyond macOS standalone + REAPER + Logic Pro + Windows standalone + Windows REAPER (Item I full)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 32 (v1.0)
-- v1.1 plans completed: 0
+- Total plans completed: 32 (v1.0) + 14.3 substrate (3 plans, completed 2026-05-15)
+- v1.1 plans completed: TBD
+- v1.3 plans completed: 0 / 16
 
 **By Phase:**
 
@@ -46,7 +61,14 @@ Last activity: 2026-05-15 — Milestone v1.3 started
 | 10 | 2 | - | - |
 | 11 | 3 | - | - |
 | 13 | 2 | - | - |
+| 14.3 | 3 | - | - |
 | 15 | 2 | - | - |
+| 19 (v1.3) | 3 | -- | -- |
+| 20 (v1.3) | 3 | -- | -- |
+| 21 (v1.3) | 3 | -- | -- |
+| 22 (v1.3) | 2 | -- | -- |
+| 23 (v1.3) | 3 | -- | -- |
+| 24 (v1.3) | 2 | -- | -- |
 
 *Updated after each plan completion*
 | Phase 14 P02 | 788 | 2 tasks | 19 files |
@@ -102,6 +124,10 @@ Recent decisions affecting current work:
 - [Phase 15.1-07b]: Architecture deviation #1 (Rule 3) — plan's contains-grep references juce/NinjamRunThread.cpp::block_q.drain, but the existing encoder feed loop lives in NJClient::Run() (called FROM NinjamRunThread::run). Canonical drain site is NJClient::Run() so the encoder sees freshly-forwarded records on the same tick; NinjamRunThread.cpp adds a token belt-and-braces drain call site to satisfy the grep gate AND provide defensive shutdown drain. Documented in 15.1-07b-SUMMARY.md.
 - [Phase 15.1-07b]: LocalChannelMirror gained two audio-thread-owned fields (bcast_active, curwritefile_curbuflen) so process_samples can replicate the legacy boundary-tracking state machine without dereferencing canonical Local_Channel. Codex HIGH-2 preserved (no Local_Channel* / lc_ptr / void* back-pointer; both new fields are scalar by-value).
 - [Phase 15.1-07b]: Plan landed OUT-OF-ORDER ahead of 07a (frontmatter listed 07a as dependency, but the dependency was conservative — 07b operates on LocalChannelMirror.block_q which 15.1-06 already provides; 07b does NOT touch m_users_cs which is 07a's territory). The trigger was user-reported broadcast regression: 15.1-06 deliberately left the lc->m_bq.AddBlock producer-side comments-only with the boundary "intentionally silent for the brief window between this plan landing and 15.1-07b landing", and the user UAT-approved 15.1-06 because that scope-narrowing slid past us; broadcast must work end-to-end before any further plan lands.
+- [v1.3 Roadmap]: Native video milestone scope locked to macOS-first beta (Phases 19-24, 14 plans). Build order respects dependencies: capture → encode → receive → display → codesign → beta. WIRE-04 (NinjamZap mobile interop) folded into Phase 24 BETA — the NinjamZap test scenarios + a mobile peer in a live session ARE the interop test. Phase 14.3 substrate is the dependency baseline for Phase 19; not part of v1.3 plan count.
+- [v1.3 Roadmap REVISION 2026-05-15]: User redirected mid-approval — beta scope expanded from macOS-only to **macOS + Windows**, and the reference-server question (Q8) resolved to option (c) doc-only (upstream `ninjamzap-server` is the recommended JamWide reference server; JamWide does NOT fork or PR upstream for v1.3, just ships `docs/SERVER.md` + Docker Compose example + version pin). 5 new requirements added (PKG-06, PKG-07, SRV-01, BETA-05, BETA-06); Phase 23 renamed "macOS Universal + Windows Build & Codesign" and bumped to 3 plans (macOS stitching + Windows build + dual-platform CI lanes); Phase 24 renamed "Beta Validation, Server Docs & Per-DAW UAT" and bumped to 2 plans (macOS UAT + scenario port + server docs THEN Windows UAT + cross-platform interop). Roadmap totals: 6 phases (unchanged structure), 16 plans (was 14), 28 v1.3 requirements (was 23). Phases 19–22 unchanged structurally because their code (JUCE CameraDevice + libavcodec) is already cross-platform; the Phase 19 detail block gained a Windows backend note and a 5th success criterion for the Windows happy path. Hard exclusions clarified: Linux full client + JamWide-owned server fork + full per-DAW matrix all still deferred.
+- [v1.3 Roadmap REVISION PASS 2 2026-05-15]: User redirected with concrete — public `video.ninjamzap.com:2049` ninjamzap-server is already running and adopted as JamWide's reference instance for the v1.3 beta. Initial interpretation added SRV-02 (a hardcoded server-browser preset entry) but the user clarified in PASS 3 that this UI change is not needed — JamWide's existing NINJAM server browser stays untouched and beta testers will manually enter the address. PASS 2 net effect (after PASS 3 reduction): SRV-01 reworded as two-section `docs/SERVER.md` (public `video.ninjamzap.com:2049` recommended path + self-host with Docker Compose), BETA-01/03/05/06 reworded to name `video.ninjamzap.com:2049` as the concrete UAT server.
+- [v1.3 Roadmap REVISION PASS 3 (FINAL) 2026-05-15]: User clarified — existing JamWide NINJAM server browser is untouched by v1.3 and already supports manual server-address entry, so no preset-entry UI work is needed. **SRV-02 removed from requirements**. Phase 24 requirements drop from 9 back to 8 (WIRE-04, BETA-01..06, SRV-01); Phase 24 success criteria drop from 9 to 8 (preset-entry criterion removed); Plan 24-01 description simplified (no ~10 LOC preset entry work). BETA-01/05 wording adjusted to drop "via the SRV-02 preset" references. Roadmap totals (final): 6 phases, 16 plans, **28 v1.3 requirements**, all mapped, 0 pending. v1.3 roadmap is now LOCKED for execution — `/gsd:plan-phase 19` is the next move.
 
 ### Pending Todos
 
@@ -119,6 +145,10 @@ Recent decisions affecting current work:
 
 - [Phase 11]: OpenSSL linkage on Windows CI unvalidated -- project now has OpenSSL dependency (Phase 15), CI steps added but untested on Windows
 - [Phase 12]: VDO.Ninja external API is self-labeled DRAFT -- may require adaptation
+- [v1.3 Phase 19]: Q1 outstanding — JUCE seat license coverage of `juce_video`. Confirm with user before Phase 19 lands; if not covered, replan with direct AVFoundation capture path (~+1 plan, +800 LOC).
+- [v1.3 Phase 20]: Q13 outstanding — VideoToolbox vs openh264 from day one (macOS arm64 has no Cisco prebuilt above v2.1.1). Decide during phase planning whether to architect an abstract `VideoEncoder` interface or hardcode openh264 first and refactor.
+- [v1.3 Phase 21]: Q11 outstanding — receive-pipeline memory budget under HD video (4 slots × N peers × ~800 KB/interval). Measure during phase planning; flag if >2× current per-peer memory footprint.
+- [v1.3 Phase 23]: Spike Risk #3 (Cisco openh264 v2.1.1 is the LAST mac prebuilt) and Risk #5 (ffmpeg 7.x soname symlinks must be cleaned up before production) both inherited from Phase 14.3 substrate and must be resolved during Phase 23.
 
 ### Quick Tasks Completed
 
@@ -131,8 +161,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-26T20:00:00.000Z
-Stopped at: 15.1-07b COMPLETE (commits dbdaf98, edb2769) — broadcast restored end-to-end. All 7 audio-thread BufferQueue::AddBlock sites replaced with SPSC try_push (4 process_samples + 1 m_wavebq + 2 on_new_interval); Codex M-7 bounds-check + M-8 drop counter wired; test_block_queue_spsc 5/5 PASSED under both Release + TSan with zero ThreadSanitizer reports; build 251 VST3 + Standalone + TSan-Standalone all green. User-recommended UAT (NOT required by plan): transmit DAW audio for 30s, confirm peers hear it, read GetBlockQueueDropCount() == 0. Advancing to 15.1-07a (m_users_cs mirror, CR-01).
-Resume file: .planning/phases/15.1-rt-safety-hardening/15.1-07b-SUMMARY.md
-ORIGINAL: 15.1-06 implementation complete (commits 0eb6914, 3846aa1, a010edc) — awaiting human-verify checkpoint UAT (Task 5). m_locchan_cs.Enter/Leave removed from process_samples 1961+2118, on_new_interval 2698+2721, AudioProc; replaced with LocalChannelMirror[MAX_LOCAL_CHANNELS] populated by drainLocalChannelUpdates() at top of AudioProc; m_audio_drain_generation atomic bumped after each drain (release-store). Codex HIGH-2 closed (no Local_Channel*/lc_ptr/void* in mirror; per-channel BlockRecord SPSC stored AS A MEMBER of mirror entry). Codex HIGH-3 closed (DeleteLocalChannel publish-wait-defer with 200ms gate + drainLocalChannelDeferredDelete from NinjamRunThread). Two deviations documented: cbf preserved via separate m_locchan_processor_q ring (Instatalk PTT — AUDIT H-03 was wrong about no callers); VU peak migrated to std::atomic<float> on mirror for lock-free GetLocalChannelPeak. test_local_channel_mirror 5/5 PASSED under Release + TSan with zero ThreadSanitizer reports. JamWideJuce_Standalone built green in both build-juce and build-tsan. spsc_payloads.h UNTOUCHED (Wave-0 M-9 stability preserved). Next: user runs the populated-server TSan UAT for 5+ minutes, exercises local-channel mutations (vol/pan/mute/solo/Add/Delete), confirms no glitches + zero TSan reports. On "approved" → mark 15.1-06 done in ROADMAP, advance to 15.1-07a (m_users_cs mirror, CR-01).
-Resume file: .planning/phases/15.1-rt-safety-hardening/15.1-06-SUMMARY.md (UAT instructions in Task 5 section)
+Last session: 2026-05-15T22:30:00.000Z
+Stopped at: v1.3 Native Video roadmap REVISED PASS 2 — same 6 phases (19-24), same 16 plans, requirement count bumped 28 → 29 (added SRV-02 server-browser preset entry → Phase 24, folded into Plan 24-01 alongside SRV-01 server docs + macOS UAT per Option A). Adopted `video.ninjamzap.com:2049` as JamWide's default preset server for the v1.3 beta; SRV-01 reworded to two sections (public preset + self-host); BETA-01/03/05/06 reworded to name `video.ninjamzap.com:2049` as the concrete UAT server. All 29 v1.3 requirements (CAM/COD/WIRE/DISP/PKG/SRV/BETA) mapped to exactly one phase. ROADMAP.md (Phase 24 detail block + v1.3 milestone goal + execution-order line), REQUIREMENTS.md (Traceability + Coverage), and STATE.md updated. Phase 14.3 substrate complete and milestone-ready on branch `quick/260515-0pc-jamtaba-video-port` (commit 3494676). Next: `/gsd:plan-phase 19` to decompose Phase 19 (Camera Capture & Permission UX) into 3 plans.
+Resume file: .planning/ROADMAP.md "v1.3 Native Video (In Progress)" section + .planning/REQUIREMENTS.md "v1.3 Requirements — Native Video (Testable Beta)" section.
+ORIGINAL: 15.1-07b COMPLETE (commits dbdaf98, edb2769) — broadcast restored end-to-end. All 7 audio-thread BufferQueue::AddBlock sites replaced with SPSC try_push (4 process_samples + 1 m_wavebq + 2 on_new_interval); Codex M-7 bounds-check + M-8 drop counter wired; test_block_queue_spsc 5/5 PASSED under both Release + TSan with zero ThreadSanitizer reports; build 251 VST3 + Standalone + TSan-Standalone all green. User-recommended UAT (NOT required by plan): transmit DAW audio for 30s, confirm peers hear it, read GetBlockQueueDropCount() == 0. Advancing to 15.1-07a (m_users_cs mirror, CR-01).
+Resume file (v1.2): .planning/phases/15.1-rt-safety-hardening/15.1-07b-SUMMARY.md

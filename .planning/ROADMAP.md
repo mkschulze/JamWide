@@ -3,8 +3,9 @@
 ## Milestones
 
 - ✅ **v1.0 MVP** -- Phases 1-8 (shipped 2026-04-05) -- see `milestones/v1.0-ROADMAP.md`
-- 🚧 **v1.1 OSC + Video** -- Phases 9-13 (in progress)
+- 🚧 **v1.1 OSC + Video** -- Phases 9-14.3 (in progress)
 - 📋 **v1.2 Security & Quality** -- Phases 15-18 (planned)
+- 🚧 **v1.3 Native Video** -- Phases 19-24 (in progress; substrate Phase 14.3 complete 2026-05-15)
 - 📋 **v2.0 Codec & Transport Redesign** -- (planned)
 
 ## Phases
@@ -286,6 +287,107 @@ Plans:
 **Plans**: 2 plans
 **Reference**: Integration tests (load/unload, activate, process audio), stress tests (rapid create/destroy, concurrent instances, memory leak), fuzz tests; CI-gated with binary scanning
 
+### v1.3 Native Video (In Progress)
+
+**Milestone Goal:** Replace the VDO.Ninja browser companion with a native in-app/in-plugin video stack using NinjamZap-compatible H264 wire format and GUID-pairing audio-video sync. Reach a testable beta on **macOS + Windows** (Apple Silicon + Intel + Windows x86_64), backed by upstream **ninjamzap-server** as the recommended reference server (per-room threading + two-pass audio-priority + per-subscriber video congestion drop). The substrate (codec-agnostic RawData transport API, NinjamZap-compatible receive-path dispatch, vendored LGPL ffmpeg + Cisco openh264 across macOS + Linux + Windows) already landed in Phase 14.3 (completed 2026-05-15). Beta scope is macOS + Windows with `docs/SERVER.md` framed in two sections: section 1 names the public `video.ninjamzap.com:2049` ninjamzap-server (recommended for the v1.3 beta — community-operated, no SLA — beta testers manually enter the address into JamWide's existing untouched NINJAM server browser); section 2 walks through self-hosting upstream ninjamzap-server (Docker Compose example, version pin) for users who prefer their own latency/privacy guarantees. Linux full client (capture + receive), VDO.Ninja teardown, a JamWide-owned ninjamzap-server fork, and the full per-DAW UAT matrix are deferred to v1.3 post-beta or v1.4.
+
+**Source of truth:** `.planning/quick/260515-0pc-investigate-jamtaba-video-implementation/260515-0pc-deferred-items.md` (Items C, D, E, F.1–F.4, G, B partial (macOS arm64+x86_64 universal + Windows x86_64; Linux deferred), reduced I, J = option (c) doc-only; H/K deferred to post-beta).
+
+- [ ] **Phase 19: Camera Capture & Permission UX** -- JUCE CameraDevice integration in standalone + DAW-hosted plugin, camera entitlement, local preview, per-DAW permission-denial fallback dialog
+- [ ] **Phase 20: H.264 Encoder & Send Pipeline** -- Port JamTaba's FFMpegMuxer to JamWide via openh264 + libavcodec, wire through RawDataSendBegin/Write substrate, implement NinjamZap sender state machine (24-byte interval marker, SPS/PPS chunk, 4-byte BE length prefix per frame, `Net_Connection::Send` thread-safety mitigation)
+- [ ] **Phase 21: H.264 Decoder & Receive Pipeline** -- Port JamTaba's FFMpegDemuxer to JamWide, implement NinjamZap's 4-stage receive pipeline (`accumulating → next → pending → playing`) with per-stream WRITE-time accumulation, marker parse, and GUID-pairing decision tree (DS/PREV/no-match with `kHoldCapDrop=4`)
+- [ ] **Phase 22: Native Video UI (Grid + Popouts)** -- Per-user `juce::Image` display tile, grid layout in main view, `juce::DocumentWindow` popout per user, hide/show toggle, grid + popouts active simultaneously
+- [ ] **Phase 23: macOS Universal + Windows Build & Codesign** -- Reproducible macOS arm64 + x86_64 universal binary (lipo + per-dylib codesign + `install_name_tool` Frameworks-path rewriting + camera entitlement) AND Windows x86_64 build (bundled ffmpeg DLLs with correct load-path resolution + signtool codesigning where applicable); CI lanes on both platforms with LGPL discipline gates (`otool -L` on macOS, `dumpbin /dependents` on Windows)
+- [ ] **Phase 24: Beta Validation, Server Docs & Per-DAW UAT** -- Ship `docs/SERVER.md` (section 1: public `video.ninjamzap.com:2049` recommended path, manual entry via existing server browser; section 2: self-host with Docker Compose + version pin), port ≥20 of 26 NinjamZap video-sync test scenarios cross-platform (macOS + Windows), manual UAT on macOS standalone + REAPER (fallback expected) + Logic Pro (camera grant expected) + Windows standalone + Windows REAPER VST3, cross-platform macOS↔Windows interop on `video.ninjamzap.com:2049`, NinjamZap mobile interop check, document beta release notes and known issues
+
+## Phase Details (v1.3)
+
+### Phase 19: Camera Capture & Permission UX
+**Goal**: Users can grant camera access in JamWide standalone and DAW-hosted plugin and see their local preview rendered on both macOS and Windows, with a graceful fallback when the DAW host does not request camera permission for itself
+**Depends on**: Phase 14.3 (Native Video Foundation — RawData transport API + ffmpeg vendoring substrate complete on macOS + Linux + Windows)
+**Reference**: `.planning/quick/260515-0pc-investigate-jamtaba-video-implementation/260515-0pc-deferred-items.md` (Item C — JUCE CameraDevice integration; Item G partial — entitlements + plugin plumbing). Files: `juce/JamWideJuceProcessor.{h,cpp}`, `juce/ui/ConnectionBar.cpp:206-217,512-528,644-650`, `JamWide.entitlements`, `libs/juce/modules/juce_video/capture/juce_CameraDevice.h`. **Cross-platform backends:** macOS uses `juce_CameraDevice_mac.mm` (AVFoundation) and Windows uses `juce_CameraDevice_windows.h` (Media Foundation / DirectShow). Spike Risk #2 (`CameraDevice::openDevice` returns non-null even when TCC denies frames on macOS) — needs `AVCaptureDevice authorizationStatusForMediaType` pre-check + watchdog timer. **Note:** the REAPER permission-denial fallback is macOS-specific (SPARTA Issue #82 is a macOS TCC/entitlement issue); on Windows, REAPER does not have the same camera-permission constraint and the camera happy path applies.
+**Requirements**: CAM-01, CAM-02, CAM-03, PKG-04 (entitlements portion)
+**Success Criteria** (what must be TRUE):
+  1. User can launch JamWide standalone on macOS, see the OS camera permission prompt, grant it, and see their own webcam preview in the plugin UI within 3 seconds
+  2. User can load JamWide as an AU plugin in Logic Pro (which requests `com.apple.security.device.camera` for itself), grant permission via the host, and see the local camera preview
+  3. User loading JamWide as a VST3 plugin in REAPER on macOS (which does NOT request the camera entitlement per SPARTA Issue #82) sees a graceful "Camera unavailable" dialog with text explaining the host limitation — no crash, no silent freeze, audio still works for the session
+  4. User can revoke camera permission via macOS System Settings without crashing JamWide; preview disappears and the fallback UI appears
+  5. User can launch JamWide standalone on Windows x86_64, see Windows' camera permission prompt (if applicable per Windows version), grant access, and see their own webcam preview in the UI within 3 seconds (SPARTA Issue #82 does not apply on Windows)
+**Plans**: 3 plans
+**UI hint**: yes
+
+### Phase 20: H.264 Encoder & Send Pipeline
+**Goal**: Users' webcam frames encode to H.264 via openh264 and broadcast as NinjamZap-compatible video intervals on channel 1, bit-for-bit wire-identical to NinjamZap mobile and the ninjamzap-core reference
+**Depends on**: Phase 19 (camera frame source available; entitlements wired)
+**Reference**: `.planning/quick/260515-0pc-investigate-jamtaba-video-implementation/260515-0pc-deferred-items.md` (Item D — port `JamTaba/src/Common/video/FFMpegMuxer.cpp`; Item F.1 — sender state machine; Item F.4 — `Net_Connection::Send` thread-safety per spike Q3). `260515-0pc-RESEARCH-ADDENDUM.md` "Wire format spec (locked)" — fourCC `H264` = `MAKE_NJ_FOURCC('H','2','6','4')`, 24-byte marker `[4B BE prefix=20][4B BE swap_count][16B audio_ch0_guid]`, SPS/PPS as second chunk, per-frame 4-byte BE length prefix. NinjamZap reference: `ninjamzap-core/njclient.cpp:2047-2123` (send API), `:3041-3082` (interval state machine).
+**Requirements**: COD-01, COD-02, WIRE-01, WIRE-03
+**Success Criteria** (what must be TRUE):
+  1. User sees their video broadcast to a NINJAM session at the spike-validated baseline of 320×240 at 10 fps with measured ~98 kbps average bitrate
+  2. A second user (or a ninjamzap-core reference receiver) successfully parses the JamWide broadcast: fourCC reads as `H264`, the first per-interval chunk is exactly 24 bytes and matches the marker spec, SPS/PPS appears as the second chunk, and each subsequent frame chunk carries a correct 4-byte BE length prefix
+  3. User can run JamWide with audio broadcast AND video broadcast simultaneously on a populated NINJAM server for 5 minutes with no audio glitches and no `Net_Connection::Send` thread-safety races (verifiable under TSan)
+  4. User who toggles camera off mid-session sees the sender emit a clean interval END (no truncated stream); receivers stop seeing new video without error
+**Plans**: 3 plans
+
+### Phase 21: H.264 Decoder & Receive Pipeline
+**Goal**: Users see remote peers' video decoded to a per-user `juce::Image` and synchronized to audio at interval boundaries via the GUID-pairing decision tree, fixing the "video one interval early" bug at the protocol level
+**Depends on**: Phase 20 (send-side wire format is bit-for-bit NinjamZap-compatible; can test receive against the same sender)
+**Reference**: `.planning/quick/260515-0pc-investigate-jamtaba-video-implementation/260515-0pc-deferred-items.md` (Item E.1 — port `JamTaba/src/Common/video/FFMpegDemuxer.cpp`; Item F.2 — `VideoRecvBuffer`/`VideoRecvState` 4-stage pipeline; Item F.3 — GUID-pairing decision tree). `260515-0pc-RESEARCH-ADDENDUM.md` "Receiver decision tree (4-stage pipeline + GUID matching)" — DS match defers 1 swap, PREV match plays immediately, no-match HOLDs with `kHoldCapDrop=4` resync. NinjamZap reference: `ninjamzap-core/njclient.h:334-417` (state structs), `:1300-1550` (WRITE handling), `:3084-3219` (decision tree). Test scenarios: `ninjamzap-core/tests/video-sync/scenarios/` (26 cases).
+**Requirements**: COD-03, WIRE-02
+**Success Criteria** (what must be TRUE):
+  1. User sees a remote peer's video appear in their JamWide UI at the same wall-clock moment as the matching audio interval (no "1 interval early" drift) for 5+ minutes of continuous playback
+  2. User joining a session mid-stream sees video appear after at most 2 interval boundaries (SPS/PPS picked up from the next interval's chunk #2)
+  3. User on a session where one remote peer's audio stops while video continues sees video freeze gracefully after `kHoldCapDrop=4` consecutive mismatches, then resume cleanly when the peer's audio returns
+  4. User running JamWide with 3+ remote peers broadcasting video simultaneously sees each peer's video decoded independently with one decoder + one 4-stage pipeline per peer
+**Plans**: 3 plans
+
+### Phase 22: Native Video UI (Grid + Popouts)
+**Goal**: Users see remote peers' video in an in-plugin grid and can pop out individual peers to separate `juce::DocumentWindow`s, with grid and popouts active simultaneously and survivable across grid toggles
+**Depends on**: Phase 21 (decoded `juce::Image` per remote peer available)
+**Reference**: `.planning/quick/260515-0pc-investigate-jamtaba-video-implementation/260515-0pc-deferred-items.md` (Item E.2 — display widget). `260515-0pc-RESEARCH-ADDENDUM.md` "UI rendering model [LOCKED-2026-05-15]" — native rendering only, grid + popouts both supported. Existing VDO.Ninja popout pattern in `companion/popout.html` and `juce/video/VideoCompanion.cpp` is the UX reference (multi-monitor friendly window detachment).
+**Requirements**: DISP-01, DISP-02, DISP-03, DISP-04
+**Success Criteria** (what must be TRUE):
+  1. User sees a per-remote-user video tile grid inside the main plugin/standalone view, sized appropriately for the number of peers (auto-flow layout)
+  2. User can click a "Pop out" affordance on any peer's tile and see the peer's video appear in a separate `juce::DocumentWindow` that can be dragged to a second monitor and resized independently
+  3. User can have the grid view open AND one or more popouts open at the same time; closing/reopening the grid does NOT close the popouts
+  4. User can toggle the grid view off (without disconnecting from NINJAM) and on again; popouts continue rendering throughout the toggle
+**Plans**: 2 plans
+**UI hint**: yes
+
+### Phase 23: macOS Universal + Windows Build & Codesign
+**Goal**: JamWide ships a reproducible macOS universal binary (arm64 + x86_64) AND a Windows x86_64 build, both with the native video stack, platform-correct codesigning, camera entitlements (macOS) / signtool signatures (Windows), and CI lanes that verify LGPL discipline and clean platform dependency reports
+**Depends on**: Phase 19, Phase 20, Phase 21 (need a fully-functional native video stack to bundle and codesign)
+**Reference**: `.planning/quick/260515-0pc-investigate-jamtaba-video-implementation/260515-0pc-deferred-items.md` (Item B partial — macOS arm64 + universal stitching AND Windows x86_64 (Linux deferred); Item G.2 — per-dylib codesign + `install_name_tool` Frameworks-path rewriting on macOS). `CMakeLists.txt:244-269` (current macOS codesign loop, needs extending). `JamWide.entitlements` (camera entitlement landed in Phase 19; codesign verification lives here). Spike Risk #3 (Cisco openh264 v2.1.1 last mac prebuilt — arm64 may require source build or VideoToolbox fallback per Q13). Spike Risk #4 (libX11 spurious dep mitigated; CI must enforce). Phase 14.3 already produces `libs/ffmpeg/windows-x86_64/` DLLs reproducibly; Phase 23 wires them into the Windows installer/bundle, sets correct PATH/load-path resolution, and applies `signtool` codesigning where a Windows code-signing certificate is available. Memory keys: "Apple Developer Signing — Team ID T3KK66Q67T, notarization via API Key", "Build VST3 with correct target", "Release packaging — macOS/Linux use tar.gz, Windows uses zip" all apply here.
+**Requirements**: PKG-01, PKG-02, PKG-03, PKG-04 (codesign + frameworks-path portions), PKG-05, PKG-06, PKG-07
+**Success Criteria** (what must be TRUE):
+  1. User can install the JamWide universal `.pkg` on macOS arm64 (Apple Silicon) and macOS x86_64 (Intel) machines, launch the standalone, and broadcast/receive video end-to-end on both architectures
+  2. User can load the JamWide universal AU/VST3 plugin in at least one DAW on each macOS architecture, grant camera permission, and broadcast video successfully
+  3. User running `codesign --verify --deep --strict` against the installed macOS bundle (Standalone, AU, VST3) sees zero errors — all vendored ffmpeg dylibs are individually signed, load paths rewritten via `install_name_tool` to `@loader_path/../Frameworks/`, and the outer bundle passes deep verification
+  4. User can install the JamWide Windows x86_64 build (zip or installer), launch the standalone, broadcast/receive video end-to-end, and load the VST3 plugin into at least one Windows DAW (REAPER minimum) with the camera happy path working
+  5. Windows installer/bundle contains the vendored ffmpeg DLLs (libavcodec, libavformat, libavutil, libswscale, libopenh264) alongside the executable with correct load-path resolution; `signtool` codesigning is applied when a Windows code-signing certificate is configured (and skipped cleanly with a clear log message when not)
+  6. CI gates fail any PR where `strings libs/ffmpeg/*/lib/libavcodec.* | grep -E 'libx264|x264_'` returns non-empty for any architecture (macOS or Windows), OR where `otool -L` reports a dependency outside `@rpath`, `@loader_path`, `/usr/lib`, `/System` for any macOS vendored dylib, OR where `dumpbin /dependents` on a Windows vendored DLL reports a dependency outside the standard Windows system DLLs + the JamWide-bundled DLL set
+**Plans**: 3 plans
+  - Plan 23-01: macOS universal stitching + per-dylib codesign + `install_name_tool` Frameworks-path rewriting + entitlements + macOS CI gate (`otool -L` + LGPL `strings` check)
+  - Plan 23-02: Windows x86_64 build + ffmpeg DLL bundling + correct load-path resolution + `signtool` codesigning (cert-conditional)
+  - Plan 23-03: CI lane parity — extend the existing macOS x86_64 lane from Phase 14.3 to also cover macOS arm64, and add a Windows x86_64 lane with the equivalent LGPL discipline + `dumpbin /dependents` gate; both lanes produce shippable beta artifacts
+
+### Phase 24: Beta Validation, Server Docs & Per-DAW UAT
+**Goal**: JamWide ships `docs/SERVER.md` framed in two sections — section 1 names the public `video.ninjamzap.com:2049` ninjamzap-server as the recommended v1.3-beta path (community-operated, no SLA; beta testers manually enter the address into JamWide's existing untouched NINJAM server browser); section 2 walks through self-hosting upstream `ninjamzap-server` (Docker Compose example + minimum config + version pin) — ports ≥20 of NinjamZap's 26 video-sync test scenarios so they pass on both macOS and Windows, and validates the beta with the full UAT matrix: macOS standalone + REAPER fallback + Logic Pro happy path + Windows standalone + Windows REAPER VST3 happy path + cross-platform macOS↔Windows interop on `video.ninjamzap.com:2049` + NinjamZap mobile interop check — beta is ready to ship
+**Depends on**: Phase 23 (macOS universal + Windows codesigned builds available for distribution to UAT participants)
+**Reference**: `.planning/quick/260515-0pc-investigate-jamtaba-video-implementation/260515-0pc-deferred-items.md` (reduced Item I — macOS + REAPER + Logic Pro + Windows standalone + Windows REAPER, NOT full per-DAW matrix; Item J option (c) — `docs/SERVER.md` linking to the public `video.ninjamzap.com:2049` instance as the recommended v1.3-beta path + upstream `ninjamzap-server` self-host install instructions + the `AllowVideoChannels yes` + `PrivateGroupMode N` minimum config + a JamWide release-notes pin to a known-good ninjamzap-server tag + a one-command Docker Compose example). **No UI work**: JamWide's existing NINJAM server browser (untouched by v1.3) already supports manual server-address entry, so beta testers type `video.ninjamzap.com:2049` themselves — no preset entry needed (SRV-02 removed per user 2026-05-15). NinjamZap test harness at `ninjamzap-core/tests/video-sync/harness/TestClient.{h,cpp}` (port to JamWide `tests/`, ensure they build and pass on both macOS and Windows under `./scripts/build.sh --tests`). 26 scenarios at `ninjamzap-core/tests/video-sync/scenarios/`. Upstream server docs to adapt: `/Users/cell/dev/ninjamzap-server/docs/VIDEO_SUPPORT.md`, `/Users/cell/dev/ninjamzap-server/Dockerfile`, `/Users/cell/dev/ninjamzap-server/configs/`. Memory keys for release packaging: "Release packaging — macOS/Linux use tar.gz, Windows uses zip" and "Update download page on betas — Always update docs/download.md link when tagging a new beta release".
+**Requirements**: WIRE-04, BETA-01, BETA-02, BETA-03, BETA-04, BETA-05, BETA-06, SRV-01
+**Success Criteria** (what must be TRUE):
+  1. JamWide ships `docs/SERVER.md` with two sections: section 1 names the public `video.ninjamzap.com:2049` ninjamzap-server as "Recommended for v1.3 beta — community-operated, no SLA", explaining beta testers enter the address into the existing NINJAM server browser; section 2 documents self-hosting upstream `ninjamzap-server` including a Docker Compose example for one-command deployment, the minimum required server config (`AllowVideoChannels yes` + `PrivateGroupMode N`), latency/privacy rationale, and a JamWide release-notes pin to a known-good `ninjamzap-server` tag (SRV-01)
+  2. Two JamWide standalone users on different macOS machines (one arm64, one x86_64) connect to `video.ninjamzap.com:2049` via the existing server browser, join the same room, and successfully broadcast + receive each other's video for at least 5 minutes with no audio glitches and no decoder freezes (BETA-01)
+  3. A user loading JamWide VST3 in REAPER on macOS reaches the "Camera unavailable" fallback gracefully per SPARTA Issue #82; the remote peer (a different JamWide standalone user) still hears the REAPER user's audio normally (BETA-02)
+  4. A user loading JamWide AU in Logic Pro on macOS broadcasts video successfully to `video.ninjamzap.com:2049` (Logic Pro requests camera for itself); a remote standalone JamWide peer sees the Logic Pro user's video in their grid (BETA-03)
+  5. A JamWide user joins a NinjamZap-server-hosted room with at least one NinjamZap mobile (iOS or Android) peer and successfully sees the mobile peer's video decoded and rendered in the JamWide grid (WIRE-04, also acts as live wire-format compatibility evidence)
+  6. At least 20 of the 26 NinjamZap video-sync test scenarios at `ninjamzap-core/tests/video-sync/scenarios/` are ported to JamWide `tests/` and pass under `./scripts/build.sh --tests` on **both macOS and Windows** (BETA-04)
+  7. JamWide standalone on Windows x86_64 and JamWide REAPER VST3 on Windows x86_64 both reach the camera happy path and successfully broadcast video to `video.ninjamzap.com:2049` (BETA-06)
+  8. A macOS user (standalone or DAW-hosted) and a Windows user (standalone or DAW-hosted) both connect to `video.ninjamzap.com:2049` and successfully broadcast + receive each other's video for at least 5 minutes — cross-platform end-to-end gate on the live reference-server instance (BETA-05)
+**Plans**: 2 plans
+  - Plan 24-01: SRV-01 server docs (`docs/SERVER.md` two-section frame — public `video.ninjamzap.com:2049` recommended path + self-host with Docker Compose + version pin) + port ≥20 of 26 NinjamZap video-sync scenarios to JamWide `tests/` + macOS UAT against `video.ninjamzap.com:2049` (BETA-01, BETA-02, BETA-03, BETA-04 macOS half, WIRE-04 mobile interop)
+  - Plan 24-02: Windows standalone + Windows REAPER VST3 UAT against `video.ninjamzap.com:2049` (BETA-06) + cross-platform macOS↔Windows interop on `video.ninjamzap.com:2049` (BETA-05) + finalise BETA-04 Windows half + beta release notes + download page update
+
 ## Future Milestones
 
 ### v2.0: Codec & Transport Redesign
@@ -298,6 +400,8 @@ Plans:
 **Execution Order:**
 Phases execute in numeric order: 9 -> 10 -> 11 -> 12 -> 13
 Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally independent). Phase 13 depends on both Phase 10 and Phase 12.
+
+v1.3 execution order: 19 -> 20 -> 21 -> 22 -> 23 -> 24 (strict dependency chain — capture unblocks encode; encode unblocks receive; receive unblocks UI; UI + send + receive unblock the macOS universal + Windows build + codesign work; both shippable builds unblock the macOS + Windows + cross-platform beta UAT and `docs/SERVER.md` finalisation against upstream ninjamzap-server with `video.ninjamzap.com:2049` as the recommended public instance).
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -318,11 +422,18 @@ Note: Phase 11 is independent of Phases 9-10 (OSC and Video are architecturally 
 | 14. MIDI Remote Control | v1.1 | 3/3 | Complete   | 2026-04-15 |
 | 14.1 Audio Prelisten | v1.1 | 1/2 | In Progress|  |
 | 14.2 Instamode Video Sync | v1.1 | 2/2 | Complete   | 2026-04-16 |
+| 14.3 Native Video Foundation | v1.1 | 3/3 | Complete | 2026-05-15 |
 | 15. Connection Encryption | v1.2 | 2/2 | Complete    | 2026-04-11 |
 | 15.1. RT-Safety Hardening | v1.2 | 0/0 | Context gathered | - |
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |
 | 18. Testing Infrastructure | v1.2 | 0/0 | Not started | - |
+| 19. Camera Capture & Permission UX | v1.3 | 0/3 | Not started | - |
+| 20. H.264 Encoder & Send Pipeline | v1.3 | 0/3 | Not started | - |
+| 21. H.264 Decoder & Receive Pipeline | v1.3 | 0/3 | Not started | - |
+| 22. Native Video UI (Grid + Popouts) | v1.3 | 0/2 | Not started | - |
+| 23. macOS Universal + Windows Build & Codesign | v1.3 | 0/3 | Not started | - |
+| 24. Beta Validation, Server Docs & Per-DAW UAT | v1.3 | 0/2 | Not started | - |
 
 ## Backlog
 

@@ -121,6 +121,14 @@ for PLAT_DIR in libs/ffmpeg/macos-x86_64 libs/ffmpeg/macos-arm64 \
         if [ -n "$BAD" ]; then
           BAD_DEPS+="\n  $D:\n$(echo "$BAD" | sed 's/^/    /')"
         fi
+        # Catch missing runtime deps (e.g. a patchelf run that broke a NEEDED
+        # entry). ldd reports "libfoo.so.N => not found" for absent deps; the
+        # path-extraction pipeline above yields "not" which is not matched by
+        # the /usr/local|/opt|/home grep, so missing deps silently pass without
+        # this explicit check.
+        if ldd "$D" 2>/dev/null | grep -q " => not found"; then
+          BAD_DEPS+="\n  $D: has 'not found' (missing runtime) deps"
+        fi
       done
       if [ -n "$BAD_DEPS" ]; then
         printf "FAIL: %s — unexpected dynamic deps:%b\n" "$PLAT_DIR" "$BAD_DEPS" >&2

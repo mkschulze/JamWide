@@ -658,6 +658,32 @@ public:
                                void (*emit)(void* ctx, const unsigned char guid[16],
                                             const void* data, int dataLen, int flags),
                                void* ctx);
+
+  // 14.3-03: receive-path dispatch test helpers. These expose the
+  // BEGIN/WRITE case body (extracted from NJClient::Run's message switch)
+  // so unit tests can verify the dispatch logic in-process without a real
+  // socket or Net_Connection mock. Take primitive fields (not the
+  // mpb_server_download_interval_begin / write classes) so njclient.h does
+  // not have to include mpb.h.
+  //
+  // AddTestRemoteUser allocates a RemoteUser, populates one channel (chidx
+  // = ch), sets channels[ch].flags = chflags (0 by default — subscribed,
+  // not session-mode, not flags&4 silence-pad), submask, chanpresentmask,
+  // pushes onto m_remoteusers. Returns the slot used for findRemoteUserSlot.
+  // GetRawDataDownloadCount + GetMDownloadsCount expose the WDL_PtrList
+  // sizes so tests can assert which dispatch branch fired.
+  // ClearTestRemoteUsers empties the list (frees each entry) so tests can
+  // re-use the same NJClient across scenarios.
+  void AddTestRemoteUser(const char* name, int ch, int chflags);
+  void ClearTestRemoteUsers();
+  void DispatchTestServerDownloadIntervalBegin(const unsigned char guid[16],
+                                               unsigned int fourcc, int chidx,
+                                               const char* username, int estsize);
+  void DispatchTestServerDownloadIntervalWrite(const unsigned char guid[16],
+                                               const void* audio_data,
+                                               int audio_data_len, int flags);
+  int GetRawDataDownloadCount() const { return m_rawdata_downloads.GetSize(); }
+  int GetMDownloadsCount()      const { return m_downloads.GetSize(); }
 #endif
 
   // -- Phase 14.2: Instamode latency measurement (VID-13) --

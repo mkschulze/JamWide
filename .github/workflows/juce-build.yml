@@ -75,10 +75,14 @@ jobs:
       - name: Build
         run: cmake --build build --config Release -j $(sysctl -n hw.ncpu)
 
-      - name: ffmpeg link smoke test
-        # Phase 14.3-01: codec-init smoke covering SC-3 / SC-8 — proves
-        # vendored libavcodec dlopens and libopenh264 encoder is registered.
-        run: cd build && ctest -R ffmpeg_link_smoke --output-on-failure
+      - name: Run Phase 14.3 unit tests
+        # Phase 14.3-01/02/03: ffmpeg codec-init smoke (SC-3/SC-8) +
+        # SPSC send-queue round-trip + video fourcc classification tests.
+        # Using explicit regex so future slow/flaky tests can be excluded
+        # without accidentally dropping these suites.
+        run: |
+          cd build
+          ctest -R "ffmpeg_link_smoke|rawdata_send_roundtrip|video_fourcc" --output-on-failure
 
       - name: Verify artifacts
         run: |

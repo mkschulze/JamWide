@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Native Video
 status: planning
-stopped_at: Phase 19 context gathered
-last_updated: "2026-05-15T22:36:52.351Z"
-last_activity: "2026-05-15 — v1.3 roadmap REVISED PASS 3 (FINAL): 6 phases, 16 plans, **28 requirements** mapped. `video.ninjamzap.com:2049` recommended in `docs/SERVER.md` for v1.3 beta; users manually enter the address into JamWide's existing untouched NINJAM server browser — **SRV-02 preset-entry requirement removed** per user clarification (no UI changes needed)"
+stopped_at: Phase 19 planned (3 plans / 10 tasks / 3 waves) — ready for execute
+last_updated: "2026-05-16T01:30:00.000Z"
+last_activity: "2026-05-16 — Phase 19 planning complete: research (commit 47d8317), validation strategy (commit 76d656a), 3 plans (commit 227bac0), revision 1 fixing 2 blockers + 4 warnings from plan-checker (commit 0a88d42). plan-checker VERIFICATION PASSED on iteration 2. Waves: 19-01 (capture pipeline, Wave 1) → 19-02 (UI + persistence, Wave 2) → 19-03 (fallback dialog + UAT + verify entitlement, Wave 3, serial after 19-02 due to shared JamWideJuceEditor.cpp edits). All 30 locked decisions (D-01..D-30) honored. All 5 STRIDE threats (T-19-01..05) mapped. All 8 Wave 0 gaps scaffolded."
 progress:
   total_phases: 6
   completed_phases: 0
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 
 ## Current Position
 
-Phase: Phase 19 — Camera Capture & Permission UX (Not started)
-Plan: — (awaiting `/gsd:plan-phase 19`)
-Status: Roadmap complete; phase planning pending
-Last activity: 2026-05-15 — v1.3 roadmap REVISED PASS 3 (FINAL): 6 phases, 16 plans, **28 requirements** mapped. `video.ninjamzap.com:2049` recommended in `docs/SERVER.md` for v1.3 beta; users manually enter the address into JamWide's existing untouched NINJAM server browser — **SRV-02 preset-entry requirement removed** per user clarification (no UI changes needed)
+Phase: Phase 19 — Camera Capture & Permission UX (Planned, awaiting execution)
+Plan: 3 plans ready — `19-01-PLAN-capture-pipeline.md`, `19-02-PLAN-ui-and-persistence.md`, `19-03-PLAN-fallback-and-verification.md`. Next: `/gsd-execute-phase 19`.
+Status: Plans verified (plan-checker VERIFICATION PASSED on revision 1)
+Last activity: 2026-05-16 — Phase 19 plan-phase workflow complete. Research (1166 lines, HIGH confidence, 2 surprise risks E+F surfaced and addressed), validation strategy (8 Wave 0 gaps enumerated), 3 plans authored by gsd-planner, revision 1 fixed 2 blockers + 4 warnings, plan-checker re-verification PASSED.
 Milestone scope (v1.3 = macOS + Windows testable beta on upstream ninjamzap-server, `video.ninjamzap.com:2049` documented as the recommended public instance — JamWide's existing NINJAM server browser UI is untouched):
 
 - Phase 19 — Camera Capture & Permission UX (3 plans) — CAM-01, CAM-02, CAM-03, PKG-04 (entitlements). Cross-platform via JUCE `juce_CameraDevice_{mac,windows}.h`; REAPER fallback is macOS-only (SPARTA #82).
@@ -164,8 +164,11 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-05-15T22:36:52.339Z
-Stopped at: Phase 19 context gathered
-Resume file: .planning/phases/19-camera-capture-permission-ux/19-CONTEXT.md
-ORIGINAL: 15.1-07b COMPLETE (commits dbdaf98, edb2769) — broadcast restored end-to-end. All 7 audio-thread BufferQueue::AddBlock sites replaced with SPSC try_push (4 process_samples + 1 m_wavebq + 2 on_new_interval); Codex M-7 bounds-check + M-8 drop counter wired; test_block_queue_spsc 5/5 PASSED under both Release + TSan with zero ThreadSanitizer reports; build 251 VST3 + Standalone + TSan-Standalone all green. User-recommended UAT (NOT required by plan): transmit DAW audio for 30s, confirm peers hear it, read GetBlockQueueDropCount() == 0. Advancing to 15.1-07a (m_users_cs mirror, CR-01).
-Resume file (v1.2): .planning/phases/15.1-rt-safety-hardening/15.1-07b-SUMMARY.md
+Last session: 2026-05-16T01:30:00.000Z
+Stopped at: Phase 19 planned and verified — `/gsd-execute-phase 19` is the next move
+Resume files:
+  - `.planning/phases/19-camera-capture-permission-ux/19-01-PLAN-capture-pipeline.md` (Wave 1)
+  - `.planning/phases/19-camera-capture-permission-ux/19-02-PLAN-ui-and-persistence.md` (Wave 2)
+  - `.planning/phases/19-camera-capture-permission-ux/19-03-PLAN-fallback-and-verification.md` (Wave 3 — serial after 19-02)
+Phase 19 planning summary: research (commit 47d8317) → validation (76d656a) → 3 plans (227bac0) → revision 1 (0a88d42) → plan-checker PASSED. 30 locked decisions, 5 STRIDE threats, 8 Wave 0 gaps, 5 ROADMAP success criteria all covered. 2 surprise risks closed: Risk E (`JUCE_USE_CAMERA=1` not on main plugin — fixed as first task of 19-01) and Risk F (TCC reads host bundle ID — mitigated via cause-aware fallback dialog, no engineering fix possible). Risk C (JUCE seat licence / GPLv2+ upgrade clause) carried as a verify step in 19-03 Task 2.
+Prior session (Phase 15.1-07b — keep for cross-phase context): 15.1-07b COMPLETE (commits dbdaf98, edb2769) — broadcast restored end-to-end. All 7 audio-thread BufferQueue::AddBlock sites replaced with SPSC try_push. Resume file (v1.2): `.planning/phases/15.1-rt-safety-hardening/15.1-07b-SUMMARY.md`.

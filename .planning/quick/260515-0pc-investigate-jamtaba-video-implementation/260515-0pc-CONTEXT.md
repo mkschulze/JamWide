@@ -30,12 +30,34 @@ Investigate JamTaba's native video implementation (ffmpeg-based, integrated into
 - **Both standalone AND plugin parity.** Webcam capture must work in VST3/AU/CLAP hosted by a DAW.
 - Implies: macOS Hardened Runtime entitlement `com.apple.security.device.camera`, codesigning of all ffmpeg dylibs in the bundle, DAW-host permission UX (first-run prompt, "video unavailable" fallback when host denies camera).
 
-### Wire format
-- **Bit-for-bit JamTaba-compatible.** Same channel-naming convention, same codec params, same interval framing.
-- Goal: JamTaba and JamWide users see each other's video in mixed sessions on vanilla NINJAM servers, no protocol extension required.
+### Wire format [REVISED-2026-05-15]
+- **Bit-for-bit NinjamZap-compatible** (was JamTaba; user redirected 2026-05-15).
+- fourCC `H264` (= `MAKE_NJ_FOURCC('H','2','6','4')` = 0x34363248), 24-byte interval marker `[4B BE prefix=20][4B BE swap_count][16B audio_ch0_guid]`, 4-byte BE length prefix per frame, 4-stage receive pipeline (`accumulating → next → pending → playing`) with GUID-pairing decision tree (DS / PREV / no-match → `kHoldCapDrop=4`).
+- Goal: JamWide users see each other's video on the ninjamzap-server fork (or a compatible server). JamTaba interop is sacrificed (different fourCC); future interop with NinjamZap mobile (iOS / Android) is GAINED.
+- Authoritative spec: see `260515-0pc-RESEARCH-ADDENDUM.md` "Wire format spec" section.
+
+### Server compatibility [NEW-2026-05-15]
+- **Target the ninjamzap-server fork as the reference server.** Vanilla NINJAM works (server is opaque relay) but lacks per-room threading, two-pass audio-priority processing, and per-subscriber video-frame congestion drop. Without those, audio quality degrades when video bandwidth spikes.
+- JamWide hosts/users running their own server should run ninjamzap-server. Document this in the milestone-shipping README.
+
+### UI rendering model [NEW-2026-05-15]
+- **Native rendering only — popout `juce::DocumentWindow` per user + grid `juce::Component` in the main view.** No browser companion in v1.
+- Decoded H.264 frames live as `juce::Image` objects owned by JamWide; can be rendered in any combination of: a native grid (one tile per remote user inside the plugin/standalone window), per-user popouts that can be dragged to other monitors, or both simultaneously.
+- The existing VDO.Ninja browser companion's two strengths (multi-monitor grid + per-user windows) are preserved in the native UI without the WebSocket+HTML/TS dependency surface.
+- A literal browser-companion path is rejected for v1 — would require parallel transport (decode → MJPEG/WebRTC re-encode → local WebSocket → browser) that roughly doubles milestone work. Can be re-evaluated in a future milestone if user demand emerges.
+
+### Audio codec [CLARIFIED-2026-05-15]
+- **Audio codec is OUT OF SCOPE for the native-video work.** JamWide today supports OGGv (Vorbis-in-Ogg) and FLAC. NinjamZap-server and ninjamzap-core support only OGGv on the wire — no OPUS support exists in either repo (verified via grep — only WDL/metadata.h:688 mentions opus, and that is only an audio-file-extension recognizer for ID3-style metadata reads, not a NINJAM transport codec).
+- JamWide's own roadmap has Opus tracked separately as **Phase 16 "Opus Codec Integration"** in the v1.2 "Security & Quality" milestone. Treat Opus integration as an independent decision belonging to that phase, NOT to the native-video work.
+- Implication: stay on OGGv for audio in the video milestone; do not entangle Opus.
+
+### Cross-platform support [NEW-2026-05-15]
+- **macOS + Windows: full native send + receive parity from v1.** Both have working JUCE `CameraDevice` backends (`juce_CameraDevice_mac.h`, `juce_CameraDevice_windows.h`) and ffmpeg/openh264 builds.
+- **Linux: receive-only in v1.** JUCE's `juce_video` module has no `juce_CameraDevice_linux.h` — Linux users can decode and view incoming video but cannot capture+broadcast their own. UX must show "Video send unavailable on Linux (planned for a later release)" instead of failing silently.
+- **Linux send: deferred to its own phase post-v1.** Implementing direct V4L2 (`/dev/video0`) capture for Linux is single-platform work that doesn't block macOS/Windows shipping. Tracked as Item K in `260515-0pc-deferred-items.md`.
 
 ### Claude's Discretion
-- Bundle/codesigning specifics, logging, telemetry, UI placement of the new video widget, frame-rate/resolution defaults — choose pragmatically.
+- Bundle/codesigning specifics, logging, telemetry, frame-rate/resolution defaults beyond the JamTaba-defined codec params, exact placement of the per-user popout-windows menu, default grid layout (e.g., 2×2 for 4 users vs flow-layout) — choose pragmatically.
 
 </decisions>
 

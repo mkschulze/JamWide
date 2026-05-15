@@ -345,22 +345,17 @@ if(JAMWIDE_BUILD_JUCE)
         # default OFF so headless CI without a camera is unaffected.
         if(JAMWIDE_VIDEO_SPIKE)
             include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ffmpeg.cmake)
+            include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/jamwide_use_ffmpeg.cmake)
 
             juce_add_console_app(video_spike PRODUCT_NAME "JamWide Video Spike")
             juce_generate_juce_header(video_spike)
 
             target_sources(video_spike PRIVATE tests/video_spike.cpp)
-            # CRITICAL: vendored ffmpeg headers MUST come BEFORE all other includes
-            # to override Apple clang's default /usr/local/include (where homebrew
-            # ffmpeg 8.x is installed). Without BEFORE, our consumer compiles
-            # against avcodec 62 layout but links against avcodec 61 dylib —
-            # struct ABI mismatch silently corrupts AVCodecContext fields.
-            # Diagnosed during 260515-0pc spike (avcodec_open2 fails with
-            # "Invalid video pixel format: -1" despite pix_fmt being set to
-            # AV_PIX_FMT_YUV420P=0 immediately before the call).
-            target_include_directories(video_spike BEFORE PRIVATE
-                ${CMAKE_CURRENT_SOURCE_DIR}/libs/ffmpeg/macos-${CMAKE_HOST_SYSTEM_PROCESSOR}/include
-            )
+            # Phase 14.3-01: jamwide_use_ffmpeg() bakes in the Apple-clang
+            # BEFORE PRIVATE include discipline (Landmine L6 / spike Risk #1)
+            # AND links ffmpeg::lgpl in one shot. See cmake/jamwide_use_ffmpeg.cmake
+            # for the full rationale.
+            jamwide_use_ffmpeg(video_spike)
             target_include_directories(video_spike PRIVATE
                 ${CMAKE_CURRENT_SOURCE_DIR}
                 ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -371,7 +366,6 @@ if(JAMWIDE_BUILD_JUCE)
                 juce::juce_graphics
                 juce::juce_events
                 juce::juce_core
-                ffmpeg::lgpl
             )
             target_compile_definitions(video_spike PUBLIC
                 JUCE_USE_CAMERA=1
@@ -379,11 +373,28 @@ if(JAMWIDE_BUILD_JUCE)
             )
             add_test(NAME video_spike COMMAND video_spike)
 
-            # Post-build LGPL discipline check — fails the build if libavcodec
-            # contains libx264 strings (RESEARCH § 7 "x264 license trap").
+            # Phase 14.3-01 Task 3: carved-out codec-init smoke test
+            # (SC-1 / SC-3 / SC-8). Mirrors video_spike's juce_add_console_app
+            # scaffolding minus the JUCE camera/graphics/encode/decode/PNG-dump
+            # modules — links ffmpeg::lgpl only via jamwide_use_ffmpeg().
+            juce_add_console_app(test_ffmpeg_link PRODUCT_NAME "FFmpeg Link Smoke Test")
+            juce_generate_juce_header(test_ffmpeg_link)
+            target_sources(test_ffmpeg_link PRIVATE tests/test_ffmpeg_link.cpp)
+            jamwide_use_ffmpeg(test_ffmpeg_link)
+            target_compile_definitions(test_ffmpeg_link PRIVATE JUCE_STANDALONE_APPLICATION=1)
+            add_test(NAME ffmpeg_link_smoke COMMAND test_ffmpeg_link)
+
+            # Phase 14.3-01 Task 3: replace the original spike's inline
+            # strings-grep POST_BUILD step with a call to the standalone
+            # scripts/verify_ffmpeg_lgpl.sh gate (single source of truth — the
+            # same script runs in .github/workflows/juce-build.yml). Covers
+            # both the libx264 strings discipline AND the otool linkage
+            # assertion that clears spike Risk #4 (libX11 spurious dep).
             add_custom_command(TARGET video_spike POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E echo "Verifying LGPL discipline (no libx264)..."
-                COMMAND bash -ec "if strings ${CMAKE_CURRENT_SOURCE_DIR}/libs/ffmpeg/macos-${CMAKE_HOST_SYSTEM_PROCESSOR}/lib/libavcodec.*.dylib | grep -E 'libx264|x264_encoder|x264_init' > /dev/null 2>&1 ; then echo 'FAIL: libavcodec contains libx264 strings (GPL contamination)' >&2 ; exit 1 ; else echo 'OK: libavcodec is libx264-free' ; fi"
+                COMMAND ${CMAKE_COMMAND} -E echo "Verifying LGPL discipline (scripts/verify_ffmpeg_lgpl.sh)..."
+                COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/verify_ffmpeg_lgpl.sh
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                COMMENT "Phase 14.3-01: verify_ffmpeg_lgpl.sh"
                 VERBATIM
             )
         endif()

@@ -47,6 +47,19 @@ jobs:
                -output "$GITHUB_WORKSPACE/openssl-universal/lib/libssl.a"
           lipo -info "$GITHUB_WORKSPACE/openssl-universal/lib/libcrypto.a"
 
+      - name: Vendor LGPL ffmpeg
+        # Phase 14.3-01: produce libs/ffmpeg/<platform>/ on the CI runner via
+        # scripts/build_ffmpeg_lgpl.sh. macos-14 = arm64 runner; the script's
+        # OS+ARCH dispatch picks the Darwin-arm64 leg (Cisco openh264 from
+        # source — MPEG-LA royalty deviation documented in script header).
+        run: bash scripts/build_ffmpeg_lgpl.sh
+
+      - name: Verify LGPL discipline
+        # Phase 14.3-01: iterate every populated libs/ffmpeg/<platform>/ tree
+        # and assert no libx264 strings + clean otool/ldd linkage. Exits 1
+        # on any contamination.
+        run: bash scripts/verify_ffmpeg_lgpl.sh
+
       - name: Configure CMake
         run: |
           cmake -B build \
@@ -55,10 +68,17 @@ jobs:
             -DJAMWIDE_BUILD_JUCE=ON \
             -DJAMWIDE_BUILD_CLAP=OFF \
             -DJAMWIDE_DEV_BUILD=OFF \
+            -DJAMWIDE_BUILD_TESTS=ON \
+            -DJAMWIDE_VIDEO_SPIKE=ON \
             -DOPENSSL_ROOT_DIR="$GITHUB_WORKSPACE/openssl-universal"
 
       - name: Build
         run: cmake --build build --config Release -j $(sysctl -n hw.ncpu)
+
+      - name: ffmpeg link smoke test
+        # Phase 14.3-01: codec-init smoke covering SC-3 / SC-8 — proves
+        # vendored libavcodec dlopens and libopenh264 encoder is registered.
+        run: cd build && ctest -R ffmpeg_link_smoke --output-on-failure
 
       - name: Verify artifacts
         run: |

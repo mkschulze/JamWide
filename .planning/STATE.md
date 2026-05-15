@@ -130,6 +130,7 @@ Recent decisions affecting current work:
 | 260413-udi | Add usernames in server room list and audio prelisten before entering a room | 2026-04-13 | 972885d | Needs Review | [260413-udi-add-usernames-in-server-room-list-and-au](./quick/260413-udi-add-usernames-in-server-room-list-and-au/) |
 | 260502-rcm | Fix orphan mirror fields (flags/volume/pan/out_chan_index) — restore canonical→mirror flow + diagnostic counters; build 295; UAT pending | 2026-05-02 | ac04e17 | UAT Pending | [260502-rcm-fix-orphan-mirror-fields](./quick/260502-rcm-fix-orphan-mirror-fields/) |
 | 260515-0pc | Investigate JamTaba video implementation and design equivalent for JamWide standalone and DAW plugin — feasibility spike on quick/260515-0pc-jamtaba-video-port branch; LGPL ffmpeg + openh264 + JUCE compose end-to-end; 5 architectural risks surfaced; deferred to milestone | 2026-05-15 | fa9b8d8 | Verified | [260515-0pc-investigate-jamtaba-video-implementation](./quick/260515-0pc-investigate-jamtaba-video-implementation/) |
+| 260515-jys | Review NinjamZap upstream VIDEO_SYNC.md + VIDEO_SUPPORT.md against locked Phase 14.3 planning — `--full` cross-reference matrix (16 upstream claims × 8 locked decisions × 3 plan files); verdict NO_PLAN_ADJUSTMENT_NEEDED; v1.3 deferral boundaries confirmed; 17 v1.3-territory upstream details catalogued for the deferred milestone | 2026-05-15 | (pending) | Complete | [260515-jys-review-ninjamzap-upstream-video-sync-md-](./quick/260515-jys-review-ninjamzap-upstream-video-sync-md-/) |
 
 ## Session Continuity
 

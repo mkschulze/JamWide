@@ -54,6 +54,10 @@
 build/
 build-release/
 build-juce/
+build-spike/
+build-test/
+build-tsan/
+.bg-shell/
 logs/
 .cache/
 *.DS_Store

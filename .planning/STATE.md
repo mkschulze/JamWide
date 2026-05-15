@@ -3,8 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Native Video
 status: planning
-last_updated: "2026-05-15T22:30:00.000Z"
-last_activity: 2026-05-15
+stopped_at: Phase 19 context gathered
+last_updated: "2026-05-15T22:36:52.351Z"
+last_activity: "2026-05-15 — v1.3 roadmap REVISED PASS 3 (FINAL): 6 phases, 16 plans, **28 requirements** mapped. `video.ninjamzap.com:2049` recommended in `docs/SERVER.md` for v1.3 beta; users manually enter the address into JamWide's existing untouched NINJAM server browser — **SRV-02 preset-entry requirement removed** per user clarification (no UI changes needed)"
 progress:
   total_phases: 6
   completed_phases: 0
@@ -29,6 +30,7 @@ Plan: — (awaiting `/gsd:plan-phase 19`)
 Status: Roadmap complete; phase planning pending
 Last activity: 2026-05-15 — v1.3 roadmap REVISED PASS 3 (FINAL): 6 phases, 16 plans, **28 requirements** mapped. `video.ninjamzap.com:2049` recommended in `docs/SERVER.md` for v1.3 beta; users manually enter the address into JamWide's existing untouched NINJAM server browser — **SRV-02 preset-entry requirement removed** per user clarification (no UI changes needed)
 Milestone scope (v1.3 = macOS + Windows testable beta on upstream ninjamzap-server, `video.ninjamzap.com:2049` documented as the recommended public instance — JamWide's existing NINJAM server browser UI is untouched):
+
 - Phase 19 — Camera Capture & Permission UX (3 plans) — CAM-01, CAM-02, CAM-03, PKG-04 (entitlements). Cross-platform via JUCE `juce_CameraDevice_{mac,windows}.h`; REAPER fallback is macOS-only (SPARTA #82).
 - Phase 20 — H.264 Encoder & Send Pipeline (3 plans) — COD-01, COD-02, WIRE-01, WIRE-03. Cross-platform via libavcodec.
 - Phase 21 — H.264 Decoder & Receive Pipeline (3 plans) — COD-03, WIRE-02. Cross-platform via libavcodec.
@@ -37,6 +39,7 @@ Milestone scope (v1.3 = macOS + Windows testable beta on upstream ninjamzap-serv
 - Phase 24 — Beta Validation, Server Docs & Per-DAW UAT (2 plans) — WIRE-04, BETA-01..06, SRV-01. Plans: 24-01 `docs/SERVER.md` two-section frame (public `video.ninjamzap.com:2049` recommended + self-host with Docker Compose + version pin) + 26 NinjamZap test-scenario port + macOS UAT against `video.ninjamzap.com:2049` (BETA-01/02/03); 24-02 Windows UAT against `video.ninjamzap.com:2049` (BETA-06) + cross-platform macOS↔Windows interop (BETA-05) + finalise BETA-04 cross-platform + beta release notes.
 
 Hard exclusions (post-beta / v1.4 territory; do NOT create phases for these):
+
 - Linux V4L2 capture (Item K)
 - Linux full-client (capture + receive) build (Item B.2 Linux portion)
 - VDO.Ninja teardown (Item H)
@@ -161,8 +164,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-05-15T22:30:00.000Z
-Stopped at: v1.3 Native Video roadmap REVISED PASS 2 — same 6 phases (19-24), same 16 plans, requirement count bumped 28 → 29 (added SRV-02 server-browser preset entry → Phase 24, folded into Plan 24-01 alongside SRV-01 server docs + macOS UAT per Option A). Adopted `video.ninjamzap.com:2049` as JamWide's default preset server for the v1.3 beta; SRV-01 reworded to two sections (public preset + self-host); BETA-01/03/05/06 reworded to name `video.ninjamzap.com:2049` as the concrete UAT server. All 29 v1.3 requirements (CAM/COD/WIRE/DISP/PKG/SRV/BETA) mapped to exactly one phase. ROADMAP.md (Phase 24 detail block + v1.3 milestone goal + execution-order line), REQUIREMENTS.md (Traceability + Coverage), and STATE.md updated. Phase 14.3 substrate complete and milestone-ready on branch `quick/260515-0pc-jamtaba-video-port` (commit 3494676). Next: `/gsd:plan-phase 19` to decompose Phase 19 (Camera Capture & Permission UX) into 3 plans.
-Resume file: .planning/ROADMAP.md "v1.3 Native Video (In Progress)" section + .planning/REQUIREMENTS.md "v1.3 Requirements — Native Video (Testable Beta)" section.
+Last session: 2026-05-15T22:36:52.339Z
+Stopped at: Phase 19 context gathered
+Resume file: .planning/phases/19-camera-capture-permission-ux/19-CONTEXT.md
 ORIGINAL: 15.1-07b COMPLETE (commits dbdaf98, edb2769) — broadcast restored end-to-end. All 7 audio-thread BufferQueue::AddBlock sites replaced with SPSC try_push (4 process_samples + 1 m_wavebq + 2 on_new_interval); Codex M-7 bounds-check + M-8 drop counter wired; test_block_queue_spsc 5/5 PASSED under both Release + TSan with zero ThreadSanitizer reports; build 251 VST3 + Standalone + TSan-Standalone all green. User-recommended UAT (NOT required by plan): transmit DAW audio for 30s, confirm peers hear it, read GetBlockQueueDropCount() == 0. Advancing to 15.1-07a (m_users_cs mirror, CR-01).
 Resume file (v1.2): .planning/phases/15.1-rt-safety-hardening/15.1-07b-SUMMARY.md

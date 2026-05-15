@@ -3090,6 +3090,177 @@ void NJClient::ChunkRawDataItem(const jamwide::RawDataItem& item,
     ptr += chunk;
   }
 }
+
+// ---------------------------------------------------------------------------
+// 14.3-03: receive-path dispatch test helpers.
+//
+// These execute the same case body as the corresponding messages in
+// NJClient::Run, taking the parsed fields as direct arguments (vs reading
+// from m_netcon). They allow in-process unit testing of the BEGIN-handler
+// dispatch and WRITE-handler tracker loop without a real socket or
+// Net_Connection mock.
+//
+// The dispatchers replicate ONLY the dispatch-relevant subset of the
+// NJClient::Run case body:
+//   - m_users_cs lock acquisition
+//   - m_remoteusers lookup by username
+//   - dib.chidx bounds check
+//   - the two new RawData dispatch branches (14.3-03)
+//   - the existing else-if(dib.fourcc) branch for OGGv/FLAC (REMAINS in
+//     place; tests verify this routing is unchanged — SC-7 indirect)
+// The full mirror-publish path (PeerNextDsUpdate / start_decode /
+// inversionAttachSessionmodeReader / m_remoteuser_update_q.try_push) is
+// NOT replicated — tests verify dispatch correctness, not the full
+// audio-thread mirror publish flow.
+// ---------------------------------------------------------------------------
+
+void NJClient::AddTestRemoteUser(const char* name, int ch, int chflags)
+{
+  WDL_MutexLock lock(&m_users_cs);
+  RemoteUser *u = new RemoteUser;
+  u->name.Set(name ? name : "");
+  if (ch >= 0 && ch < MAX_USER_CHANNELS)
+  {
+    u->channels[ch].flags = chflags;
+    u->chanpresentmask |= (1u << ch);
+    u->submask         |= (1u << ch);
+  }
+  m_remoteusers.Add(u);
+}
+
+void NJClient::ClearTestRemoteUsers()
+{
+  WDL_MutexLock lock(&m_users_cs);
+  m_remoteusers.Empty(true);
+}
+
+void NJClient::DispatchTestServerDownloadIntervalBegin(
+    const unsigned char guid[16], unsigned int fourcc, int chidx,
+    const char* username, int /*estsize*/)
+{
+  // Mirror the case body at MESSAGE_SERVER_DOWNLOAD_INTERVAL_BEGIN — only
+  // the dispatch-relevant subset (see comment block above). The silence-
+  // marker branch is skipped here: tests pass non-zero guids.
+  WDL_MutexLock lock(&m_users_cs);
+  int x;
+  RemoteUser *theuser = nullptr;
+  for (x = 0; x < m_remoteusers.GetSize(); x++)
+  {
+    RemoteUser *u = m_remoteusers.Get(x);
+    if (!u) continue;
+    if (username && !strcmp(u->name.Get(), username))
+    {
+      theuser = u;
+      break;
+    }
+  }
+  if (!theuser) return;
+  if (chidx < 0 || chidx >= MAX_USER_CHANNELS) return;
+
+  // 14.3-03 branch 1: callback registered, non-OGGv, non-FLAC fourcc.
+  if (fourcc &&
+      fourcc != NJ_ENCODER_FMT_TYPE &&
+      fourcc != NJ_ENCODER_FMT_FLAC &&
+      RawData_Callback)
+  {
+    RawDataDownloadTracker *tracker = new RawDataDownloadTracker;
+    memcpy(tracker->guid, guid, sizeof(tracker->guid));
+    tracker->fourcc = fourcc;
+    lstrcpyn_safe(tracker->username, username ? username : "",
+                  sizeof(tracker->username));
+    tracker->chidx = chidx;
+    m_rawdata_downloads.Add(tracker);
+    RawData_Callback(RawData_User, 0 /*begin*/,
+                     guid, fourcc, username, chidx, NULL, 0);
+    return;
+  }
+
+  // 14.3-03 branch 2: non-OGGv, non-FLAC, no callback registered.
+  if (fourcc &&
+      fourcc != NJ_ENCODER_FMT_TYPE &&
+      fourcc != NJ_ENCODER_FMT_FLAC)
+  {
+    writeLog("unknown fourCC %08x from %s chidx=%d — discarded\n",
+             fourcc, username ? username : "", chidx);
+    return;
+  }
+
+  // Existing OGGv/FLAC branch — unchanged at line ~2255 in NJClient::Run.
+  // For OGGv (NJ_ENCODER_FMT_TYPE) or FLAC (NJ_ENCODER_FMT_FLAC), build a
+  // RemoteDownload and push to m_downloads, matching the production path.
+  // Tests assert m_downloads.GetSize() == 1 on this path (SC-7 indirect).
+  if (fourcc)
+  {
+    RemoteDownload *ds = new RemoteDownload;
+    memcpy(ds->guid, guid, sizeof(ds->guid));
+    ds->Open(this, fourcc, !!(theuser->channels[chidx].flags & 4));
+    ds->playtime = (theuser->channels[chidx].flags & 2)
+        ? LIVE_PREBUFFER
+        : config_play_prebuffer.load(std::memory_order_relaxed);
+    ds->chidx = chidx;
+    ds->username.Set(username ? username : "");
+    m_downloads.Add(ds);
+  }
+}
+
+void NJClient::DispatchTestServerDownloadIntervalWrite(
+    const unsigned char guid[16], const void* audio_data,
+    int audio_data_len, int flags)
+{
+  // Mirror the case body at MESSAGE_SERVER_DOWNLOAD_INTERVAL_WRITE — the
+  // new m_rawdata_downloads loop runs FIRST; on GUID match, fire eventType=1
+  // (data) and optionally eventType=2 (end) + delete the tracker. The
+  // existing m_downloads loop is skipped on match (matched-flag pattern).
+  // The DOWNLOAD_TIMEOUT sweep is omitted — tests don't exercise it.
+  bool matched = false;
+  for (int rdx = 0; rdx < m_rawdata_downloads.GetSize(); rdx++)
+  {
+    RawDataDownloadTracker *t = m_rawdata_downloads.Get(rdx);
+    if (!t) continue;
+    if (!memcmp(t->guid, guid, sizeof(t->guid)))
+    {
+      if (RawData_Callback && audio_data_len > 0 && audio_data)
+      {
+        RawData_Callback(RawData_User, 1 /*data*/,
+                         t->guid, t->fourcc, t->username, t->chidx,
+                         audio_data, audio_data_len);
+      }
+      if (flags & 1)
+      {
+        if (RawData_Callback)
+          RawData_Callback(RawData_User, 2 /*end*/,
+                           t->guid, t->fourcc, t->username, t->chidx,
+                           NULL, 0);
+        delete t;
+        m_rawdata_downloads.Delete(rdx);
+      }
+      matched = true;
+      break;
+    }
+  }
+  if (matched) return;
+
+  // Fall through to the m_downloads side (the existing audio download path).
+  time_t now;
+  time(&now);
+  for (int xi = 0; xi < m_downloads.GetSize(); xi++)
+  {
+    RemoteDownload *ds = m_downloads.Get(xi);
+    if (!ds) continue;
+    if (!memcmp(ds->guid, guid, sizeof(ds->guid)))
+    {
+      ds->last_time = now;
+      if (audio_data_len > 0 && audio_data)
+        ds->Write(audio_data, audio_data_len);
+      if (flags & 1)
+      {
+        delete ds;
+        m_downloads.Delete(xi);
+      }
+      break;
+    }
+  }
+}
 #endif // JAMWIDE_BUILD_TESTS
 
 void NJClient::SetEncoderFormat(unsigned int fourcc)

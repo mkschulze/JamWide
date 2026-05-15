@@ -212,6 +212,40 @@ static inline void pushWaveBlockRecord(
 #define MAKE_NJ_FOURCC(A,B,C,D) ((A) | ((B)<<8) | ((C)<<16) | ((D)<<24))
 
 // ---------------------------------------------------------------------------
+// 14.3-02: file-static is_video_fourcc helper.
+//
+// Verbatim semantics from ninjamzap-server/ninjam/server/usercon.cpp:104-116,
+// with one deliberate divergence: the VP8 case requires the trailing byte to
+// equal ASCII space (' '). NinjamZap server is lenient (any 4th byte after
+// 'V','P','8' counts), but PATTERNS Locked Decision #1 tightens this to
+// match the JTBv wire-format spec exactly. Documented 1-char divergence.
+//
+// Byte-order convention matches MAKE_NJ_FOURCC at line 212: the macro packs
+// A,B,C,D into a uint32_t as A | (B<<8) | (C<<16) | (D<<24), so byte-0 (LSB)
+// is A. Decoding is the inverse: c[0] = fcc & 0xff. Landmine L1 calls this
+// out — never use hex literals; always use MAKE_NJ_FOURCC. The is_video_fourcc
+// decoder MUST use the same convention or it inverts the test (returns true
+// for '4','6','2','H' instead of 'H','2','6','4').
+//
+// File-static (not exposed publicly) — only the run-thread drain and the
+// 14.3-03 receive-dispatch INSERT branch consume this. A test-only public
+// wrapper NJClient::IsVideoFourcc (njclient.h, JAMWIDE_BUILD_TESTS-gated)
+// delegates here for unit-test coverage.
+// ---------------------------------------------------------------------------
+static inline bool is_video_fourcc(unsigned int fcc) {
+  const unsigned char c0 =  fcc        & 0xff;
+  const unsigned char c1 = (fcc >>  8) & 0xff;
+  const unsigned char c2 = (fcc >> 16) & 0xff;
+  const unsigned char c3 = (fcc >> 24) & 0xff;
+  if (c0 == 'H' && c1 == '2' && c2 == '6' && c3 == '4') return true;
+  // VP8 with trailing-space byte3 — tightened from NinjamZap server's lenient
+  // 3-byte prefix check. JTBv wire-format spec calls for 'V','P','8',' '.
+  if (c0 == 'V' && c1 == 'P' && c2 == '8' && c3 == ' ') return true;
+  if (c0 == 'M' && c1 == 'J' && c2 == 'P' && c3 == 'G') return true;
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // v1.1-beta.20.5: Forward-decl + pool for DecodeMediaBuffer.
 //   The pool eliminates per-interval `new DecodeMediaBuffer` allocation
 //   churn (root cause of the multi-peer CPU-spike regression — see
@@ -971,6 +1005,13 @@ NJClient::NJClient()
   LicenseAgreementCallback=0;
   ChatMessage_Callback=0;
   ChatMessage_User=0;
+  // 14.3-02: codec-agnostic transport scaffolding default-zero — mirrors the
+  // ChatMessage_Callback init pattern above. Production callers (14.3-03's
+  // receive-dispatch INSERT branch and any v1.3 frame consumer) check for
+  // non-null before invoking, matching the established ChatMessage_Callback
+  // convention.
+  RawData_Callback=0;
+  RawData_User=0;
   ChannelMixer=0;
   ChannelMixer_User=0;
 
@@ -1167,6 +1208,21 @@ NJClient::~NJClient()
   }
   for (x = 0; x < m_downloads.GetSize(); x ++) delete m_downloads.Get(x);
   m_downloads.Empty();
+
+  // 14.3-02: tear down the RawData receive registry (14.3-03 will populate
+  // this from the INSERT branch at njclient.cpp:2148; 14.3-02 just declares
+  // and reaps). Empty(true) deletes every tracked entry.
+  m_rawdata_downloads.Empty(true);
+
+  // 14.3-02: drain any residual queued RawData send items so heap-buf
+  // payloads are freed on shutdown. Matches the Pattern C discard branch
+  // in NJClient::Run's drain block but runs without bumping the overflow
+  // counter (destructor-time tear-down is not an overflow event — by the
+  // time we reach the dtor, the producers have stopped).
+  m_rawdata_sendq.drain([](jamwide::RawDataItem&& item) {
+    delete item.payload;
+  });
+
   for (x = 0; x < m_locchannels.GetSize(); x ++) delete m_locchannels.Get(x);
   m_locchannels.Empty();
 
@@ -2632,6 +2688,92 @@ int NJClient::Run() // nonzero if sleep ok
   } // closes `if (m_netcon)` — 15.1-07b post-UAT encoder-loop crash guard
 #endif
 
+  // -------------------------------------------------------------------------
+  // 14.3-02: drain the RawData send queue.
+  //
+  // Single-thread invariant locked: this drain block lives lexically inside
+  // NJClient::Run, the same thread context that calls m_netcon->Send for the
+  // audio-encoder loop at lines 2502 / 2549. The producer side (any thread
+  // calling RawDataSendBegin/Write) enqueues to the SPSC and returns. Direct
+  // m_netcon->Send from a non-run-thread producer is forbidden — Landmine L2
+  // (Net_Connection::Send is NOT thread-safe).
+  //
+  // Pattern C discard guard: if m_netcon has been torn down (Disconnect /
+  // pre-Connect), drain-and-discard every queued item, deleting its
+  // WDL_HeapBuf payload (if any) and bumping the overflow counter per
+  // discarded item. Mirrors drainBroadcastBlocks at njclient.cpp:3806-3815.
+  // Without this guard the producer would fill the ring forever and payload
+  // heap-bufs would leak.
+  //
+  // Send branch: pop each item; type==0 builds mpb_client_upload_interval_begin
+  // and Sends; type==1 splits the owned payload at MAX_ENC_BLOCKSIZE,
+  // emitting one mpb_client_upload_interval_write per chunk, with flags=1
+  // only on the FINAL chunk if item.flags&1. Empty-payload writes (item.payload
+  // null or zero-size) emit a single empty write with flags=item.flags.
+  // Drain deletes item.payload after the Send to prevent leak.
+  // Verbatim port: ninjamzap-core/njclient.cpp:1984-2039.
+  // -------------------------------------------------------------------------
+  if (!m_netcon)
+  {
+    m_rawdata_sendq.drain([this](jamwide::RawDataItem&& item) {
+      delete item.payload;
+      m_rawdata_sendq_overflows.fetch_add(1, std::memory_order_relaxed);
+    });
+  }
+  else
+  {
+    m_rawdata_sendq.drain([this](jamwide::RawDataItem&& item) {
+      if (item.type == 0)
+      {
+        // BEGIN: build mpb_client_upload_interval_begin from the queued
+        // guid/fourcc/chidx/estsize and Send.
+        mpb_client_upload_interval_begin cuib;
+        memcpy(cuib.guid, item.guid, sizeof(cuib.guid));
+        cuib.fourcc = item.fourcc;
+        cuib.chidx = item.chidx;
+        cuib.estsize = item.estsize;
+        m_netcon->Send(cuib.build());
+        // BEGIN items don't carry payload; nothing to free.
+      }
+      else // type == 1: WRITE (data / end)
+      {
+        if (!item.payload || item.payload->GetSize() == 0)
+        {
+          // Empty-payload + isEnd writes a single empty WRITE with the
+          // item's flags (matches ninjamzap-core/njclient.cpp:2007-2015).
+          mpb_client_upload_interval_write wh;
+          memcpy(wh.guid, item.guid, sizeof(wh.guid));
+          wh.audio_data = nullptr;
+          wh.audio_data_len = 0;
+          wh.flags = (char)item.flags;
+          m_netcon->Send(wh.build());
+        }
+        else
+        {
+          // Chunked WRITE: split payload at MAX_ENC_BLOCKSIZE, emit one
+          // mpb_client_upload_interval_write per chunk. flags=1 only on
+          // the FINAL chunk when item.flags & 1.
+          int remaining = item.payload->GetSize();
+          const unsigned char *ptr = (const unsigned char *)item.payload->Get();
+          while (remaining > 0)
+          {
+            int chunk = remaining > MAX_ENC_BLOCKSIZE ? MAX_ENC_BLOCKSIZE
+                                                      : remaining;
+            mpb_client_upload_interval_write wh;
+            memcpy(wh.guid, item.guid, sizeof(wh.guid));
+            wh.audio_data = ptr;
+            wh.audio_data_len = chunk;
+            remaining -= chunk;
+            ptr += chunk;
+            wh.flags = (char)((remaining <= 0 && (item.flags & 1)) ? 1 : 0);
+            m_netcon->Send(wh.build());
+          }
+        }
+        delete item.payload;
+      }
+    });
+  }
+
   // Update cached status for lock-free audio thread access
   cached_status.store(GetStatus(), std::memory_order_release);
 
@@ -2718,6 +2860,136 @@ void NJClient::ChatMessage_Send(const char *parm1, const char *parm2, const char
     m_netcon->Send(m.build());
   }
 }
+
+// ---------------------------------------------------------------------------
+// 14.3-02: RawDataSendBegin / RawDataSendWrite — codec-agnostic transport
+// scaffolding for the v1.3 Native Video Foundation milestone.
+//
+// Anti-pattern reminder: ChatMessage_Send above calls m_netcon->Send DIRECTLY
+// because it is invoked from the run thread (lines 2432, 2599). RawDataSend
+// is invoked from ANY thread (UI today; future audio thread for the v1.3
+// QueueVideoFrame path), so direct-Send is wrong — Phase 15.1 Q3 finding +
+// src/core/netmsg.cpp:289 confirm Net_Connection::Send is NOT thread-safe.
+// Both methods below ENQUEUE to the SPSC and return; the run-thread drain
+// inside NJClient::Run consumes and forwards to m_netcon->Send.
+//
+// Verbatim port source: ninjamzap-core/njclient.cpp:2047-2082. JamWide
+// adaptation replaces unbounded WDL_PtrList<RawDataQueueItem>+WDL_Mutex with
+// SpscRing<RawDataItem, 64> + atomic overflow counter (Phase 15.1 invariant).
+// ---------------------------------------------------------------------------
+void NJClient::RawDataSendBegin(unsigned char outGuid[16], unsigned int fourcc,
+                                int chidx, int estsize)
+{
+  // GUID is generated on the producer thread (matches NinjamZap upstream).
+  // WDL_RNG_bytes is internally locked, callable from any thread.
+  WDL_RNG_bytes(outGuid, 16);
+
+  jamwide::RawDataItem item;
+  item.type = 0;            // begin
+  memcpy(item.guid, outGuid, sizeof(item.guid));
+  item.fourcc = fourcc;
+  item.chidx = chidx;
+  item.estsize = estsize;
+  item.flags = 0;
+  item.payload = nullptr;   // begin has no payload
+
+  if (!m_rawdata_sendq.try_push(item))
+  {
+    // Queue full — drop the begin. Bump observability counter; no payload
+    // to delete here (begin items don't carry one).
+    m_rawdata_sendq_overflows.fetch_add(1, std::memory_order_relaxed);
+    writeLog("RawDataSendBegin: SPSC full (capacity %zu) — dropped begin "
+             "fourcc=%08x chidx=%d\n",
+             jamwide::RAWDATA_SEND_QUEUE_CAPACITY, fourcc, chidx);
+  }
+}
+
+void NJClient::RawDataSendWrite(const unsigned char guid[16], const void *data,
+                                int dataLen, bool isEnd)
+{
+  jamwide::RawDataItem item;
+  item.type = 1;            // data / end
+  memcpy(item.guid, guid, sizeof(item.guid));
+  item.fourcc = 0;          // unused for type==1; preserved for symmetry
+  item.chidx = 0;
+  item.estsize = 0;
+  item.flags = isEnd ? 1 : 0;
+  item.payload = nullptr;
+
+  if (data && dataLen > 0)
+  {
+    // Producer allocates; SPSC carries ownership; drain (or destructor
+    // tear-down, or discard branch) deletes. Trivially copyable invariant
+    // is preserved because item.payload is a raw pointer.
+    WDL_HeapBuf* buf = new WDL_HeapBuf;
+    buf->Resize(dataLen);
+    memcpy(buf->Get(), data, (size_t)dataLen);
+    item.payload = buf;
+  }
+
+  if (!m_rawdata_sendq.try_push(item))
+  {
+    // Queue full — drop the write; free the just-allocated payload to
+    // prevent leak; bump observability counter.
+    delete item.payload;
+    m_rawdata_sendq_overflows.fetch_add(1, std::memory_order_relaxed);
+    writeLog("RawDataSendWrite: SPSC full (capacity %zu) — dropped %d-byte "
+             "write%s\n",
+             jamwide::RAWDATA_SEND_QUEUE_CAPACITY, dataLen,
+             isEnd ? " (isEnd)" : "");
+  }
+}
+
+#ifdef JAMWIDE_BUILD_TESTS
+// JAMWIDE_BUILD_TESTS-gated test wrappers — see njclient.h for the public
+// declarations. is_video_fourcc is file-static; IsVideoFourcc delegates to it
+// so tests can exercise the helper without exposing a production-time public
+// API. DrainRawDataSendQueueForTest is a destructive drain that hands
+// ownership of every queued WDL_HeapBuf payload back to the caller (which
+// must delete or otherwise dispose of them). ChunkRawDataItem provides
+// observable access to the MAX_ENC_BLOCKSIZE split logic used by the
+// run-thread drain block; the drain itself calls this same helper.
+bool NJClient::IsVideoFourcc(unsigned int fcc) const
+{
+  return is_video_fourcc(fcc);
+}
+
+void NJClient::DrainRawDataSendQueueForTest(std::vector<jamwide::RawDataItem>& out)
+{
+  m_rawdata_sendq.drain([&out](jamwide::RawDataItem&& item) {
+    out.push_back(item);
+  });
+}
+
+void NJClient::ChunkRawDataItem(const jamwide::RawDataItem& item,
+                                void (*emit)(void* ctx, const unsigned char guid[16],
+                                             const void* data, int dataLen, int flags),
+                                void* ctx)
+{
+  // Matches the run-thread drain semantics in NJClient::Run below: a type==1
+  // item with payload P is split into ceil(P/MAX_ENC_BLOCKSIZE) chunks; only
+  // the final chunk sets flags=1 if item.flags&1; empty-payload + isEnd
+  // emits a single empty write with flags=item.flags.
+  if (item.type != 1) return;
+
+  if (!item.payload || item.payload->GetSize() == 0)
+  {
+    emit(ctx, item.guid, nullptr, 0, item.flags);
+    return;
+  }
+
+  int remaining = item.payload->GetSize();
+  const unsigned char *ptr = (const unsigned char *)item.payload->Get();
+  while (remaining > 0)
+  {
+    int chunk = remaining > MAX_ENC_BLOCKSIZE ? MAX_ENC_BLOCKSIZE : remaining;
+    remaining -= chunk;
+    int final_flags = (remaining <= 0 && (item.flags & 1)) ? 1 : 0;
+    emit(ctx, item.guid, ptr, chunk, final_flags);
+    ptr += chunk;
+  }
+}
+#endif // JAMWIDE_BUILD_TESTS
 
 void NJClient::SetEncoderFormat(unsigned int fourcc)
 {

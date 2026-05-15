@@ -601,6 +601,65 @@ public:
   void (*ChatMessage_Callback)(void *userData, NJClient *inst, const char **parms, int nparms);
   void *ChatMessage_User;
 
+  // -------------------------------------------------------------------------
+  // Phase 14.3-02: codec-agnostic transport scaffolding (RawData send-side).
+  //
+  // Send side (this plan, 14.3-02):
+  //   Public RawDataSendBegin / RawDataSendWrite — callable from ANY thread;
+  //   internally serialized via the SpscRing<RawDataItem, 64> m_rawdata_sendq
+  //   plus a run-thread drain inside NJClient::Run lexically adjacent to the
+  //   existing audio-encoder Send loop (Landmine L2: Net_Connection::Send is
+  //   NOT thread-safe, see src/core/netmsg.cpp:289 — direct Send from a
+  //   non-run-thread producer would corrupt m_sendq under encoder-loop races).
+  //
+  // Receive side (forward reference to 14.3-03):
+  //   When the wire-format DOWNLOAD_INTERVAL_BEGIN handler at
+  //   src/core/njclient.cpp:2148 receives a fourcc that is neither
+  //   NJ_ENCODER_FMT_TYPE nor NJ_ENCODER_FMT_FLAC AND RawData_Callback is
+  //   registered, 14.3-03 dispatches eventType=0 (begin)/=1 (data)/=2 (end)
+  //   to the callback below instead of routing into the Vorbis decoder.
+  //
+  // API-consistency tax: symbol names are verbatim from
+  // ninjamzap-core/njclient.h:205-216 (StudlyCaps verb-after-noun, matching
+  // ChatMessage_Send / SetEncoderFormat) so grep-discoverability against the
+  // upstream reference holds.
+  // -------------------------------------------------------------------------
+
+  // eventType: 0 = begin, 1 = data, 2 = end (mirrors ninjamzap upstream)
+  typedef void (*RawDataCallback)(void *userData, int eventType,
+                                  const unsigned char *guid, unsigned int fourcc,
+                                  const char *username, int chidx,
+                                  const void *data, int dataLen);
+  RawDataCallback RawData_Callback;
+  void *RawData_User;
+
+  // Both methods are callable from any thread. They allocate a small
+  // RawDataItem (and for Write, a WDL_HeapBuf payload when dataLen > 0) and
+  // try_push onto m_rawdata_sendq. On try_push failure (queue full), the
+  // payload heap-buf is deleted and m_rawdata_sendq_overflows is bumped.
+  // GetRawDataSendQueueOverflowCount() exposes the counter for 14.3 phase
+  // verification (post-UAT invariant: == 0).
+  void RawDataSendBegin(unsigned char outGuid[16], unsigned int fourcc,
+                        int chidx, int estsize);
+  void RawDataSendWrite(const unsigned char guid[16], const void *data,
+                        int dataLen, bool isEnd);
+
+#ifdef JAMWIDE_BUILD_TESTS
+  // Test-only public wrappers for the file-static is_video_fourcc helper +
+  // observable drain/chunking. JAMWIDE_BUILD_TESTS is defined on the njclient
+  // target at CMakeLists.txt:137 when tests are built; production builds do
+  // not see these. See tests/test_rawdata_send.cpp for the consumers.
+  bool IsVideoFourcc(unsigned int fcc) const;
+  void DrainRawDataSendQueueForTest(std::vector<jamwide::RawDataItem>& out);
+  // Chunking helper used by the run-thread drain block; exposed for test
+  // observability so test_payload_chunking_at_max_enc_blocksize can verify
+  // the chunk split without needing a real Net_Connection mock.
+  static void ChunkRawDataItem(const jamwide::RawDataItem& item,
+                               void (*emit)(void* ctx, const unsigned char guid[16],
+                                            const void* data, int dataLen, int flags),
+                               void* ctx);
+#endif
+
   // -- Phase 14.2: Instamode latency measurement (VID-13) --
   // State machine: IDLE -> INSTA_CAPTURED -> MEASURED -> CONSUMED
   // All state lives HERE in NJClient (single owner).
@@ -656,6 +715,17 @@ public:
   // Relaxed semantics — observability counter, no synchronization-with-other-state.
   uint64_t GetBlockQueueDropCount() const noexcept {
       return m_block_queue_drops.load(std::memory_order_relaxed);
+  }
+
+  // 14.3-02 + Codex M-8: RawData send-queue overflow counter accessor.
+  // Producer side = any thread (RawDataSendBegin/Write callers) bumps on
+  // m_rawdata_sendq.try_push failure when the run-thread drain has not yet
+  // consumed. Discard branch (null m_netcon drain at NJClient::Run entry)
+  // also bumps per discarded item (Pattern C). 14.3 phase verification
+  // asserts this == 0 post-UAT. Non-zero == architectural defect (queue
+  // undersized for the workload). Relaxed semantics — observability only.
+  uint64_t GetRawDataSendQueueOverflowCount() const noexcept {
+      return m_rawdata_sendq_overflows.load(std::memory_order_relaxed);
   }
 
 
@@ -744,6 +814,22 @@ protected:
   Net_Connection *m_netcon;
   WDL_PtrList<RemoteUser> m_remoteusers;
   WDL_PtrList<RemoteDownload> m_downloads;
+
+  // 14.3-02 + 14.3-03 prep: per-stream RawData receive tracker. POD struct
+  // verbatim from ninjamzap-core/njclient.h:323-330. Architectural invariant
+  // (14.3-03 will enforce): m_rawdata_downloads is touched ONLY inside
+  // NJClient::Run's MESSAGE_SERVER_DOWNLOAD_INTERVAL_{BEGIN,WRITE} branches.
+  // No audio-thread access — no mirror needed. Run-thread-only structure
+  // mirroring the m_downloads pattern above. This plan (14.3-02) declares
+  // the type and the empty list; 14.3-03 lands the population + dispatch
+  // logic at njclient.cpp:2148 and the WRITE-handler.
+  struct RawDataDownloadTracker {
+      unsigned char guid[16];
+      unsigned int  fourcc;
+      char          username[256];
+      int           chidx;
+  };
+  WDL_PtrList<RawDataDownloadTracker> m_rawdata_downloads;
 
   WDL_HeapBuf tmpblock;
 
@@ -840,6 +926,30 @@ protected:
   // thread side bumps on try_push failure. 15.1-10 phase verification asserts
   // == 0 post-UAT. Relaxed semantics — observability only.
   std::atomic<uint64_t> m_remoteuser_update_overflows{0};
+
+  // 14.3-02: RawData send queue. Producer = ANY thread (RawDataSendBegin/Write
+  // callers — UI thread today; future audio thread for the v1.3 QueueVideoFrame
+  // path). Consumer = run thread inside NJClient::Run's drain block, lexically
+  // adjacent to the existing audio-encoder Send loop at njclient.cpp:2502 /
+  // 2549. Direct m_netcon->Send from a non-run-thread producer is forbidden:
+  // Landmine L2 (Net_Connection::Send is NOT thread-safe — see
+  // src/core/netmsg.cpp:289). Capacity rationale: video keyframe upload
+  // runs at the NINJAM interval cadence (~2-4 RawData items/sec/peer);
+  // 64 provides ~16x worst-case headroom. Post-UAT invariant
+  // (GetRawDataSendQueueOverflowCount() == 0) is asserted by 14.3 phase
+  // verification.
+  jamwide::SpscRing<jamwide::RawDataItem,
+                    jamwide::RAWDATA_SEND_QUEUE_CAPACITY>
+      m_rawdata_sendq;
+
+  // 14.3-02 + Codex M-8: overflow counter for m_rawdata_sendq. Producer side
+  // (RawDataSendBegin/Write, any thread) bumps on try_push failure; the
+  // discard branch in NJClient::Run's drain (null m_netcon — Pattern C
+  // mirroring drainBroadcastBlocks at njclient.cpp:3806-3815) ALSO bumps
+  // per discarded item to keep the post-Disconnect tear-down observable.
+  // Relaxed semantics — observability only. 14.3 phase verification asserts
+  // this == 0 post-UAT.
+  std::atomic<uint64_t> m_rawdata_sendq_overflows{0};
 
   // Diagnostic counters for the 2026-05-02 RemoteUserMirror orphan-fields fix.
   // Bumped at PeerChannelInfoUpdate publish (run thread) and apply (audio

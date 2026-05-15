@@ -438,6 +438,23 @@ if(JAMWIDE_BUILD_TESTS)
     target_link_libraries(test_rawdata_send PRIVATE njclient)
     add_test(NAME rawdata_send_roundtrip COMMAND test_rawdata_send)
 
+    # Phase 14.3-03: RawData receive-path dispatch unit tests. Pure-C++ in-process
+    # test linking against njclient static library; mirrors the test_rawdata_send
+    # wiring above. JAMWIDE_BUILD_TESTS=1 on the test target exposes the
+    # NJClient::DispatchTestServerDownloadIntervalBegin /
+    # DispatchTestServerDownloadIntervalWrite / AddTestRemoteUser /
+    # GetRawDataDownloadCount / GetMDownloadsCount helpers declared under the
+    # same gate in njclient.h. NOT under JAMWIDE_VIDEO_SPIKE (Landmine L8 —
+    # pure-C++ in-process test, no ffmpeg/JUCE-video dependency).
+    add_executable(test_video_fourcc tests/test_video_fourcc.cpp)
+    target_include_directories(test_video_fourcc PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_compile_definitions(test_video_fourcc PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_link_libraries(test_video_fourcc PRIVATE njclient)
+    add_test(NAME video_fourcc COMMAND test_video_fourcc)
+
     add_executable(test_video_sync tests/test_video_sync.cpp)
     target_include_directories(test_video_sync PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_test(NAME video_sync COMMAND test_video_sync)

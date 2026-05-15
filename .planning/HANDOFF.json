@@ -1,55 +1,93 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-03T13:38:49Z",
-  "phase": "15.1",
-  "phase_name": "rt-safety-hardening",
-  "phase_dir": ".planning/phases/15.1-rt-safety-hardening",
-  "plan": 10,
-  "task": 4,
-  "total_tasks": 5,
-  "status": "paused",
+  "timestamp": "2026-05-15T12:46:31.550Z",
+  "phase": "14.3",
+  "phase_name": "Native Video Foundation",
+  "phase_dir": ".planning/phases/14.3-native-video-foundation",
+  "plan": null,
+  "task": null,
+  "total_tasks": 10,
+  "status": "planned_ready_to_execute",
   "completed_tasks": [
-    {"id": "15.1-02", "name": "atomic-promotion (m_misc_cs fields)", "status": "done", "commit": "3895fd6"},
-    {"id": "15.1-03", "name": "eliminate-audio-path-logging", "status": "done", "commit": "17e8400"},
-    {"id": "15.1-04", "name": "spsc-infrastructure (Wave-0 final payloads)", "status": "done", "commit": "3a19eb3"},
-    {"id": "15.1-05", "name": "deferred-delete (DecodeState* SPSC)", "status": "done", "commit": "738ef99"},
-    {"id": "15.1-06", "name": "locchan-cs-snapshot (LocalChannelMirror)", "status": "done", "commit": "36c9cf0"},
-    {"id": "15.1-07b", "name": "buffer-queue (BlockRecord SPSC)", "status": "done", "commit": "7296a73"},
-    {"id": "15.1-07a", "name": "remote-user-mirror (RemoteUserMirror, CR-01) + 3 post-UAT stabilization fixes", "status": "done", "commit": "e151dd8 (final stabilization fix)"},
-    {"id": "15.1-07c", "name": "decode-media-buffer (DecodeMediaBuffer SPSC, CR-12)", "status": "done", "commit": "ba29cd0"},
-    {"id": "15.1-09", "name": "codec-call-site-integration (file-reader inversion, HIGH-1)", "status": "done", "commit": "e89f94f"},
-    {"id": "15.1-08", "name": "prealloc-hardening (M-01/M-02/M-03/CR-11-partial)", "status": "done", "commit": "f7d3f6c"},
-    {"id": "15.1-10", "name": "phase-verification — mechanical signals 1a/1b/2/4/5/6 GREEN; HUMAN signals 1c/3/6/7 awaiting bundled multi-user UAT", "status": "in_progress", "progress": "v1.1-beta.20 + .20.1 + .20.2 shipped to provide builds for multi-user UAT"},
-    {"id": "post-260502-rcm", "name": "PeerChannelInfoUpdate orphan-mirror-fields fix (quick task)", "status": "done", "commit": "ac04e17"},
-    {"id": "post-beta.20.1", "name": "v1.1-beta.20.1 cut (build 311) — bundles withdrawn-beta.21 changes + TX-button sync + diagnostic accessors", "status": "done", "commit": "1bff4d2"},
-    {"id": "post-beta.20.2", "name": "v1.1-beta.20.2 cut (build 313) — chat scroll preservation + Windows std::strftime/WDL macro fix", "status": "done", "commit": "93cd039"},
-    {"id": "post-release-notes", "name": "Release notes pushed for .20.1 and .20.2 + CHANGELOG.md 1.1 Beta Series opened", "status": "in_progress", "progress": "GitHub release bodies pushed; CHANGELOG.md modified, uncommitted at save time — picked up by this WIP commit"}
+    {"id": "research", "name": "Synthesize spike artifacts into phase-scoped RESEARCH.md", "status": "done", "commit": "9626eb0"},
+    {"id": "validation", "name": "Create VALIDATION.md (Nyquist Dim 8) — ctest names + Wave 0 gaps + per-task verification map", "status": "done", "commit": "9626eb0"},
+    {"id": "patterns", "name": "Pattern-map 14 modified/new files to existing JamWide analogs (14.3-PATTERNS.md, 670 lines, 14/14 analogs)", "status": "done", "commit": "1cccabb"},
+    {"id": "planning", "name": "Generate 3 PLAN.md files (14.3-01 vendoring + 14.3-02 send API + 14.3-03 receive dispatch)", "status": "done", "commit": "78a9bf6"},
+    {"id": "plan-check-fixes", "name": "Resolve 2 BLOCKER + 2 WARNING from gsd-plan-checker (wave/depends_on + ctest name + VALIDATION.md frontmatter)", "status": "done", "commit": "3e6da51"},
+    {"id": "state-update", "name": "Record planning completion in STATE.md (Status -> Ready to execute)", "status": "done", "commit": "2f253b6"},
+    {"id": "upstream-review", "name": "Quick task 260515-jys -- review upstream NinjamZap docs (VIDEO_SYNC.md + VIDEO_SUPPORT.md) against locked 14.3 planning; verdict NO_PLAN_ADJUSTMENT_NEEDED", "status": "done", "commit": "8166609"},
+    {"id": "state-backfill", "name": "Backfill commit hash in STATE.md Quick Tasks Completed table", "status": "done", "commit": "2f98aa4"},
+    {"id": "session-handoff", "name": "Write HANDOFF.json + .continue-here.md", "status": "in_progress", "commit": "b0afd6d (partial -- .continue-here.md only; HANDOFF.json this commit)"}
   ],
   "remaining_tasks": [
-    {"id": "15.1-10/Signal-1c", "name": "Manual standalone UAT under TSan, populated server, 30+ min — now also covers beta.20.1/.20.2 deltas", "status": "deferred to multi-user beta UAT"},
-    {"id": "15.1-10/Signal-3", "name": "Audible glitches + CPU history pattern check", "status": "deferred to multi-user beta UAT"},
-    {"id": "15.1-10/Signal-6", "name": "lldb attach + read 6 production drop-counter accessors at session-end (all must == 0)", "status": "not_started — quick mechanical follow-up"},
-    {"id": "15.1-10/Signal-7", "name": "Instruments Time Profiler 60s under broadcast load — BlockRecord memcpy CPU < 5%", "status": "not_started — Instruments measurement needed"}
+    {"id": "execute-14.3", "name": "Run /gsd-execute-phase 14.3 -- Wave 1 (14.3-01 vendoring, autonomous:false, checkpoint:human-verify for non-x86_64-mac vendoring) -> Wave 2 (14.3-02 send API, autonomous:true) -> Wave 3 (14.3-03 receive dispatch, autonomous:true)", "status": "not_started"},
+    {"id": "decide-15.1-uat-mode", "name": "Pre-existing pending decision (NOT this session's work): close Phase 15.1 on real-DAW evidence + mechanical signals, OR rebuild build 287 TSan Standalone to include the three 15.1-07a stabilization fixes (b8ca083 / 7e69e1a / 00dfee7) and run formal bundled UAT (TSan Standalone + lldb counter readout + Instruments perf budget)", "status": "blocked_on_user_decision"}
   ],
-  "blockers": [
-    {"description": "User-reported high cache writes (from 04-29 session) — investigation incomplete; no JamWide-specific writes found in ~/Library or /tmp; vscode-cpptools at 5.7GB stood out but not confirmed. User has not reported back.", "type": "external", "workaround": "Asked user for Activity Monitor → Disk view (process + bytes written) and target path. Suspect vscode-cpptools clangd indexing churning over the heavy commit cadence on njclient.cpp."}
-  ],
+  "blockers": [],
   "human_actions_pending": [
-    {"action": "Multi-user populated-server UAT on v1.1-beta.20.2 — bundled UAT for 07a/07c/09/08 + 07b broadcast regression check + .20.1/.20.2 deltas (chat scroll, peer rename propagation, VU/fader scale, underrun recovery)", "context": "Phase 15.1 cannot formally close without Signals 1c/3/6/7. v1.1-beta.20.x is the build for other beta testers to install and join sessions on.", "blocking": true},
-    {"action": "Localize cache-write source (Activity Monitor → Disk view, sort by Bytes Written, identify process + path)", "context": "User reported extremely high cache writes during 04-29 session; investigation found no JamWide-specific source. Pointer needed.", "blocking": false},
-    {"action": "Optional: lldb counter readout (Signal 6) and Instruments perf budget (Signal 7) on local build", "context": "Quick mechanical signals doable without multi-user; useful if multi-user UAT is delayed. Requires rebuild — installed VST3 is build 291, latest is 313.", "blocking": false}
+    {
+      "action": "Decide whether to execute 14.3 now or first close 15.1 UAT loop",
+      "context": "STATE.md still has 'Current focus: Phase 15.1' but 14.3 is freshly planned and additive (does not block 15.1). Two valid orderings: (a) execute 14.3 first (it's smaller and additive, ~3 plans / ~1500 LOC mostly additive, no behavioral change to anything 15.1 touched), or (b) close 15.1 UAT first to free milestone v1.2 from the open stabilization loop.",
+      "blocking": false
+    },
+    {
+      "action": "(If executing 14.3) Manually verify libs/ffmpeg/{macos-arm64,linux-x86_64,windows-x86_64}/ build outputs at the 14.3-01 human-verify checkpoint",
+      "context": "Plan 14.3-01 is autonomous:false because the non-x86_64-mac vendoring legs require manual sign-off (Linux + Windows builds + arm64-mac Cisco openh264 source build with MPEG-LA royalty deviation). The executor will pause at Task 4 (checkpoint:human-verify) per the plan's frontmatter.",
+      "blocking": false
+    }
   ],
   "decisions": [
-    {"decision": "Bundled UAT scope: 07a + 07c + 09 + 08 deferred to 15.1-10 phase-end UAT (not per-plan)", "rationale": "User direction at start of 07c work. Cost: 3 stabilization cycles when 07a regressions surfaced in single-user UAT. Acceptable given each cycle was diagnose→surgical-fix→rebuild→verify (no patch piles).", "phase": "15.1"},
-    {"decision": "PR #14 (steveseguin VDO sync) merged BEFORE pushing 15.1 work", "rationale": "PR was opened pre-15.1; clean rebase placed PR commits below 15.1 in history, preserving authorship and CI signal separation.", "phase": "15.1"},
-    {"decision": "Beta numbering continued v1.1-beta.20 (skipping 19 since v1.1-beta.19-no-video was a one-off variant) instead of starting v1.2-beta.1", "rationale": "Respects existing convention. v1.2.0 stable can come later when milestone formally closes.", "phase": "15.1"},
-    {"decision": "Architecture-mirror dead-but-live finding (njclient.cpp:1648 lobby renormalize) flagged in deferred-items.md as VERIFIED-UNREACHABLE rather than fixed", "rationale": ".continue-here.md option (b) — currently dead in modern JamWide; one-line surgical fix can land in v1.3 cleanup.", "phase": "15.1"},
-    {"decision": "VST3 rebuilt locally to build 291 (post-PR #14 merge) for parity with CI artifacts", "rationale": "User asked for parity so they can DAW-test exactly what other beta testers receive.", "phase": "15.1"},
-    {"decision": "v1.1-beta.21 withdrawn before public download; changes rolled into v1.1-beta.20.1 instead", "rationale": "The codec-underrun + ring-buffer changes were riskier than wanted for a late-night release cut. Re-bundled under the .20.x patch line for clearer scope. Commit history retains the bump-to-21 + revert pair; this is expected, not noise to clean up.", "phase": "15.1-post"},
-    {"decision": "v1.1-beta.20.2 hotfix scope kept to 2 commits (chat scroll preservation + Windows build unbreak)", "rationale": "Same-day hotfix on top of .20.1; the Windows fix unblocks CI for the other platforms while the chat-scroll fix was a quick UX win the user wanted in the next public build.", "phase": "15.1-post"},
-    {"decision": "Release notes for .20.1 and .20.2 pushed via gh release edit (.20.1 marked 'Superseded by .20.2'); CHANGELOG.md opened a 1.1 Beta Series section but did NOT back-fill betas 1-20", "rationale": "Two sources of truth (GitHub Releases + CHANGELOG.md) drift; back-filling 18 betas costs hours and would force re-derivation from commit history with low signal-to-noise. GitHub Releases stays authoritative for older betas; CHANGELOG.md tracks .20.1 forward.", "phase": "15.1-post"}
+    {
+      "decision": "Skip CONTEXT.md gate for 14.3 -- use SPEC.md as the locked contract",
+      "rationale": "14.3 has a SPEC.md (from /gsd-spec-phase, commit 86c4d04) plus rich spike substrate (RESEARCH/CONTEXT/RESEARCH-ADDENDUM/spike-results in .planning/quick/260515-0pc-investigate-jamtaba-video-implementation/). The SPEC.md is the equivalent of a locked CONTEXT.md for the phase, so re-running /gsd-discuss-phase would have been redundant work.",
+      "phase": "14.3"
+    },
+    {
+      "decision": "Researcher ran in synthesis mode rather than greenfield research",
+      "rationale": "The spike paid the architectural discovery cost. Re-running a greenfield researcher would have re-litigated locked decisions (JTBv->NinjamZap pivot, openh264-vs-x264, SPSC-vs-mutex) -- wasted budget. Synthesis prompt explicitly told researcher 'do NOT re-litigate locked decisions -- project them into a planner-shaped view + emit Validation Architecture section'.",
+      "phase": "14.3"
+    },
+    {
+      "decision": "Plan-checker found 2 BLOCKERS -- fixed via direct Edit, NOT via planner re-spawn",
+      "rationale": "Both blockers were mechanical metadata fixes (frontmatter depends_on + ctest name in VALIDATION.md). The checker's `fix:` directives were prescriptive 1-2 line changes. Spawning a full gsd-planner Agent (~$0.30) for what Edit produces in 30 seconds was procedural overkill. Re-check pass returned VERIFICATION PASSED.",
+      "phase": "14.3"
+    },
+    {
+      "decision": "Wave structure: 14.3-01 (wave 1) -> 14.3-02 (wave 2) -> 14.3-03 (wave 3) STRICTLY SEQUENTIAL",
+      "rationale": "Originally planner had 14.3-02 + 14.3-03 in parallel (wave 2). Plan-checker correctly flagged that 14.3-03's must_haves explicitly self-document a hard dependency on 14.3-02's deliverables. Promoted 14.3-03 to wave 3 with depends_on: ['14.3-01', '14.3-02'].",
+      "phase": "14.3"
+    },
+    {
+      "decision": "Upstream NinjamZap docs reviewed -- no plan adjustments made",
+      "rationale": "16/16 upstream claims either CONFIRM our locked decisions, are COMPATIBLE at an orthogonal layer, or are correctly DEFERRED to v1.3. See .planning/quick/260515-jys-review-ninjamzap-upstream-video-sync-md-/REVIEW.md for the full 16-claim cross-reference matrix.",
+      "phase": "14.3"
+    }
   ],
-  "uncommitted_files": ["CHANGELOG.md (about to be committed by this WIP commit)"],
-  "next_action": "Resume by reading the 'Update 2026-05-03' section at the top of .planning/phases/15.1-rt-safety-hardening/.continue-here.md, then triage: (a) check gh release v1.1-beta.20.2 download counts / issue traffic for early UAT signal; (b) if user has provided cache-write info, investigate; (c) if UAT feedback has arrived, triage; (d) if no UAT yet, offer Signal 6 (lldb counter readout, ~2 min) and Signal 7 (Instruments perf budget, ~5 min) on a fresh local build (current VST3 install is build 291, latest is 313 — rebuild needed first).",
-  "context_notes": "Phase 15.1 implementation is FUNCTIONALLY COMPLETE. The 04-29 handoff still holds for the phase work itself. This update layers the post-04-29 patch cycle on top: PeerChannelInfoUpdate orphan-mirror fix (quick task), v1.1-beta.21 cut and withdrawn, .20.1 cut bundling withdrawn-.21 changes + a TX-button sync + diagnostic accessors, .20.2 same-day hotfix for chat-scroll + Windows build, and finally release-notes catch-up across both patch betas + opening CHANGELOG.md's 1.1 Beta Series section. CHANGELOG.md is uncommitted at save time and will be picked up by the WIP commit. Bundled multi-user UAT remains the gating action."
+  "uncommitted_files": [],
+  "next_action": "Run /gsd-execute-phase 14.3 (after /clear to start fresh context). Wave 1 will pause at the 14.3-01 human-verify checkpoint (Task 4). Alternative: address the pre-existing 15.1 UAT pending decision first.",
+  "context_notes": "This session: (1) Phase 14.3 planning end-to-end via /gsd-plan-phase 14.3 (research -> patterns -> planner -> checker -> fix-blockers -> re-check -> finalize). (2) Quick task 260515-jys via /gsd-quick --full -- upstream NinjamZap doc review. Both completed cleanly. The pre-existing 15.1 stabilization is untouched (build 290 still at awaiting-UAT-decision state). The repo is on quick/260515-0pc-jamtaba-video-port branch which is intentional (per commit 098a536 -- aligned with v1.1 milestone scope).",
+  "branch": "quick/260515-0pc-jamtaba-video-port",
+  "head_commit": "b0afd6d",
+  "milestone": "v1.1 (with v1.2 stabilization parallel)",
+  "session_summary": {
+    "session_id": "2026-05-15 evening",
+    "primary_work": "/gsd-plan-phase 14.3 (end-to-end)",
+    "secondary_work": "/gsd-quick --full review-ninjamzap-upstream-docs",
+    "agents_spawned": [
+      {"agent": "gsd-phase-researcher", "model": "opus", "outcome": "RESEARCH COMPLETE -- 14.3-RESEARCH.md (223 lines)"},
+      {"agent": "gsd-pattern-mapper", "model": "opus", "outcome": "PATTERN MAPPING COMPLETE -- 14.3-PATTERNS.md (670 lines, 14/14 analogs)"},
+      {"agent": "gsd-planner", "model": "opus", "outcome": "PLANNING COMPLETE -- 3 plan files"},
+      {"agent": "gsd-plan-checker", "model": "sonnet", "outcome_pass1": "ISSUES FOUND -- 2 BLOCKER + 2 WARNING", "outcome_pass2": "VERIFICATION PASSED"}
+    ],
+    "commits_made": [
+      "9626eb0 -- RESEARCH + VALIDATION",
+      "1cccabb -- PATTERNS",
+      "78a9bf6 -- 3 PLAN.md files",
+      "3e6da51 -- plan-checker blocker fixes",
+      "2f253b6 -- STATE.md planning-complete",
+      "8166609 -- upstream review (quick task)",
+      "2f98aa4 -- STATE.md hash backfill",
+      "b0afd6d -- session handoff (.continue-here.md + HANDOFF.json)"
+    ]
+  }
 }

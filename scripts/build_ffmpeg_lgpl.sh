@@ -215,12 +215,34 @@ Cflags: -I\${includedir}
 PKG
 
 # ---- Step 2: ffmpeg source ------------------------------------------------
+# T-14.3-01 supply-chain mitigation: pin the SHA-256 of the canonical
+# ffmpeg.org-served ffmpeg-${FFMPEG_VERSION}.tar.xz. Verified locally on
+# 2026-05-15 against https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.xz
+# (10,985 KB / 11,030,368 bytes). When bumping FFMPEG_VERSION, recompute via:
+#   curl -fsSL "https://ffmpeg.org/releases/ffmpeg-${NEW}.tar.xz" | shasum -a 256
+# and update EXPECTED_FFMPEG_SHA256 in the same commit.
+# Override at run time: FFMPEG_TARBALL_SHA256=<hash> bash scripts/build_ffmpeg_lgpl.sh
+EXPECTED_FFMPEG_SHA256="${FFMPEG_TARBALL_SHA256:-089bc60fb59d6aecc5d994ff530fd0dcb3ee39aa55867849a2bbc4e555f9c304}"
+
 echo "==> [2/5] Fetching ffmpeg source v${FFMPEG_VERSION}"
 if [ ! -d "ffmpeg-${FFMPEG_VERSION}" ]; then
   if [ ! -f "ffmpeg-${FFMPEG_VERSION}.tar.xz" ]; then
     curl -fsSL -o "ffmpeg-${FFMPEG_VERSION}.tar.xz" \
       "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
   fi
+  # Supply-chain integrity gate. Hash mismatch => abort BEFORE extracting,
+  # so a tampered tarball never reaches the configure/build step.
+  ACTUAL_SHA256="$(shasum -a 256 "ffmpeg-${FFMPEG_VERSION}.tar.xz" | awk '{print $1}')"
+  if [ "$ACTUAL_SHA256" != "$EXPECTED_FFMPEG_SHA256" ]; then
+    echo "FATAL: ffmpeg tarball SHA-256 mismatch (T-14.3-01 supply-chain gate)" >&2
+    echo "  expected: $EXPECTED_FFMPEG_SHA256" >&2
+    echo "  actual:   $ACTUAL_SHA256" >&2
+    echo "  file:     $(pwd)/ffmpeg-${FFMPEG_VERSION}.tar.xz" >&2
+    echo "Refusing to extract. If the version was intentionally bumped, update" >&2
+    echo "EXPECTED_FFMPEG_SHA256 in scripts/build_ffmpeg_lgpl.sh in the same commit." >&2
+    exit 1
+  fi
+  echo "    sha256: $ACTUAL_SHA256 (verified)"
   tar -xJf "ffmpeg-${FFMPEG_VERSION}.tar.xz"
 fi
 cd "ffmpeg-${FFMPEG_VERSION}"

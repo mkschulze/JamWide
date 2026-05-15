@@ -314,6 +314,10 @@ Plans:
   4. User can revoke camera permission via macOS System Settings without crashing JamWide; preview disappears and the fallback UI appears
   5. User can launch JamWide standalone on Windows x86_64, see Windows' camera permission prompt (if applicable per Windows version), grant access, and see their own webcam preview in the UI within 3 seconds (SPARTA Issue #82 does not apply on Windows)
 **Plans**: 3 plans
+Plans:
+- [ ] 19-01-PLAN-capture-pipeline.md — JUCE_USE_CAMERA wiring (Risk E), camera entitlement + Info.plist (PKG-04 entitlements portion), CameraAuthorization TCC pre-check shim (D-03, closes Spike Risk #2), JamWideFrameDistributor (D-02, D-04), JamWideCameraDevice with 7-state machine + retry-backoff worker + watchdog (D-09/12/20), JamWideJuceProcessor ownership wiring, 3 Wave 0 tests (frame_distributor, camera_state_machine, camera_retry_backoff)
+- [ ] 19-02-PLAN-ui-and-persistence.md — ConnectionBar Camera button + right-click PopupMenu quality preset (D-06, D-19), CameraPreviewWindow + Tile (juce::DocumentWindow popout with JamWideLookAndFeel chrome, 4:3 aspect, hide-not-destroy on close, D-05/07/08/09), NativeCameraPrivacyDialog (D-22), JamWideJuceEditor FallbackListener wiring, plugin state schema v3→v4 with seven flat camera properties + clamping (D-24/D-25, T-19-03 mitigation), 1 Wave 0 test (test_plugin_state_v3_v4)
+- [ ] 19-03-PLAN-fallback-and-verification.md — CameraStatusDialog cause-aware fallback dialog covering 5 causes × 2 platforms (D-13/14/15/16, SPARTA #82 mitigation), platform-conditional deep-links (macOS x-apple.systempreferences URL + Windows ms-settings:privacy-webcam URL), VDO.Ninja coexistence soft warning toast (D-27), license-header sanity check (Risk C — JUCE seat licence compatibility per RESEARCH §13), scripts/verify_camera_entitlement.sh (T-19-05, D-28 verification), docs/UAT/phase-19-camera-uat-checklist.md (9 cells per VALIDATION.md, feedback_uat_scope_redflags compliance), test_camera_cause_mapping unit test (5×2 = 10 cells), CHANGELOG.md entry (D-26)
 **UI hint**: yes
 
 ### Phase 20: H.264 Encoder & Send Pipeline

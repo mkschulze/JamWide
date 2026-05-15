@@ -4,14 +4,14 @@ milestone: v1.2
 milestone_name: Security & Quality
 status: executing
 stopped_at: "15.1-07b COMPLETE (commits dbdaf98, edb2769) — broadcast restored end-to-end. All 7 audio-thread BufferQueue::AddBlock sites replaced with SPSC try_push (4 process_samples + 1 m_wavebq + 2 on_new_interval); Codex M-7 bounds-check + M-8 drop counter wired; test_block_queue_spsc 5/5 PASSED under both Release + TSan with zero ThreadSanitizer reports; build 251 VST3 + Standalone + TSan-Standalone all green. User-recommended UAT (NOT required by plan): transmit DAW audio for 30s, confirm peers hear it, read GetBlockQueueDropCount() == 0. Advancing to 15.1-07a (m_users_cs mirror, CR-01)."
-last_updated: "2026-05-15T03:21:56.303Z"
-last_activity: 2026-05-15 -- Phase 14.3 planning complete
+last_updated: "2026-05-15T14:51:28.808Z"
+last_activity: 2026-05-15 -- Phase 14.3 execution started
 progress:
-  total_phases: 15
-  completed_phases: 10
-  total_plans: 35
-  completed_plans: 31
-  percent: 67
+  total_phases: 5
+  completed_phases: 2
+  total_plans: 13
+  completed_plans: 13
+  percent: 40
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-05)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Phase 15.1 — RT-Safety Hardening (planned, ready to execute)
+**Current focus:** Phase 14.3 — native-video-foundation
 
 ## Current Position
 
-Phase: 15.1 (rt-safety-hardening) — STABILIZING (all 10 impl plans landed; 15.1-10 mechanical verification GREEN; real-DAW UAT exposed THREE 15.1-07a regressions in builds 284→288→289→290, all root-caused to one architectural mistake — slot picking placed on the wrong thread. User reports continuous remote audio at build 290.)
-Plan: 15.1-10 mechanical signals 1a/1b/2/4/5 GREEN (build 287 TSan Standalone — pre-stabilization). 15.1-07a post-UAT stabilization commits: (1) b8ca083 build 288 — Direction-B stale UI reader: GetRemoteUsersSnapshot:4164-4165 + GetUserChannelPeak:4388-4390 still read legacy chan->decode_peak_vol; routed both through findRemoteUserSlot → mirror.peak_vol_l/r. Audio worked, only VU was dead. (2) 7e69e1a build 289 — every-other-interval audio cutout: 07a's run_thread_next_ds_idx XOR shadow alternated 0/1, but audio thread always reads next_ds[0] and shifts next_ds[1]→next_ds[0]→null, so slot-1 publishes were unreachable until next shift. Mitigation: hardcode useidx_to_publish=0 at all 3 publish sites. (3) 00dfee7 build 290 — random bursty cutout: build-289's always-slot-0 mitigation defer-deleted prior next_ds[0] on every publish, dropping data when run thread published 2+ updates between drains. Final fix: move slot pick from publisher to apply visitor (which runs on audio thread via drainRemoteUserUpdates from AudioProc and CAN read mirror state); apply visitor logic = "fill empty slot 0; queue slot 1 if 0 occupied; defer-delete oldest only if both full" — recreates legacy `useidx = !!next_ds[0]` semantic on the correct thread. The 07a executor's original slot-picking-on-publisher decision was the architectural mistake; all three bugs stem from variations of that. feedback_legacy_invariant_audit.md updated with new Direction-C "decision-relocation drift" pattern. Awaiting decision: continue with formal bundled UAT (TSan Standalone build 287 — needs rebuild to include the three fixes — + lldb counter readout + Instruments perf budget) or close phase on real-DAW evidence + mechanical signals.
-Status: Ready to execute
-Last activity: 2026-05-15 -- Phase 14.3 planning complete
+Phase: 14.3 (native-video-foundation) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 14.3
+Last activity: 2026-05-15 -- Phase 14.3 execution started
 
 Progress: [#######...] 73% (v1.2 milestone — 8 of 11 sub-plans complete; advancing to 15.1-07a)
 

@@ -192,7 +192,7 @@ Plans:
   8. Tests cover: RawData send roundtrip (begin → write → end → recipient gets all three callback events with correct payload), unknown-fourCC receive isolation (Vorbis decoder NOT entered), each platform's vendored ffmpeg loads + `avcodec_find_encoder_by_name("libopenh264") != nullptr`
 **Plans**: 3 plans
 Plans:
-- [ ] 14.3-01-PLAN.md — Cross-platform LGPL ffmpeg + openh264 vendoring (re-run + extend the spike's `scripts/build_ffmpeg_lgpl.sh` to produce macOS arm64+x86_64, Linux x86_64, Windows x86_64; lipo macOS into universal; CI gates for LGPL discipline + clean otool output)
+- [x] 14.3-01-PLAN.md — Cross-platform LGPL ffmpeg + openh264 vendoring (re-run + extend the spike's `scripts/build_ffmpeg_lgpl.sh` to produce macOS arm64+x86_64, Linux x86_64, Windows x86_64; lipo macOS into universal; CI gates for LGPL discipline + clean otool output)
 - [ ] 14.3-02-PLAN.md — `RawDataSendBegin/Write` + `RawDataDownloadTracker` + `RawDataCallback` API (port from `ninjamzap-core/njclient.cpp:2047-2123` + `njclient.h:205-236`; queue + drain pattern matching JamWide's existing audio upload pattern; thread-safety for non-audio callers per spike Q3 finding)
 - [ ] 14.3-03-PLAN.md — Receive-path dispatch fix: at `src/core/njclient.cpp:2148`, route unknown fourCC to `RawDataCallback` if registered (else log + discard); audit `start_decode` callers; tests covering OGGv unchanged + arbitrary fourCC isolated; `is_video_fourcc` helper for {`H264`, `VP8 `, `MJPG`}
 **UI hint**: no (this phase is non-UI scaffolding only — the actual UI work is in v1.3)

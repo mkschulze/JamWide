@@ -743,15 +743,24 @@ public:
       return m_block_queue_drops.load(std::memory_order_relaxed);
   }
 
-  // 14.3-02 + Codex M-8: RawData send-queue overflow counter accessor.
-  // Producer side = any thread (RawDataSendBegin/Write callers) bumps on
-  // m_rawdata_sendq.try_push failure when the run-thread drain has not yet
-  // consumed. Discard branch (null m_netcon drain at NJClient::Run entry)
-  // also bumps per discarded item (Pattern C). 14.3 phase verification
-  // asserts this == 0 post-UAT. Non-zero == architectural defect (queue
-  // undersized for the workload). Relaxed semantics — observability only.
+  // 14.3-02 + Codex M-8: RawData send-queue true overflow counter accessor.
+  // Bumped ONLY on m_rawdata_sendq.try_push failure (queue full) — a genuine
+  // capacity defect. Does NOT include Pattern C disconnect discards (see
+  // GetRawDataSendQueueDiscardCount). 14.3 phase verification asserts this
+  // == 0 post-UAT. Non-zero == queue undersized for the workload.
+  // Relaxed semantics — observability only.
   uint64_t GetRawDataSendQueueOverflowCount() const noexcept {
       return m_rawdata_sendq_overflows.load(std::memory_order_relaxed);
+  }
+
+  // 14.3-02 + WR-03: Pattern C discard counter. Bumped per item drained
+  // from m_rawdata_sendq when m_netcon == nullptr (Disconnect path). A
+  // non-zero count is EXPECTED after any Disconnect/Reconnect cycle and does
+  // NOT indicate a queue-sizing defect. Separate from overflow counter so
+  // the post-UAT GetRawDataSendQueueOverflowCount() == 0 invariant remains
+  // actionable even when disconnects occur during the test run.
+  uint64_t GetRawDataSendQueueDiscardCount() const noexcept {
+      return m_rawdata_sendq_discards.load(std::memory_order_relaxed);
   }
 
 
@@ -969,13 +978,18 @@ protected:
       m_rawdata_sendq;
 
   // 14.3-02 + Codex M-8: overflow counter for m_rawdata_sendq. Producer side
-  // (RawDataSendBegin/Write, any thread) bumps on try_push failure; the
-  // discard branch in NJClient::Run's drain (null m_netcon — Pattern C
-  // mirroring drainBroadcastBlocks at njclient.cpp:3806-3815) ALSO bumps
-  // per discarded item to keep the post-Disconnect tear-down observable.
-  // Relaxed semantics — observability only. 14.3 phase verification asserts
-  // this == 0 post-UAT.
+  // (RawDataSendBegin/Write, any thread) bumps on try_push failure ONLY —
+  // true queue-full drops where the ring was at capacity. Relaxed semantics
+  // — observability only. 14.3 phase verification asserts this == 0 post-UAT.
   std::atomic<uint64_t> m_rawdata_sendq_overflows{0};
+
+  // 14.3-02 + WR-03: separate discard counter for Pattern C (null m_netcon
+  // drain at NJClient::Run entry). Items in the ring are expected to be
+  // discarded on Disconnect — this is not a capacity defect. Keeping this
+  // counter separate makes GetRawDataSendQueueOverflowCount() actionable:
+  // non-zero == architectural defect (queue undersized); non-zero discard
+  // count is normal after any Disconnect/Reconnect cycle.
+  std::atomic<uint64_t> m_rawdata_sendq_discards{0};
 
   // Diagnostic counters for the 2026-05-02 RemoteUserMirror orphan-fields fix.
   // Bumped at PeerChannelInfoUpdate publish (run thread) and apply (audio

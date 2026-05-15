@@ -345,7 +345,7 @@ static void test_is_video_fourcc_excludes_oggv_flac() {
 }
 
 static void test_disconnect_drain_and_discard() {
-    TEST("null m_netcon drain-and-discards items + bumps overflow counter");
+    TEST("null m_netcon drain-and-discards items + bumps discard counter (not overflow)");
 
     // NJClient is ~9 MB (huge mirror arrays + SPSC rings); the default 8 MB
     // macOS thread stack cannot hold even a single instance. Heap-allocate.
@@ -353,30 +353,40 @@ static void test_disconnect_drain_and_discard() {
     NJClient& client = *client_owned;
     // client constructed but Connect() never called -> m_netcon == nullptr.
     // Producer pushes three items; the run-thread drain inside NJClient::Run
-    // must discard them (Pattern C) and bump the overflow counter per item.
+    // must discard them (Pattern C) and bump the DISCARD counter per item.
+    // The overflow counter must NOT be touched — overflow == queue-full only.
 
     unsigned char outGuid[16] = {0};
     client.RawDataSendBegin(outGuid, MAKE_NJ_FOURCC('H','2','6','4'), 0, 0);
     client.RawDataSendWrite(outGuid, "DATA", 4, false);
     client.RawDataSendWrite(outGuid, NULL,   0, true);
 
-    const uint64_t pre = client.GetRawDataSendQueueOverflowCount();
-    if (pre != 0) {
+    const uint64_t pre_overflow = client.GetRawDataSendQueueOverflowCount();
+    const uint64_t pre_discard  = client.GetRawDataSendQueueDiscardCount();
+    if (pre_overflow != 0) {
         FAIL("overflow counter non-zero after 3 successful pushes (queue is "
              "capacity 64 — should fit)");
         return;
     }
 
     // Manually invoke NJClient::Run; it drains the SPSC. With m_netcon==null
-    // the Pattern C branch fires, discarding each item + bumping the counter.
-    // Run() returns nonzero ("sleep ok"); we don't care about its return —
-    // only the drain side-effect.
+    // the Pattern C branch fires, discarding each item + bumping the discard
+    // counter. Run() returns nonzero ("sleep ok"); we only care about the
+    // drain side-effect.
     (void)client.Run();
 
-    const uint64_t post = client.GetRawDataSendQueueOverflowCount();
-    if (post != pre + 3) {
-        printf("(pre=%llu post=%llu) ", (unsigned long long)pre, (unsigned long long)post);
-        FAIL("overflow counter did not bump by exactly 3 for 3 discarded items");
+    const uint64_t post_overflow = client.GetRawDataSendQueueOverflowCount();
+    const uint64_t post_discard  = client.GetRawDataSendQueueDiscardCount();
+    if (post_overflow != pre_overflow) {
+        printf("(pre_overflow=%llu post_overflow=%llu) ",
+               (unsigned long long)pre_overflow, (unsigned long long)post_overflow);
+        FAIL("overflow counter changed during Pattern C discard — must not be touched");
+        return;
+    }
+    if (post_discard != pre_discard + 3) {
+        printf("(pre=%llu post=%llu) ",
+               (unsigned long long)pre_discard, (unsigned long long)post_discard);
+        FAIL("discard counter did not bump by exactly 3 for 3 discarded items");
         return;
     }
 

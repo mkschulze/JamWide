@@ -2824,9 +2824,14 @@ int NJClient::Run() // nonzero if sleep ok
   // -------------------------------------------------------------------------
   if (!m_netcon)
   {
+    // Pattern C: Disconnect discard — items in the ring were queued while
+    // connected but m_netcon became null before the drain ran. This is
+    // expected on Disconnect/Reconnect; bump the DISCARD counter (not the
+    // OVERFLOW counter) so the post-UAT overflow==0 invariant stays
+    // actionable even after a connect/disconnect cycle.
     m_rawdata_sendq.drain([this](jamwide::RawDataItem&& item) {
       delete item.payload;
-      m_rawdata_sendq_overflows.fetch_add(1, std::memory_order_relaxed);
+      m_rawdata_sendq_discards.fetch_add(1, std::memory_order_relaxed);
     });
   }
   else

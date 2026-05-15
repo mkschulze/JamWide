@@ -36,7 +36,7 @@
 - [x] **Phase 14: MIDI Remote Control** -- MIDI CC mapping for mixer parameters including remote channels, bidirectional feedback where possible (completed 2026-04-15)
 - [ ] **Phase 14.1: Audio Prelisten** -- Listen button in server browser to hear room audio before joining, NJClient receive-only mode
 - [x] **Phase 14.2: Instamode Video Sync** -- Latency-probed video buffering using NINJAM instamode channel for accurate audio-video alignment (completed 2026-04-16)
-- [ ] **Phase 14.3: Native Video Foundation** -- Foundational scaffolding for the future native ffmpeg+JUCE video stack (NinjamZap-compatible H264 wire format): re-vendor LGPL ffmpeg cross-platform, add codec-agnostic `RawDataSendBegin/Write` API + `RawDataCallback` receive scaffolding to NJClient. Additive only — does NOT replace VDO.Ninja; existing video stack stays operational. Unblocks the v1.3 Native Video milestone.
+- [x] **Phase 14.3: Native Video Foundation** -- Foundational scaffolding for the future native ffmpeg+JUCE video stack (NinjamZap-compatible H264 wire format): re-vendor LGPL ffmpeg cross-platform, add codec-agnostic `RawDataSendBegin/Write` API + `RawDataCallback` receive scaffolding to NJClient. Additive only — does NOT replace VDO.Ninja; existing video stack stays operational. Unblocks the v1.3 Native Video milestone. (completed 2026-05-15)
 
 ## Phase Details
 
@@ -194,7 +194,7 @@ Plans:
 Plans:
 - [x] 14.3-01-PLAN.md — Cross-platform LGPL ffmpeg + openh264 vendoring (re-run + extend the spike's `scripts/build_ffmpeg_lgpl.sh` to produce macOS arm64+x86_64, Linux x86_64, Windows x86_64; lipo macOS into universal; CI gates for LGPL discipline + clean otool output)
 - [x] 14.3-02-PLAN.md — `RawDataSendBegin/Write` + `RawDataDownloadTracker` + `RawDataCallback` API (port from `ninjamzap-core/njclient.cpp:2047-2123` + `njclient.h:205-236`; queue + drain pattern matching JamWide's existing audio upload pattern; thread-safety for non-audio callers per spike Q3 finding)
-- [ ] 14.3-03-PLAN.md — Receive-path dispatch fix: at `src/core/njclient.cpp:2148`, route unknown fourCC to `RawDataCallback` if registered (else log + discard); audit `start_decode` callers; tests covering OGGv unchanged + arbitrary fourCC isolated; `is_video_fourcc` helper for {`H264`, `VP8 `, `MJPG`}
+- [x] 14.3-03-PLAN.md — Receive-path dispatch fix: at `src/core/njclient.cpp:2148`, route unknown fourCC to `RawDataCallback` if registered (else log + discard); audit `start_decode` callers; tests covering OGGv unchanged + arbitrary fourCC isolated; `is_video_fourcc` helper for {`H264`, `VP8 `, `MJPG`}
 **UI hint**: no (this phase is non-UI scaffolding only — the actual UI work is in v1.3)
 
 ### v1.2 Security & Quality (Planned)

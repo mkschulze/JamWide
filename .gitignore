@@ -22,6 +22,13 @@
 *.dylib
 *.dll
 
+# EXCEPTION: vendored LGPL ffmpeg dylibs (260515-0pc spike + milestone Item B)
+# These are required for the JAMWIDE_VIDEO_SPIKE option and the future video
+# milestone (RESEARCH §3 distribution-strategy decision). Do not blanket-ignore.
+!libs/ffmpeg/**/*.dylib
+!libs/ffmpeg/**/*.so
+!libs/ffmpeg/**/*.dll
+
 # Fortran module files
 *.mod
 *.smod
@@ -47,6 +54,10 @@
 build/
 build-release/
 build-juce/
+build-spike/
+build-test/
+build-tsan/
+.bg-shell/
 logs/
 .cache/
 *.DS_Store

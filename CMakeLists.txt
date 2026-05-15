@@ -33,6 +33,12 @@ option(JAMWIDE_BUILD_JUCE "Build JUCE plugin targets" ON)
 # skipped (TSan injects a runtime library that ad-hoc codesigning does not
 # cover, per 15.1-RESEARCH macOS caveat #1). Wired up by scripts/build.sh --tsan.
 option(JAMWIDE_TSAN "Build with ThreadSanitizer (skips codesign and hardened runtime)" OFF)
+# 260515-0pc Quick task feasibility spike: opt-in build of tests/video_spike.cpp.
+# Default OFF so headless CI without a camera (or without vendored ffmpeg) is
+# unaffected. Enable explicitly:
+#   cmake -DJAMWIDE_BUILD_TESTS=ON -DJAMWIDE_VIDEO_SPIKE=ON ...
+# Requires libs/ffmpeg/macos-${ARCH}/ to be populated by scripts/build_ffmpeg_lgpl.sh.
+option(JAMWIDE_VIDEO_SPIKE "Build the video_spike feasibility test (requires vendored LGPL ffmpeg)" OFF)
 # Auto-increment build number on every build
 add_custom_target(jamwide-build-number ALL
     COMMAND ${CMAKE_COMMAND}
@@ -330,6 +336,57 @@ if(JAMWIDE_BUILD_JUCE)
             JUCE_STANDALONE_APPLICATION=1
         )
         add_test(NAME midi_mapping COMMAND test_midi_mapping)
+
+        # 260515-0pc Quick task feasibility spike: capture→encode→decode→PNG-dump
+        # roundtrip against the vendored LGPL ffmpeg + Cisco openh264 + JUCE
+        # CameraDevice. Standalone executable; does NOT link into JamWideJuce
+        # (the spike is non-invasive to the shipping product per RESEARCH § 8
+        # Option (a)). Gated by JAMWIDE_VIDEO_SPIKE option AND JAMWIDE_BUILD_TESTS;
+        # default OFF so headless CI without a camera is unaffected.
+        if(JAMWIDE_VIDEO_SPIKE)
+            include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ffmpeg.cmake)
+
+            juce_add_console_app(video_spike PRODUCT_NAME "JamWide Video Spike")
+            juce_generate_juce_header(video_spike)
+
+            target_sources(video_spike PRIVATE tests/video_spike.cpp)
+            # CRITICAL: vendored ffmpeg headers MUST come BEFORE all other includes
+            # to override Apple clang's default /usr/local/include (where homebrew
+            # ffmpeg 8.x is installed). Without BEFORE, our consumer compiles
+            # against avcodec 62 layout but links against avcodec 61 dylib —
+            # struct ABI mismatch silently corrupts AVCodecContext fields.
+            # Diagnosed during 260515-0pc spike (avcodec_open2 fails with
+            # "Invalid video pixel format: -1" despite pix_fmt being set to
+            # AV_PIX_FMT_YUV420P=0 immediately before the call).
+            target_include_directories(video_spike BEFORE PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/libs/ffmpeg/macos-${CMAKE_HOST_SYSTEM_PROCESSOR}/include
+            )
+            target_include_directories(video_spike PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}
+                ${CMAKE_CURRENT_SOURCE_DIR}/src
+                ${CMAKE_CURRENT_SOURCE_DIR}/juce
+            )
+            target_link_libraries(video_spike PRIVATE
+                juce::juce_video
+                juce::juce_graphics
+                juce::juce_events
+                juce::juce_core
+                ffmpeg::lgpl
+            )
+            target_compile_definitions(video_spike PUBLIC
+                JUCE_USE_CAMERA=1
+                JUCE_STANDALONE_APPLICATION=1
+            )
+            add_test(NAME video_spike COMMAND video_spike)
+
+            # Post-build LGPL discipline check — fails the build if libavcodec
+            # contains libx264 strings (RESEARCH § 7 "x264 license trap").
+            add_custom_command(TARGET video_spike POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E echo "Verifying LGPL discipline (no libx264)..."
+                COMMAND bash -ec "if strings ${CMAKE_CURRENT_SOURCE_DIR}/libs/ffmpeg/macos-${CMAKE_HOST_SYSTEM_PROCESSOR}/lib/libavcodec.*.dylib | grep -E 'libx264|x264_encoder|x264_init' > /dev/null 2>&1 ; then echo 'FAIL: libavcodec contains libx264 strings (GPL contamination)' >&2 ; exit 1 ; else echo 'OK: libavcodec is libx264-free' ; fi"
+                VERBATIM
+            )
+        endif()
     endif()
 
 endif() # JAMWIDE_BUILD_JUCE

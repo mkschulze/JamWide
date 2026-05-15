@@ -345,22 +345,17 @@ if(JAMWIDE_BUILD_JUCE)
         # default OFF so headless CI without a camera is unaffected.
         if(JAMWIDE_VIDEO_SPIKE)
             include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ffmpeg.cmake)
+            include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/jamwide_use_ffmpeg.cmake)
 
             juce_add_console_app(video_spike PRODUCT_NAME "JamWide Video Spike")
             juce_generate_juce_header(video_spike)
 
             target_sources(video_spike PRIVATE tests/video_spike.cpp)
-            # CRITICAL: vendored ffmpeg headers MUST come BEFORE all other includes
-            # to override Apple clang's default /usr/local/include (where homebrew
-            # ffmpeg 8.x is installed). Without BEFORE, our consumer compiles
-            # against avcodec 62 layout but links against avcodec 61 dylib —
-            # struct ABI mismatch silently corrupts AVCodecContext fields.
-            # Diagnosed during 260515-0pc spike (avcodec_open2 fails with
-            # "Invalid video pixel format: -1" despite pix_fmt being set to
-            # AV_PIX_FMT_YUV420P=0 immediately before the call).
-            target_include_directories(video_spike BEFORE PRIVATE
-                ${CMAKE_CURRENT_SOURCE_DIR}/libs/ffmpeg/macos-${CMAKE_HOST_SYSTEM_PROCESSOR}/include
-            )
+            # Phase 14.3-01: jamwide_use_ffmpeg() bakes in the Apple-clang
+            # BEFORE PRIVATE include discipline (Landmine L6 / spike Risk #1)
+            # AND links ffmpeg::lgpl in one shot. See cmake/jamwide_use_ffmpeg.cmake
+            # for the full rationale.
+            jamwide_use_ffmpeg(video_spike)
             target_include_directories(video_spike PRIVATE
                 ${CMAKE_CURRENT_SOURCE_DIR}
                 ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -371,7 +366,6 @@ if(JAMWIDE_BUILD_JUCE)
                 juce::juce_graphics
                 juce::juce_events
                 juce::juce_core
-                ffmpeg::lgpl
             )
             target_compile_definitions(video_spike PUBLIC
                 JUCE_USE_CAMERA=1

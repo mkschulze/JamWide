@@ -1,93 +1,103 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-15T12:46:31.550Z",
+  "timestamp": "2026-05-15T18:29:44.316Z",
   "phase": "14.3",
   "phase_name": "Native Video Foundation",
   "phase_dir": ".planning/phases/14.3-native-video-foundation",
   "plan": null,
   "task": null,
   "total_tasks": 10,
-  "status": "planned_ready_to_execute",
+  "status": "complete_all_gates_green",
   "completed_tasks": [
-    {"id": "research", "name": "Synthesize spike artifacts into phase-scoped RESEARCH.md", "status": "done", "commit": "9626eb0"},
-    {"id": "validation", "name": "Create VALIDATION.md (Nyquist Dim 8) — ctest names + Wave 0 gaps + per-task verification map", "status": "done", "commit": "9626eb0"},
-    {"id": "patterns", "name": "Pattern-map 14 modified/new files to existing JamWide analogs (14.3-PATTERNS.md, 670 lines, 14/14 analogs)", "status": "done", "commit": "1cccabb"},
-    {"id": "planning", "name": "Generate 3 PLAN.md files (14.3-01 vendoring + 14.3-02 send API + 14.3-03 receive dispatch)", "status": "done", "commit": "78a9bf6"},
-    {"id": "plan-check-fixes", "name": "Resolve 2 BLOCKER + 2 WARNING from gsd-plan-checker (wave/depends_on + ctest name + VALIDATION.md frontmatter)", "status": "done", "commit": "3e6da51"},
-    {"id": "state-update", "name": "Record planning completion in STATE.md (Status -> Ready to execute)", "status": "done", "commit": "2f253b6"},
-    {"id": "upstream-review", "name": "Quick task 260515-jys -- review upstream NinjamZap docs (VIDEO_SYNC.md + VIDEO_SUPPORT.md) against locked 14.3 planning; verdict NO_PLAN_ADJUSTMENT_NEEDED", "status": "done", "commit": "8166609"},
-    {"id": "state-backfill", "name": "Backfill commit hash in STATE.md Quick Tasks Completed table", "status": "done", "commit": "2f98aa4"},
-    {"id": "session-handoff", "name": "Write HANDOFF.json + .continue-here.md", "status": "in_progress", "commit": "b0afd6d (partial -- .continue-here.md only; HANDOFF.json this commit)"}
+    {"id": "wave1-14.3-01", "name": "Cross-platform LGPL ffmpeg + openh264 vendoring (Tasks 1-3; Task 4 deferred to v1.3)", "status": "done", "commits": ["cbe2e08", "489b03c", "6bbbe30", "d8147c9", "eded17e", "dd9f6d1"]},
+    {"id": "wave2-14.3-02", "name": "RawDataSend API + SPSC + is_video_fourcc (8/8 ctest GREEN)", "status": "done", "commits": ["0827b18", "90110fb", "2a41bc6", "b87f040", "11754e6", "ad84953"]},
+    {"id": "wave3-14.3-03", "name": "Receive-path dispatch INSERT at njclient.cpp:2148 (8/8 ctest GREEN)", "status": "done", "commits": ["ea76f46", "3136971", "6a43f09", "c60fdff", "f523fba", "0bc8f02"]},
+    {"id": "code-review-pass1", "name": "gsd-code-review 14.3 — found 2 Critical + 3 Warning + 3 Info", "status": "done", "commit": "80bd6a7"},
+    {"id": "verification", "name": "gsd-verifier 14.3 — 8/8 SCs PASS (SC-1 accepted-partial deferral)", "status": "done", "commits": ["db51e2c", "18f124d"]},
+    {"id": "security-audit-pass1", "name": "gsd-security-auditor 14.3 — 18/20 closed; 2 OPEN (T-14.3-01 SHA-256, T-14.3-08 OOM)", "status": "done", "commit": "a4158d5"},
+    {"id": "security-fixes", "name": "Fix T-14.3-01 (SHA-256 verification) + T-14.3-08 (ResizeOK + NULL guard)", "status": "done", "commits": ["0ec8dcd", "8e594f8"]},
+    {"id": "security-audit-pass2", "name": "Re-audit — SECURED (20/20 threats closed)", "status": "done", "commit": "7f89c3d"},
+    {"id": "code-review-fix-iter1", "name": "gsd-code-fixer (critical_warning) — 4 fixed: CR-02, WR-01, WR-02, WR-03; 1 skipped (CR-01 already fixed by 8e594f8)", "status": "done", "commits": ["adae28e", "8fffe27", "c33543d", "c9214c3", "125cfef"]},
+    {"id": "code-review-fix-iter2", "name": "gsd-code-fixer --all — 2 more fixed: IN-02, IN-03; 1 subsumed (IN-01 by CR-02); ALL_FIXED status", "status": "done", "commits": ["c8dc01e", "519482e", "e2269b8"]}
   ],
   "remaining_tasks": [
-    {"id": "execute-14.3", "name": "Run /gsd-execute-phase 14.3 -- Wave 1 (14.3-01 vendoring, autonomous:false, checkpoint:human-verify for non-x86_64-mac vendoring) -> Wave 2 (14.3-02 send API, autonomous:true) -> Wave 3 (14.3-03 receive dispatch, autonomous:true)", "status": "not_started"},
-    {"id": "decide-15.1-uat-mode", "name": "Pre-existing pending decision (NOT this session's work): close Phase 15.1 on real-DAW evidence + mechanical signals, OR rebuild build 287 TSan Standalone to include the three 15.1-07a stabilization fixes (b8ca083 / 7e69e1a / 00dfee7) and run formal bundled UAT (TSan Standalone + lldb counter readout + Instruments perf budget)", "status": "blocked_on_user_decision"}
+    {"id": "decide-merge-to-milestone", "name": "Decide when to merge quick/260515-0pc-jamtaba-video-port to the v1.1 milestone integration branch (manual git operation; not blocking)", "status": "blocked_on_user_decision"},
+    {"id": "decide-15.1-uat-mode", "name": "Pre-existing pending decision (NOT this session's work): close Phase 15.1 on real-DAW evidence + mechanical signals, OR rebuild build 287 TSan Standalone with the three 15.1-07a stabilization fixes (b8ca083 / 7e69e1a / 00dfee7) baked in and run formal bundled UAT", "status": "blocked_on_user_decision"}
   ],
   "blockers": [],
   "human_actions_pending": [
     {
-      "action": "Decide whether to execute 14.3 now or first close 15.1 UAT loop",
-      "context": "STATE.md still has 'Current focus: Phase 15.1' but 14.3 is freshly planned and additive (does not block 15.1). Two valid orderings: (a) execute 14.3 first (it's smaller and additive, ~3 plans / ~1500 LOC mostly additive, no behavioral change to anything 15.1 touched), or (b) close 15.1 UAT first to free milestone v1.2 from the open stabilization loop.",
+      "action": "Decide when to merge quick/260515-0pc-jamtaba-video-port to v1.1 milestone integration branch",
+      "context": "Phase 14.3 is fully closed: 8/8 SCs verified, 20/20 threats secured, all 8 code-review findings addressed. The working branch is on `quick/260515-0pc-jamtaba-video-port` (intentional per commit 098a536 — aligned with v1.1 milestone scope). Merging is a manual git operation; can land alongside or after the 15.1 UAT closure depending on milestone strategy.",
       "blocking": false
     },
     {
-      "action": "(If executing 14.3) Manually verify libs/ffmpeg/{macos-arm64,linux-x86_64,windows-x86_64}/ build outputs at the 14.3-01 human-verify checkpoint",
-      "context": "Plan 14.3-01 is autonomous:false because the non-x86_64-mac vendoring legs require manual sign-off (Linux + Windows builds + arm64-mac Cisco openh264 source build with MPEG-LA royalty deviation). The executor will pause at Task 4 (checkpoint:human-verify) per the plan's frontmatter.",
+      "action": "(orthogonal) Address pre-existing 15.1 awaiting-UAT-decision",
+      "context": "Phase 15.1 stabilization at build 290 has been awaiting a decision since before this session. The three 15.1-07a fixes (b8ca083 / 7e69e1a / 00dfee7) need either a real-DAW-evidence close OR a formal bundled UAT (TSan Standalone rebuild + lldb counter readout + Instruments perf budget). Independent of 14.3.",
       "blocking": false
     }
   ],
   "decisions": [
     {
-      "decision": "Skip CONTEXT.md gate for 14.3 -- use SPEC.md as the locked contract",
-      "rationale": "14.3 has a SPEC.md (from /gsd-spec-phase, commit 86c4d04) plus rich spike substrate (RESEARCH/CONTEXT/RESEARCH-ADDENDUM/spike-results in .planning/quick/260515-0pc-investigate-jamtaba-video-implementation/). The SPEC.md is the equivalent of a locked CONTEXT.md for the phase, so re-running /gsd-discuss-phase would have been redundant work.",
+      "decision": "Skip CONTEXT.md gate for 14.3 — use SPEC.md + spike substrate as locked contract",
+      "rationale": "14.3 had a SPEC.md (from /gsd-spec-phase, commit 86c4d04) plus rich spike substrate. SPEC.md is the equivalent of a locked CONTEXT.md; re-running /gsd-discuss-phase would have been redundant work.",
       "phase": "14.3"
     },
     {
-      "decision": "Researcher ran in synthesis mode rather than greenfield research",
-      "rationale": "The spike paid the architectural discovery cost. Re-running a greenfield researcher would have re-litigated locked decisions (JTBv->NinjamZap pivot, openh264-vs-x264, SPSC-vs-mutex) -- wasted budget. Synthesis prompt explicitly told researcher 'do NOT re-litigate locked decisions -- project them into a planner-shaped view + emit Validation Architecture section'.",
+      "decision": "Task 4 of 14.3-01 deferred to v1.3 (non-x86_64-mac ffmpeg vendoring)",
+      "rationale": "User-approved at the human-verify checkpoint. Phase 14.3 ships the deterministic substrate (cross-platform script + verify gate + CI wiring); v1.3 produces the binary trees for macos-arm64 / linux-x86_64 / windows-x86_64 when those CI lanes are exercised. SC-1 is accepted-partial; SC-2/3/7/8 verifiable on macos-x86_64 (the platform present).",
       "phase": "14.3"
     },
     {
-      "decision": "Plan-checker found 2 BLOCKERS -- fixed via direct Edit, NOT via planner re-spawn",
-      "rationale": "Both blockers were mechanical metadata fixes (frontmatter depends_on + ctest name in VALIDATION.md). The checker's `fix:` directives were prescriptive 1-2 line changes. Spawning a full gsd-planner Agent (~$0.30) for what Edit produces in 30 seconds was procedural overkill. Re-check pass returned VERIFICATION PASSED.",
+      "decision": "Pinned ffmpeg-7.1.2 tarball SHA-256 to ffmpeg.org canonical hash 089bc60fb59d6aecc5d994ff530fd0dcb3ee39aa55867849a2bbc4e555f9c304 (T-14.3-01 closure)",
+      "rationale": "Plan T-14.3-01 mitigation required SHA-256 verification step; executor only implemented HTTPS + git SHA-1 sub-mitigations. Auditor flagged. Computed canonical hash via curl + shasum on 2026-05-15; pinned in EXPECTED_FFMPEG_SHA256 with FFMPEG_TARBALL_SHA256 env-var override; hard-fail abort BEFORE tar extraction.",
       "phase": "14.3"
     },
     {
-      "decision": "Wave structure: 14.3-01 (wave 1) -> 14.3-02 (wave 2) -> 14.3-03 (wave 3) STRICTLY SEQUENTIAL",
-      "rationale": "Originally planner had 14.3-02 + 14.3-03 in parallel (wave 2). Plan-checker correctly flagged that 14.3-03's must_haves explicitly self-document a hard dependency on 14.3-02's deliverables. Promoted 14.3-03 to wave 3 with depends_on: ['14.3-01', '14.3-02'].",
+      "decision": "Use ResizeOK + NULL guard for OOM safety in RawDataSendWrite (T-14.3-08 + CR-01 dual closure)",
+      "rationale": "WDL_HeapBuf::Resize returns without updating m_size on alloc failure; subsequent Get() returns NULL and memcpy(NULL) is guaranteed UB. ResizeOK returns NULL on failure; treat OOM as send-drop symmetric with queue-full path. Single 14-line edit closed both the T-14.3-08 security threat AND the CR-01 Critical code-review finding.",
       "phase": "14.3"
     },
     {
-      "decision": "Upstream NinjamZap docs reviewed -- no plan adjustments made",
-      "rationale": "16/16 upstream claims either CONFIRM our locked decisions, are COMPATIBLE at an orthogonal layer, or are correctly DEFERRED to v1.3. See .planning/quick/260515-jys-review-ninjamzap-upstream-video-sync-md-/REVIEW.md for the full 16-claim cross-reference matrix.",
+      "decision": "Split m_rawdata_sendq_overflows into two atomic counters: overflows (try_push failures) + discards (Pattern C disconnect drain) — WR-03 fix",
+      "rationale": "Original implementation bumped the same counter on both true overflow and expected Pattern C discard. This made the post-UAT `GetRawDataSendQueueOverflowCount() == 0` invariant unactionable after any Disconnect/Reconnect cycle. New separate counter `GetRawDataSendQueueDiscardCount()` lets the overflow invariant remain meaningful.",
+      "phase": "14.3"
+    },
+    {
+      "decision": "Manual MINGW case-pattern refinement to add MSYS/CYGWIN coverage",
+      "rationale": "Fixer agent's WR-02 fix corrected the quote ordering for MINGW64_NT only. Manual refinement subsequently extended the case arm to also match MSYS_NT-* and CYGWIN_NT-* hosts with the same x86_64 architecture suffix. Strictly broader than the agent's fix.",
+      "phase": "14.3"
+    },
+    {
+      "decision": "IN-03 ldd 'not found' fix uses explicit `grep -q ' => not found'` rather than reshaping the awk pipeline",
+      "rationale": "The original awk pipeline (`-F'=>' | '{print $1}'`) reduces `'libfoo.so => not found'` to the bare token `'not'`, which the /usr/local|/opt|/home blocklist doesn't match. Adding a dedicated `grep -q' => not found'` check before the blocklist preserves the existing logic and makes the new gate explicit. Lint-trap shape worth documenting.",
       "phase": "14.3"
     }
   ],
-  "uncommitted_files": [],
-  "next_action": "Run /gsd-execute-phase 14.3 (after /clear to start fresh context). Wave 1 will pause at the 14.3-01 human-verify checkpoint (Task 4). Alternative: address the pre-existing 15.1 UAT pending decision first.",
-  "context_notes": "This session: (1) Phase 14.3 planning end-to-end via /gsd-plan-phase 14.3 (research -> patterns -> planner -> checker -> fix-blockers -> re-check -> finalize). (2) Quick task 260515-jys via /gsd-quick --full -- upstream NinjamZap doc review. Both completed cleanly. The pre-existing 15.1 stabilization is untouched (build 290 still at awaiting-UAT-decision state). The repo is on quick/260515-0pc-jamtaba-video-port branch which is intentional (per commit 098a536 -- aligned with v1.1 milestone scope).",
+  "uncommitted_files": [
+    ".planning/config.json (newline-EOF fix, orthogonal to 14.3)"
+  ],
+  "next_action": "Resume by deciding milestone-merge timing for quick/260515-0pc-jamtaba-video-port OR addressing the pre-existing 15.1 awaiting-UAT-decision. Phase 14.3 itself needs no further work — every gate is GREEN.",
+  "context_notes": "This session: end-to-end /gsd-execute-phase 14.3 (3 waves with Wave 1 hitting a human-verify checkpoint that resolved as v1.3-deferral), then /gsd-code-review (2 Critical + 3 Warning + 3 Info), then /gsd-secure-phase (20 threats; first audit found 18/20 closed, 2 fixes applied, re-audit secured 20/20), then /gsd-code-review --fix iter 1 (critical_warning: 4 fixed + 1 already-fixed skip), then /gsd-code-review --fix --all iter 2 (IN-02 + IN-03 fixed + 1 subsumed skip). All gates GREEN. 33 commits on quick/260515-0pc-jamtaba-video-port (e5fad2c..e2269b8). The phase is merge-ready.",
   "branch": "quick/260515-0pc-jamtaba-video-port",
-  "head_commit": "b0afd6d",
+  "head_commit": "e2269b8",
   "milestone": "v1.1 (with v1.2 stabilization parallel)",
   "session_summary": {
-    "session_id": "2026-05-15 evening",
-    "primary_work": "/gsd-plan-phase 14.3 (end-to-end)",
-    "secondary_work": "/gsd-quick --full review-ninjamzap-upstream-docs",
+    "session_id": "2026-05-15 evening — Phase 14.3 execution + verification + security + review-fix",
+    "primary_work": "/gsd-execute-phase 14.3 (3 waves)",
+    "secondary_work": "/gsd-code-review + /gsd-secure-phase + /gsd-code-review --fix (iter 1 + iter 2 --all)",
     "agents_spawned": [
-      {"agent": "gsd-phase-researcher", "model": "opus", "outcome": "RESEARCH COMPLETE -- 14.3-RESEARCH.md (223 lines)"},
-      {"agent": "gsd-pattern-mapper", "model": "opus", "outcome": "PATTERN MAPPING COMPLETE -- 14.3-PATTERNS.md (670 lines, 14/14 analogs)"},
-      {"agent": "gsd-planner", "model": "opus", "outcome": "PLANNING COMPLETE -- 3 plan files"},
-      {"agent": "gsd-plan-checker", "model": "sonnet", "outcome_pass1": "ISSUES FOUND -- 2 BLOCKER + 2 WARNING", "outcome_pass2": "VERIFICATION PASSED"}
+      {"agent": "gsd-executor (14.3-01)", "model": "opus", "outcome": "Tasks 1-3 done; Task 4 deferred to v1.3 per checkpoint"},
+      {"agent": "gsd-executor (14.3-02)", "model": "opus", "outcome": "All tasks done; 8/8 ctest GREEN"},
+      {"agent": "gsd-executor (14.3-03)", "model": "opus", "outcome": "All tasks done; 8/8 ctest GREEN; Landmine L4 INSERT preserved"},
+      {"agent": "gsd-code-reviewer", "model": "sonnet", "outcome": "2 Critical + 3 Warning + 3 Info"},
+      {"agent": "gsd-verifier", "model": "sonnet", "outcome": "PASSED (8/8 SCs)"},
+      {"agent": "gsd-security-auditor (pass 1)", "model": "opus", "outcome": "18/20 closed; 2 OPEN"},
+      {"agent": "gsd-security-auditor (pass 2)", "model": "opus", "outcome": "SECURED (20/20)"},
+      {"agent": "gsd-code-fixer (iter 1)", "model": "sonnet", "outcome": "4 fixed (CR-02 + WR-01/02/03); 1 skip"},
+      {"agent": "gsd-code-fixer (iter 2 --all)", "model": "sonnet", "outcome": "2 fixed (IN-02 + IN-03); 1 subsumed"}
     ],
-    "commits_made": [
-      "9626eb0 -- RESEARCH + VALIDATION",
-      "1cccabb -- PATTERNS",
-      "78a9bf6 -- 3 PLAN.md files",
-      "3e6da51 -- plan-checker blocker fixes",
-      "2f253b6 -- STATE.md planning-complete",
-      "8166609 -- upstream review (quick task)",
-      "2f98aa4 -- STATE.md hash backfill",
-      "b0afd6d -- session handoff (.continue-here.md + HANDOFF.json)"
-    ]
+    "commits_made_count": 33,
+    "post_merge_ctest": "15/17 GREEN (2 pre-existing failures: test_encryption compile, test_flac_codec runtime — both documented in deferred-items.md, orthogonal to 14.3)"
   }
 }

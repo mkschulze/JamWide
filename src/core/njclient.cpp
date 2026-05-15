@@ -227,10 +227,18 @@ static inline void pushWaveBlockRecord(
 // decoder MUST use the same convention or it inverts the test (returns true
 // for '4','6','2','H' instead of 'H','2','6','4').
 //
-// File-static (not exposed publicly) — only the run-thread drain and the
-// 14.3-03 receive-dispatch INSERT branch consume this. A test-only public
-// wrapper NJClient::IsVideoFourcc (njclient.h, JAMWIDE_BUILD_TESTS-gated)
-// delegates here for unit-test coverage.
+// File-static (not exposed publicly) — used ONLY from the
+// JAMWIDE_BUILD_TESTS path (NJClient::IsVideoFourcc wrapper) for unit-test
+// coverage of the is_video_fourcc helper itself.
+//
+// NOT called from the receive-path dispatch (njclient.cpp:2229) or the
+// run-thread RawData drain (njclient.cpp:2817). The dispatch condition is
+// intentionally codec-agnostic: any fourcc that is not NJ_ENCODER_FMT_TYPE
+// and not NJ_ENCODER_FMT_FLAC routes to RawData_Callback when registered,
+// which is correctly wider than video-only (covers MJPG, future fourccs).
+// If is_video_fourcc should guard the dispatch in a future revision, that
+// wiring must be added explicitly to the dispatch condition. Do not assume
+// the function is already wired — it is not.
 // ---------------------------------------------------------------------------
 static inline bool is_video_fourcc(unsigned int fcc) {
   const unsigned char c0 =  fcc        & 0xff;

@@ -994,29 +994,39 @@ The aggregate sampling rate is appropriate: high-frequency state-machine and dis
 
 ---
 
-## 12. Open Questions for the Planner / User
+## 12. Open Questions for the Planner / User (RESOLVED)
 
-These are items where CONTEXT.md leaves discretion or where the spike's evidence partially conflicts with the locked design. The planner should resolve each before plans land.
+These are items where CONTEXT.md leaves discretion or where the spike's evidence partially conflicts with the locked design. Each item is annotated below with how Phase 19 plans resolve it.
 
 1. **Sync vs async `juce::CameraDevice::openDeviceAsync`.** [CONTEXT: Claude's Discretion] Research §1 recommends async. **Risk if wrong:** sync path freezes the message thread during the TCC prompt on a first launch, which is briefly user-visible but not a correctness issue. Easy to revisit.
+   **RESOLVED:** async chosen. See `19-01-PLAN-capture-pipeline.md` Task 4 action step 2 (`handleAuthResult` calls `juce::CameraDevice::openDeviceAsync`).
 
 2. **Retry thread implementation.** [CONTEXT: Claude's Discretion] Research §5 recommends `juce::Thread` subclass over `juce::TimedCallback` chain. **Risk if wrong:** `TimedCallback` chain on the message thread could cause subtle UI hitches during retry. Easy to revisit.
+   **RESOLVED:** `juce::Thread` subclass chosen. See `19-01-PLAN-capture-pipeline.md` Task 4 Behavior 8 + action step 1 (`RetryWorker : public juce::Thread`).
 
 3. **`GetCameraPeakFrameRate()` debug accessor in Phase 19 vs Phase 24.** [CONTEXT: Claude's Discretion] Research recommends shipping it in Phase 19 because the spike's measured-FPS evidence is the only objective evidence beta testers will have for "is the camera actually working?" Adding it in Phase 24 would be late.
+   **RESOLVED:** included in Phase 19. See `19-01-PLAN-capture-pipeline.md` Task 3 (`peakFps_` atomic on `JamWideFrameDistributor`) and Task 4 (`getPeakFps()` accessor on `JamWideCameraDevice`).
 
 4. **Distinguishing `TCCDenied` vs `HostLacksEntitlement` heuristic.** Research §9 uses `JUCEApplicationBase::isStandaloneApp() == false` as the proxy for "plugin context" — this is approximate. **Risk if wrong:** wrong copy in the fallback dialog. Cosmetic; not blocking.
+   **RESOLVED:** `isStandaloneApp()` heuristic adopted. See `19-01-PLAN-capture-pipeline.md` Task 4 action `classifyDenialCause(status)` (in plugin context → HostLacksEntitlement; in standalone → TCCDenied).
 
 5. **Watchdog timer interval.** Research §2 suggests 3 seconds (matches success criterion 1 "within 3 seconds"). **Risk if wrong:** watchdog fires too soon on a slow camera startup, or too late after a real failure. Tune during UAT.
+   **RESOLVED:** 3 seconds. See `19-01-PLAN-capture-pipeline.md` Task 4 Behavior 3 + private member `watchdog interval (default 3000ms)`.
 
 6. **State-version logging on load.** Research §8 suggests adding `juce::Logger::writeToLog` when a v3 state is loaded by a v4 binary. The CONTEXT doesn't mandate this; planner discretion.
+   **DEFERRED to executor:** plan rationale leaves this as executor's call during 19-02 Task 3 implementation. Not blocking. D-23 (camera-event logging) is separately enforced in `19-01-PLAN-capture-pipeline.md` Task 4 Behavior 10 + action step 6.
 
 7. **Min/max popout bounds.** [CONTEXT: Claude's Discretion] Research suggests min 240×180 (per Claude's Discretion line). Max could be the user's display dimensions. Planner picks.
+   **RESOLVED:** min 240×180, max 2560×1920. See `19-02-PLAN-ui-and-persistence.md` Task 2 (CameraPreviewWindow setResizeLimits).
 
 8. **Cause-aware deep-link button label.** Research §9 suggests "Open System Settings" for macOS and "Open Camera Privacy Settings" for Windows. Could also use a single platform-conditional label like "Open Camera Privacy Settings" everywhere. Cosmetic.
+   **RESOLVED:** platform-specific labels adopted per RESEARCH §9. See `19-03-PLAN-fallback-and-verification.md` Task 1 (`testCauseToButtonLabels` test exercises the platform-conditional label mapping).
 
 9. **AppCapability fallback for packaged Windows app.** Research §3 documents that `AppCapability` is unavailable for Win32 desktop apps. If Phase 23 eventually ships a `.msix` packaged JamWide for Windows Store, the Windows cause detection should be re-evaluated. Not blocking for Phase 19.
+   **DEFERRED to Phase 23+ contingency.** No Phase 19 plan addresses this; explicitly out of scope unless `.msix` packaging is decided in Phase 23 (currently not planned per v1.3 scope).
 
 10. **Empirical macOS PhotoOutput max FPS.** JUCE's macOS backend uses `AVCapturePhotoOutput` which is slower than `AVCaptureVideoDataOutput` would be. The 30-fps target of D-18's High preset may not be achievable on macOS at all. **Risk if wrong:** users select High preset and see ~15 fps actual. Mitigate by tooltip / status display. Phase 20's encoder will measure and report actual fps anyway.
+    **DEFERRED to UAT measurement.** See `19-03-PLAN-fallback-and-verification.md` Task 3 UAT cell 4 (macOS arm64 standalone) which measures actual FPS via the `getPeakFps()` accessor from resolution 3.
 
 ---
 

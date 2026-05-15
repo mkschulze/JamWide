@@ -2,9 +2,10 @@
 phase: 19
 plan: 03
 type: execute
-wave: 2
+wave: 3
 depends_on:
   - 19-01
+  - 19-02
 files_modified:
   - juce/video/native/CameraStatusDialog.h
   - juce/video/native/CameraStatusDialog.cpp

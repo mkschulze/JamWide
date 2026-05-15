@@ -305,8 +305,10 @@ static void test_is_video_fourcc_vp8_trailing_space() {
         PASS();
     } else if (!vp8_space) {
         FAIL("VP8 trailing-space variant should be recognized as video");
+        return;
     } else {
         FAIL("VP8 with NUL trailing byte should NOT be video (tightened from NinjamZap)");
+        return;
     }
 }
 

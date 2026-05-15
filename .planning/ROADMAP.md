@@ -36,6 +36,7 @@
 - [x] **Phase 14: MIDI Remote Control** -- MIDI CC mapping for mixer parameters including remote channels, bidirectional feedback where possible (completed 2026-04-15)
 - [ ] **Phase 14.1: Audio Prelisten** -- Listen button in server browser to hear room audio before joining, NJClient receive-only mode
 - [x] **Phase 14.2: Instamode Video Sync** -- Latency-probed video buffering using NINJAM instamode channel for accurate audio-video alignment (completed 2026-04-16)
+- [ ] **Phase 14.3: Native Video Foundation** -- Foundational scaffolding for the future native ffmpeg+JUCE video stack (NinjamZap-compatible H264 wire format): re-vendor LGPL ffmpeg cross-platform, add codec-agnostic `RawDataSendBegin/Write` API + `RawDataCallback` receive scaffolding to NJClient. Additive only — does NOT replace VDO.Ninja; existing video stack stays operational. Unblocks the v1.3 Native Video milestone.
 
 ## Phase Details
 
@@ -175,6 +176,26 @@ Plans:
 - [x] 14.2-01-PLAN.md — Plugin-side: Instatalk channel setup (ch 4, flags=0x02), PTT silence callback, NJClient measurement atomics (t_insta/t_interval hooks in mixInChannel/on_new_interval), RemoteChannelInfo.flags, VideoCompanion broadcastMeasuredDelay + syncMode in broadcastBufferDelay, run-thread polling
 - [x] 14.2-02-PLAN.md — Companion-side: BufferDelayMessage syncMode field, three-tier delay display (measured/calculated/manual), syncing overlay with fade-out, updated video-sync tests, new instamode-sync tests, human verification checkpoint
 **Reference**: `.planning/references/INSTAMODE-VIDEO-SYNC-DESIGN.md`
+
+### Phase 14.3: Native Video Foundation
+**Goal**: JamWide's NJClient gains the codec-agnostic transport scaffolding (RawDataSendBegin/Write + RawDataCallback) and a re-built cross-platform LGPL ffmpeg vendoring tree, so the future v1.3 "Native Video" milestone can land capture/encode/decode/UI on a stable foundation without further plumbing churn.
+**Depends on**: Phase 14.2 (current video pipeline is operational; this phase is purely additive — no changes to existing video stack)
+**Reference**: `.planning/quick/260515-0pc-investigate-jamtaba-video-implementation/` (full design, spike evidence, NinjamZap addendum, deferred-items milestone scope)
+**Success Criteria** (what must be TRUE):
+  1. `libs/ffmpeg/macos-{arm64,x86_64}/`, `libs/ffmpeg/linux-x86_64/`, `libs/ffmpeg/windows-x86_64/` are populated with LGPL-only dylibs/so/dll for {libavcodec, libavformat, libavutil, libswscale, libopenh264}; `scripts/build_ffmpeg_lgpl.sh` produces them reproducibly with `--disable-gpl --disable-libx264 --enable-libopenh264 --disable-xlib --disable-libxcb --disable-sdl2`
+  2. CI step verifies vendored dylibs are not GPL-tainted (`strings *.dylib | grep -E 'libx264|x264_'` returns empty for every vendored lib on every platform)
+  3. CI step verifies vendored dylibs have no spurious system-path dependencies on macOS (`otool -L` shows only `@rpath`, `/usr/lib`, `/System` entries)
+  4. NJClient gains a public `RawDataSendBegin(outGuid, fourcc, chidx, estsize)` + `RawDataSendWrite(guid, data, len, isEnd)` API that any caller can use to upload an opaque-byte stream on a NINJAM channel, mirroring `ninjamzap-core/njclient.cpp:2047-2065`
+  5. NJClient gains a public `RawDataCallback` (delivered with `eventType ∈ {begin, data, end}`, plus `guid`, `fourcc`, `username`, `chidx`, `data`, `dataLen`) so future callers can subscribe to non-OGGv channels mirroring `ninjamzap-core/njclient.h:205-212`
+  6. The receive path at `src/core/njclient.cpp:2148` no longer routes unknown-fourCC streams into the Vorbis decoder by default — instead it dispatches to `RawDataCallback` if registered, else logs and discards the bytes (no silent corruption — RESEARCH §6 documents the original behavior as a wire-compatibility BUG)
+  7. The existing VDO.Ninja video pipeline (`juce/video/VideoCompanion.{h,cpp}`, `companion/`) is BYTE-IDENTICAL after this phase — no behavioral change to existing video
+  8. Tests cover: RawData send roundtrip (begin → write → end → recipient gets all three callback events with correct payload), unknown-fourCC receive isolation (Vorbis decoder NOT entered), each platform's vendored ffmpeg loads + `avcodec_find_encoder_by_name("libopenh264") != nullptr`
+**Plans**: 3 plans
+Plans:
+- [ ] 14.3-01-PLAN.md — Cross-platform LGPL ffmpeg + openh264 vendoring (re-run + extend the spike's `scripts/build_ffmpeg_lgpl.sh` to produce macOS arm64+x86_64, Linux x86_64, Windows x86_64; lipo macOS into universal; CI gates for LGPL discipline + clean otool output)
+- [ ] 14.3-02-PLAN.md — `RawDataSendBegin/Write` + `RawDataDownloadTracker` + `RawDataCallback` API (port from `ninjamzap-core/njclient.cpp:2047-2123` + `njclient.h:205-236`; queue + drain pattern matching JamWide's existing audio upload pattern; thread-safety for non-audio callers per spike Q3 finding)
+- [ ] 14.3-03-PLAN.md — Receive-path dispatch fix: at `src/core/njclient.cpp:2148`, route unknown fourCC to `RawDataCallback` if registered (else log + discard); audit `start_decode` callers; tests covering OGGv unchanged + arbitrary fourCC isolated; `is_video_fourcc` helper for {`H264`, `VP8 `, `MJPG`}
+**UI hint**: no (this phase is non-UI scaffolding only — the actual UI work is in v1.3)
 
 ### v1.2 Security & Quality (Planned)
 

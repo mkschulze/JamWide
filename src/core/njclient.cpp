@@ -3022,8 +3022,21 @@ void NJClient::RawDataSendWrite(const unsigned char guid[16], const void *data,
     // Producer allocates; SPSC carries ownership; drain (or destructor
     // tear-down, or discard branch) deletes. Trivially copyable invariant
     // is preserved because item.payload is a raw pointer.
+    //
+    // T-14.3-08 / CR-01: ResizeOK (not Resize) — Resize() returns without
+    // updating m_size on alloc failure, after which Get() returns NULL and
+    // the memcpy below would NULL-deref. ResizeOK returns NULL on failure
+    // and we treat OOM as a send drop (matches the queue-full path below).
     WDL_HeapBuf* buf = new WDL_HeapBuf;
-    buf->Resize(dataLen);
+    if (!buf->ResizeOK(dataLen))
+    {
+      delete buf;
+      m_rawdata_sendq_overflows.fetch_add(1, std::memory_order_relaxed);
+      writeLog("RawDataSendWrite: OOM allocating %d-byte payload — dropped"
+               "%s\n",
+               dataLen, isEnd ? " (isEnd)" : "");
+      return;
+    }
     memcpy(buf->Get(), data, (size_t)dataLen);
     item.payload = buf;
   }

@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-05)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Phase 14.3 — native-video-foundation
+**Current focus:** Phase 14.3 — native-video-foundation (COMPLETE, verified)
 
 ## Current Position
 
-Phase: 14.3 (native-video-foundation) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 14.3
-Last activity: 2026-05-15 -- Phase 14.3 execution started
+Phase: 14.3 (native-video-foundation) — COMPLETE (8/8 SCs verified; SC-1 accepted-partial deferral of non-x86_64-mac vendoring to v1.3 per user decision at Task 4 checkpoint)
+Plan: 3 of 3
+Status: Verified — phase 14.3 complete
+Last activity: 2026-05-15 -- Phase 14.3 verified complete (commits cbe2e08→db51e2c)
 
 Progress: [#######...] 73% (v1.2 milestone — 8 of 11 sub-plans complete; advancing to 15.1-07a)
 

@@ -1,0 +1,14 @@
+prefix=/Users/cell/dev/JamWide/.claude/worktrees/agent-ac5382178f30a5092/libs/ffmpeg/macos-x86_64
+exec_prefix=${prefix}
+libdir=/Users/cell/dev/JamWide/.claude/worktrees/agent-ac5382178f30a5092/libs/ffmpeg/macos-x86_64/lib
+includedir=/Users/cell/dev/JamWide/.claude/worktrees/agent-ac5382178f30a5092/libs/ffmpeg/macos-x86_64/include
+
+Name: libavutil
+Description: FFmpeg utility library
+Version: 59.39.100
+Requires: 
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavutil 
+Libs.private: -pthread -lm -framework VideoToolbox -framework CoreFoundation -framework CoreMedia -framework CoreVideo -framework CoreServices
+Cflags: -I${includedir}

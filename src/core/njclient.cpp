@@ -2201,7 +2201,58 @@ int NJClient::Run() // nonzero if sleep ok
                   }
                   //else OutputDebugString("woulda added silence to channel\n");
                 }
-                else if (dib.fourcc) // download coming
+                // 14.3-03: receive-path dispatch fix (Landmine L4 — INSERT,
+                // not REPLACE). Two new else-if branches are inserted AHEAD
+                // of the existing else-if(dib.fourcc) branch below. Match:
+                // non-zero fourcc, non-OGGv (NJ_ENCODER_FMT_TYPE), non-FLAC
+                // (NJ_ENCODER_FMT_FLAC). The OGGv + FLAC exclusion is the
+                // critical Landmine L4 invariant — without it, audio
+                // streams would route to RawData_Callback if registered,
+                // breaking audio playback.
+                //
+                // First branch (callback registered): allocate a
+                // RawDataDownloadTracker, add to m_rawdata_downloads, fire
+                // RawData_Callback eventType=0 (begin). Mirrors
+                // ninjamzap-core/njclient.cpp:1369-1409 MINUS the 4-stage
+                // per-user accumulation/decoder/UI-buffer/GUID-matching
+                // pipeline (Landmine L7 — v1.3 scope, Items F.1-F.3 in
+                // 260515-0pc-deferred-items.md).
+                //
+                // Second branch (no callback): writeLog warning + discard.
+                // Today's behavior routes unknown fourCCs to start_decode
+                // (Vorbis), which crashes the decoder. After 14.3-03 the
+                // discard is silent (log only) — SC-6 closure.
+                //
+                // The existing else-if(dib.fourcc) branch below REMAINS in
+                // place — it handles OGGv + FLAC unchanged. SC-7 indirect:
+                // Vorbis/FLAC playback unaffected.
+                else if (dib.fourcc &&
+                         dib.fourcc != NJ_ENCODER_FMT_TYPE &&
+                         dib.fourcc != NJ_ENCODER_FMT_FLAC &&
+                         RawData_Callback)
+                {
+                  if (config_debug_level>1)
+                    printf("RECV RAW BEGIN %s fourcc=%08x\n",
+                           guidtostr_tmp(dib.guid), dib.fourcc);
+                  RawDataDownloadTracker *tracker = new RawDataDownloadTracker;
+                  memcpy(tracker->guid, dib.guid, sizeof(tracker->guid));
+                  tracker->fourcc = dib.fourcc;
+                  lstrcpyn_safe(tracker->username, dib.username,
+                                sizeof(tracker->username));
+                  tracker->chidx = dib.chidx;
+                  m_rawdata_downloads.Add(tracker);
+                  RawData_Callback(RawData_User, 0 /*begin*/,
+                                   dib.guid, dib.fourcc, dib.username,
+                                   dib.chidx, NULL, 0);
+                }
+                else if (dib.fourcc &&
+                         dib.fourcc != NJ_ENCODER_FMT_TYPE &&
+                         dib.fourcc != NJ_ENCODER_FMT_FLAC)
+                {
+                  writeLog("unknown fourCC %08x from %s chidx=%d — discarded\n",
+                           dib.fourcc, dib.username, dib.chidx);
+                }
+                else if (dib.fourcc) // download coming (OGGv + FLAC only — 14.3-03)
                 {
                   if (config_debug_level>1) printf("RECV BLOCK %s\n",guidtostr_tmp(dib.guid));
                   RemoteDownload *ds=new RemoteDownload;
@@ -2278,6 +2329,55 @@ int NJClient::Run() // nonzero if sleep ok
             mpb_server_download_interval_write diw;
             if (!diw.parse(msg))
             {
+              // 14.3-03: receive-path dispatch fix (WRITE side). The new
+              // m_rawdata_downloads loop runs BEFORE the existing m_downloads
+              // loop. On GUID match: fire RawData_Callback eventType=1 (data)
+              // when payload non-empty; on diw.flags&1 fire eventType=2 (end)
+              // and delete the tracker. The 'matched' flag wraps the existing
+              // m_downloads loop in if(!matched) so audio downloads do NOT
+              // double-handle a GUID collision (T-14.3-20 mitigation —
+              // RawData GUIDs are WDL_RNG_bytes-random and don't realistically
+              // collide with m_downloads GUIDs, but the wrap is cheap insurance).
+              //
+              // Mirrors ninjamzap-core/njclient.cpp:1444-1490 MINUS the
+              // per-user buffer accumulation (Landmine L7 — v1.3 scope).
+              // m_rawdata_downloads is run-thread-only (RESEARCH §Project
+              // Constraints — Architecture-mirror audit closure) so no
+              // mutex is needed; the m_users_cs lock above scopes
+              // m_remoteusers, not this list.
+              bool matched = false;
+              for (int rdx = 0; rdx < m_rawdata_downloads.GetSize(); rdx++)
+              {
+                RawDataDownloadTracker *t = m_rawdata_downloads.Get(rdx);
+                if (!t) continue;
+                if (!memcmp(t->guid, diw.guid, sizeof(t->guid)))
+                {
+                  if (config_debug_level>1)
+                    printf("RECV RAW DATA %s%s %d bytes\n",
+                           guidtostr_tmp(diw.guid),
+                           diw.flags&1 ? ":end" : "",
+                           diw.audio_data_len);
+                  if (RawData_Callback && diw.audio_data_len > 0 && diw.audio_data)
+                  {
+                    RawData_Callback(RawData_User, 1 /*data*/,
+                                     t->guid, t->fourcc, t->username, t->chidx,
+                                     diw.audio_data, diw.audio_data_len);
+                  }
+                  if (diw.flags & 1)
+                  {
+                    if (RawData_Callback)
+                      RawData_Callback(RawData_User, 2 /*end*/,
+                                       t->guid, t->fourcc, t->username, t->chidx,
+                                       NULL, 0);
+                    delete t;
+                    m_rawdata_downloads.Delete(rdx);
+                  }
+                  matched = true;
+                  break;
+                }
+              }
+              if (!matched)
+              {
               time_t now;
               time(&now);
               int x;
@@ -2311,6 +2411,7 @@ int NJClient::Run() // nonzero if sleep ok
                   }
                 }
               }
+              } // end if(!matched)
             }
           }
         break;

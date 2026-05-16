@@ -496,6 +496,33 @@ if(JAMWIDE_BUILD_TESTS)
     target_link_libraries(test_rawdata_send PRIVATE njclient)
     add_test(NAME rawdata_send_roundtrip COMMAND test_rawdata_send)
 
+    # Plan 20-02 Task 3: send-side video state machine (on_new_interval video block,
+    # whole-block m_video_cs serialization, 4-byte BE length-prefix wrapping in
+    # QueueVideoFrame, cold-start option (b), interleave defense). Pure-C++
+    # in-process test linking against njclient static library; uses the
+    # JAMWIDE_BUILD_TESTS-gated NJClient::RunOneIntervalForTest helper.
+    add_executable(test_video_state_machine tests/test_video_state_machine.cpp)
+    target_include_directories(test_video_state_machine PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_compile_definitions(test_video_state_machine PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_link_libraries(test_video_state_machine PRIVATE njclient)
+    add_test(NAME video_state_machine COMMAND test_video_state_machine)
+
+    # Plan 20-02 Task 2: per-channel atomic seqlock on Local_Channel for the
+    # audio_ch0_guid read (R3 MF1 + R4 H8 — TSan-clean by design via atomic
+    # two-uint64_t halves). Stress writer/reader concurrency, retry-cap fallback,
+    # and single-thread sanity.
+    add_executable(test_curwritefile_guid_seqlock tests/test_curwritefile_guid_seqlock.cpp)
+    target_include_directories(test_curwritefile_guid_seqlock PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_compile_definitions(test_curwritefile_guid_seqlock PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_link_libraries(test_curwritefile_guid_seqlock PRIVATE njclient)
+    add_test(NAME curwritefile_guid_seqlock COMMAND test_curwritefile_guid_seqlock)
+
     # Phase 14.3-03: RawData receive-path dispatch unit tests. Pure-C++ in-process
     # test linking against njclient static library; mirrors the test_rawdata_send
     # wiring above. JAMWIDE_BUILD_TESTS=1 on the test target exposes the

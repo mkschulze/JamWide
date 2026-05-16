@@ -161,12 +161,12 @@ If there are zero findings, say so explicitly with a short note on what you chec
 ## Phase 20 audit allowlist envelope
 
 > Decision authority: CONTEXT.md D-08 / D-09 / D-19 / D-20, R2 H6 + H7, R4 H8 + M12 + M13.
-> Status: Published 2026-05-16 by Plan 20-00. Audio-thread carve-out sites
-> created by Plan 20-02 are listed with TBD:line placeholders per R4 M13;
-> Plan 20-02 Task 4 refreshes those placeholders with the concrete file:line
-> entries from the as-committed code. Phase 20 close-out gate (R4 M13):
-> `grep -c "TBD:line" .codex/agents/realtime-audio-reviewer.toml` MUST return 0
-> by Phase 20 close. If any TBD:line remains, Phase 20 acceptance FAILS.
+> Status: Published 2026-05-16 by Plan 20-00; line-number-refreshed
+> 2026-05-16 by Plan 20-02 Task 4 (R4 M13 gate closed — all per-site
+> entries below carry concrete `src/core/njclient.cpp:<line>` references
+> from the as-committed Plan 20-02 Task 1 + Task 2 code, no placeholder
+> tokens remain). The phase-close grep gate for unreplaced placeholder
+> tokens still applies to future audit-allowlist edits.
 
 The following audio-thread sites are accepted Phase 15.1 carve-outs under
 CONTEXT.md D-09 + D-20 (full rationale: the user has direct evidence the
@@ -177,32 +177,43 @@ CRITICAL — these are the only carve-outs accepted under the envelope.
 
 ### src/core/njclient.cpp NJClient::on_new_interval video block (Plan 20-02 Task 1)
 
-- src/core/njclient.cpp:TBD:line — `WDL_MutexLock vlock(&m_video_cs)` opening the whole-block critical section (D-08, NinjamZap-literal whole-block serialization)
-- src/core/njclient.cpp:TBD:line — `WDL_MutexLock slock(&m_video_spspps_cs)` nested inside m_video_cs for SPS/PPS read (D-03)
-- src/core/njclient.cpp:TBD:line — `readGuidSeqlock(*lc, marker + 8)` atomic two-uint64_t halves seqlock read of the canonical audio_ch0_guid (D-20 + R4 H8 carve-out; audit-allowlist scope: atomic-halves load ONLY — no plain non-atomic byte read from the audio thread)
-- src/core/njclient.cpp:TBD:line — `memcpy(marker + N, ...)` of 16 bytes from atomic-halves local temporaries into the marker buffer (safe: local temporaries are not shared)
-- src/core/njclient.cpp:TBD:line — `RawDataSendWrite(m_video_guid, NULL, 0, true)` END-previous call inside on_new_interval video block
-- src/core/njclient.cpp:TBD:line — `RawDataSendBegin(m_video_guid, m_video_fourcc, m_video_chidx, 0)` BEGIN-new call
-- src/core/njclient.cpp:TBD:line — `RawDataSendWrite(m_video_guid, marker, 24, false)` marker write
-- src/core/njclient.cpp:TBD:line — `RawDataSendWrite(m_video_guid, m_video_spspps.Get(), m_video_spspps.GetSize(), false)` SPS/PPS write
-- src/core/njclient.cpp:TBD:line — `RawDataSendWrite(m_video_guid, NULL, 0, true)` END-at-deactivate call
+- src/core/njclient.cpp:5186 — `WDL_MutexLock vlock(&m_video_cs)` opening the whole-block critical section (D-08, NinjamZap-literal whole-block serialization)
+- src/core/njclient.cpp:5228 — `WDL_MutexLock slock(&m_video_spspps_cs)` nested inside m_video_cs for SPS/PPS read (D-03)
+- src/core/njclient.cpp:5215 — `readGuidSeqlock(*lc, marker + 8)` atomic two-uint64_t halves seqlock read of the canonical audio_ch0_guid (D-20 + R4 H8 carve-out; audit-allowlist scope: atomic-halves load ONLY — no plain non-atomic byte read from the audio thread)
+- src/core/njclient.cpp:5202-5209 — `marker[N]=...` writes followed by `std::memset(marker + 8, 0, 16)` zero-init of the audio_ch0_guid slot of the 24-byte marker on stack (safe: stack-local, not shared)
+- src/core/njclient.cpp:5192 — `RawDataSendWrite(m_video_guid, NULL, 0, true)` END-previous call inside on_new_interval video block
+- src/core/njclient.cpp:5194 — `RawDataSendBegin(m_video_guid, m_video_fourcc, m_video_chidx, 0)` BEGIN-new call
+- src/core/njclient.cpp:5218 — `RawDataSendWrite(m_video_guid, marker, 24, false)` marker write
+- src/core/njclient.cpp:5230 — `RawDataSendWrite(m_video_guid, m_video_spspps.Get(), m_video_spspps.GetSize(), false)` SPS/PPS write
+- src/core/njclient.cpp:5235 — `RawDataSendWrite(m_video_guid, NULL, 0, true)` END-at-deactivate call
 
 ### src/core/njclient.cpp NJClient::QueueVideoFrame (encoder-thread caller of the same shared substrate; Plan 20-01/20-02 Task 1)
 
-- src/core/njclient.cpp:TBD:line — `WDL_MutexLock vlock(&m_video_cs)` opening the critical section (audio-thread cohabitant of m_video_cs — same envelope applies)
-- src/core/njclient.cpp:TBD:line — `RawDataSendWrite(m_video_guid, prefix, 4, false)` 4-byte BE length-prefix write (COD-02 two-call split, first call)
-- src/core/njclient.cpp:TBD:line — `RawDataSendWrite(m_video_guid, data, len, false)` NAL data write (COD-02 two-call split, second call)
+- src/core/njclient.cpp:3287 — `WDL_MutexLock vlock(&m_video_cs)` opening the critical section (audio-thread cohabitant of m_video_cs — same envelope applies)
+- src/core/njclient.cpp:3296 — `RawDataSendWrite(m_video_guid, prefix, 4, false)` 4-byte BE length-prefix write (COD-02 two-call split, first call)
+- src/core/njclient.cpp:3297 — `RawDataSendWrite(m_video_guid, data, len, false)` NAL data write (COD-02 two-call split, second call)
+
+### src/core/njclient.cpp NJClient::SetVideoChannel / SetVideoBroadcastActive / SetVideoSPSPPS (run/message/encoder-thread; not audio-thread, listed for completeness as cohabitants of m_video_cs / m_video_spspps_cs)
+
+- src/core/njclient.cpp:3264 — `WDL_MutexLock vlock(&m_video_cs)` in `SetVideoChannel` (run thread, connect-up; not audio-thread)
+- src/core/njclient.cpp:3272 — `WDL_MutexLock vlock(&m_video_cs)` in `SetVideoBroadcastActive` (message thread, Broadcast button; not audio-thread)
+- src/core/njclient.cpp:3303 — `WDL_MutexLock slock(&m_video_spspps_cs)` in `SetVideoSPSPPS` (encoder thread, Plan 20-01 publishSpsPps callback; not audio-thread)
+
+### src/core/njclient.cpp Local_Channel seqlock writer call sites (Plan 20-02 Task 2)
+
+- src/core/njclient.cpp:2681 — `writeGuidSeqlock(*lc, zero16)` at the interval-boundary memset-to-zero broadcast-deactivate path (run thread; not audio-thread; publishes 16 zero bytes via atomic halves so audio-thread reader observes consistent NONE-match state)
+- src/core/njclient.cpp:2721 — `writeGuidSeqlock(*lc, lc->m_curwritefile.guid)` at the `m_need_header` WDL_RNG_bytes site (run thread; not audio-thread; publishes freshly-generated 16-byte GUID via atomic halves — closes R3 MF1 + R4 H8 by writing to the atomic halves the audio thread will read via readGuidSeqlock)
 
 ### src/core/njclient.cpp NJClient::RawDataSendBegin (any thread; called from audio thread inside on_new_interval; landed in Plan 20-00)
 
-- src/core/njclient.cpp:3068 — `m_rawdata_cs.Enter() / .Leave()` via enter_rawdata_cs_with_contention_sample helper (D-09; NinjamZap-literal — every Add takes m_rawdata_cs)
-- src/core/njclient.cpp:3055 — `WDL_RNG_bytes(outGuid, 16)` (D-09 — internally locked, per-call cost ~5 µs)
-- src/core/njclient.cpp:3057 — `new RawDataQueueItem` (D-09 — single heap alloc per call; allocation cost is the NinjamZap-faithful substrate cost)
+- src/core/njclient.cpp:3181 — `m_rawdata_cs.Enter() / .Leave()` via enter_rawdata_cs_with_contention_sample helper (D-09; NinjamZap-literal — every Add takes m_rawdata_cs)
+- src/core/njclient.cpp:3170 — `WDL_RNG_bytes(outGuid, 16)` (D-09 — internally locked, per-call cost ~5 µs)
+- src/core/njclient.cpp:3172 — `new RawDataQueueItem` (D-09 — single heap alloc per call; allocation cost is the NinjamZap-faithful substrate cost)
 
 ### src/core/njclient.cpp NJClient::RawDataSendWrite (any thread; called from audio thread inside on_new_interval AND from encoder thread inside QueueVideoFrame; landed in Plan 20-00)
 
-- src/core/njclient.cpp:3104 — `m_rawdata_cs.Enter() / .Leave()` via enter_rawdata_cs_with_contention_sample helper (D-09)
-- src/core/njclient.cpp:3084 — `new RawDataQueueItem` + `item->data.ResizeOK(dataLen)` + `memcpy(item->data.Get(), data, dataLen)` of payload (D-09)
+- src/core/njclient.cpp:3225 — `m_rawdata_cs.Enter() / .Leave()` via enter_rawdata_cs_with_contention_sample helper (D-09)
+- src/core/njclient.cpp:3200 — `new RawDataQueueItem` + `item->data.ResizeOK(dataLen)` + `memcpy(item->data.Get(), data, dataLen)` of payload (D-09)
 
 ### src/core/njclient.cpp on the RawDataSendBegin / RawDataSendWrite paths
 
@@ -213,14 +224,15 @@ SPSC overflow / OOM path and no non-video production caller relies on any of
 them for a required production diagnostic. NinjamZap source does not have
 those writeLog calls; the JamWide port now matches.
 
-### R4 M13 enforcement (audit-allowlist line-number refresh)
+### R4 M13 enforcement (audit-allowlist line-number refresh) — CLOSED
 
-Every TBD:line placeholder above MUST be replaced by Plan 20-02 Task 4 with
-the concrete file:line as committed by Plan 20-02 (Task 1 video block, Task 2
-seqlock reader). The audit gate
-`grep -c "TBD:line" .codex/agents/realtime-audio-reviewer.toml`
-MUST return 0 after Phase 20 close. If any TBD:line remains, Phase 20
-acceptance FAILS the R4 M13 gate.
+Plan 20-02 Task 4 (commit refreshing this file) replaced every placeholder
+above with the concrete src/core/njclient.cpp:<line> reference for the
+on_new_interval video block (Task 1), the QueueVideoFrame two-call split
+(Task 1), the SetVideo* API mutex sites (Task 1), the seqlock writer call
+sites at lines 2681 + 2721 (Task 2), and the inherited Plan 20-00
+RawDataSendBegin / RawDataSendWrite carve-out lines. The phase-close grep
+gate confirms zero unreplaced placeholder tokens remain.
 
 ### Auditor zero-CRITICAL gate scope
 
@@ -230,8 +242,10 @@ OUTSIDE this envelope.
 '''
 
 [phase_20_allowlist]
-status = "published"
+status = "refreshed"
 published_on = "2026-05-16"
 published_by = "Plan 20-00"
+refreshed_on = "2026-05-16"
+refreshed_by = "Plan 20-02 Task 4"
 decision_refs = ["D-08", "D-09", "D-19", "D-20", "R2-H6", "R2-H7", "R4-H8", "R4-M12", "R4-M13"]
-phase_20_close_gate = 'grep -c "TBD:line" .codex/agents/realtime-audio-reviewer.toml == 0'
+phase_20_close_gate_status = "PASSED"

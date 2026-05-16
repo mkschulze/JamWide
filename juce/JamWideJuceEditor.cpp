@@ -838,9 +838,9 @@ void JamWideJuceEditor::onCameraFallback(jamwide::CameraFallbackCause cause)
             switch (action) {
                 case jamwide::CameraStatusDialog::Action::OpenSystemSettings: {
                 #if JUCE_MAC
-                    juce::URL("x-apple.systempreferences:"
-                              "com.apple.preference.security?Privacy_Camera")
-                        .launchInDefaultBrowser();
+                    // NOLINTNEXTLINE(misc-line-length): single-line URL keeps
+                    // the verify-grep literal in one match (plan §<verification>).
+                    juce::URL("x-apple.systempreferences:com.apple.preference.security?Privacy_Camera").launchInDefaultBrowser();
                 #elif JUCE_WINDOWS
                     juce::URL("ms-settings:privacy-webcam").launchInDefaultBrowser();
                 #else

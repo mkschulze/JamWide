@@ -2670,6 +2670,16 @@ int NJClient::Run() // nonzero if sleep ok
         cuib.chidx=lc->channel_idx;
         memset(cuib.guid,0,sizeof(cuib.guid));
         memset(lc->m_curwritefile.guid,0,sizeof(lc->m_curwritefile.guid));
+        // Plan 20-02 Task 2: publish via atomic two-uint64_t halves seqlock
+        // so the audio-thread reader (NJClient::on_new_interval marker
+        // construction via readGuidSeqlock) sees a consistent 16 zero bytes
+        // here too (R4 H8 atomic-halves contract; legacy byte array is
+        // preserved above for the cuib.guid memcpy and other non-audio-
+        // thread readers).
+        {
+          unsigned char zero16[16] = {0};
+          writeGuidSeqlock(*lc, zero16);
+        }
         cuib.fourcc=0;
         cuib.estsize=0;
         m_netcon->Send(cuib.build());
@@ -2701,6 +2711,14 @@ int NJClient::Run() // nonzero if sleep ok
           lc->m_need_header=false;
           {
             WDL_RNG_bytes(lc->m_curwritefile.guid,sizeof(lc->m_curwritefile.guid));
+            // Plan 20-02 Task 2 (R3 MF1 + R4 H8): publish the freshly-
+            // generated 16-byte GUID via atomic two-uint64_t halves seqlock
+            // so NJClient::on_new_interval (audio thread) reads the same
+            // value via readGuidSeqlock. The non-atomic guid[16] above is
+            // kept for the non-audio-thread cuib.guid memcpy at line 2732
+            // (run thread) and the wh.guid memcpys at lines 2768/2813
+            // (run thread; outgoing wire messages).
+            writeGuidSeqlock(*lc, lc->m_curwritefile.guid);
             char guidstr[64];
             guidtostr(lc->m_curwritefile.guid,guidstr);
             if (!(lc->flags&4)) writeLog("local %s %d%s\n",guidstr,lc->channel_idx,(lc->flags&2)?"v":"");

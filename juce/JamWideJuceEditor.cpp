@@ -217,6 +217,14 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
         }
     };
 
+    // Phase 20-03 — Broadcast toggle wiring. setBroadcastVideo enforces the
+    // T-20-03 lifecycle ordering (SetVideoBroadcastActive(false) BEFORE
+    // encoder.close()) and the R4 M11 END-on-broadcast-off path 1.
+    connectionBar.onBroadcastToggleRequested = [this]() {
+        processorRef.setBroadcastVideo(!processorRef.isBroadcastingVideo());
+        connectionBar.setCameraIsBroadcasting(processorRef.isBroadcastingVideo());
+    };
+
     // Register the editor as the FallbackListener (processor outlives editor;
     // the destructor unregisters before the editor goes away).
     if (auto* cam = processorRef.getNativeCamera()) {
@@ -749,6 +757,9 @@ void JamWideJuceEditor::onCameraStateChanged(jamwide::CameraState newState)
         case jamwide::CameraState::Idle:
             connectionBar.setCameraLabel("Camera");
             connectionBar.setCameraActive(false);
+            // Phase 20-03 — clear the Broadcast UI mirror so the popup label
+            // returns to "Start Broadcast" on the next open.
+            connectionBar.setCameraIsBroadcasting(false);
             break;
         case jamwide::CameraState::Opening:
             // 19-03 — state machine left Unavailable; clear suppression so a
@@ -760,6 +771,12 @@ void JamWideJuceEditor::onCameraStateChanged(jamwide::CameraState newState)
             // state is reached. Avoids label-thrash during retry storms.
             break;
     }
+
+    // Phase 20-03 — forward to the processor so it can drive the encoder
+    // lifecycle (D-13: construct Openh264Encoder on Capturing, destroy on
+    // Idle/Failed/Unavailable). Encoder thread does NOT start here — that
+    // happens in setBroadcastVideo(true).
+    processorRef.onCameraStateChangedFromEditor(newState);
 
     // Task 2 extends this method with the previewWindow_ visibility branch
     // (D-09 orthogonality: only Idle / Capturing / Unavailable touch the

@@ -4,6 +4,7 @@
 #include "core/njclient.h"
 #include "ui/ui_state.h"
 #include "build_number.h"
+#include "video/encoder/Openh264Encoder.h"
 
 #include <chrono>
 #include <cstdio>
@@ -75,6 +76,24 @@ JamWideJuceProcessor::~JamWideJuceProcessor()
     // Order matters: midiMapper stops timer, videoCompanion stops WS server,
     // oscServer stops before runThread, runThread stops before client.
     midiMapper.reset();
+
+    // Phase 20-03 — R4 M11 path 3: if broadcast is still active at
+    // destruction, take broadcast down via setBroadcastVideo(false) so
+    // SetVideoBroadcastActive(false) lands BEFORE encoder.close(). The END
+    // is queued into m_rawdata_sendq via the NJClient::Disconnect path
+    // when runThread / client teardown below runs Disconnect; if m_netcon
+    // is already torn down by then, the queued END is freed via
+    // WDL_PtrList::Empty(true) in ~NJClient — accepted bounded loss
+    // per R4 M11 path 3. NO force-END from the message thread (would
+    // violate Phase 15.1 D-01 message-thread-must-not-block invariant).
+    if (broadcastVideoEnabled.load(std::memory_order_acquire))
+        setBroadcastVideo(false);
+
+    // Phase 20-03: tear down the encoder BEFORE the frameDistributor.
+    // The encoder holds a JamWideFrameDistributor::Subscription which
+    // calls into the distributor on close (Phase 19 HIGH-2 wait-for-
+    // in-flight semantics).
+    videoEncoder.reset();
 
     // Phase 19-01 (HIGH-3): bump camera generation BEFORE destruction so any
     // in-flight async closures (TCC completion / openDeviceAsync result /
@@ -645,6 +664,210 @@ void JamWideJuceProcessor::setCameraSelectedDevice(const juce::String& name)
 {
     std::lock_guard<std::mutex> lk(cameraSelectedDeviceMu_);
     cameraSelectedDevice_ = name;
+}
+
+// ─── Phase 20-03 — H.264 broadcast lifecycle ─────────────────────────────────
+//
+// Encoder ownership: the processor owns a std::unique_ptr<jamwide::VideoEncoder>
+// (concretely jamwide::Openh264Encoder). The instance is CONSTRUCTED on
+// camera Capturing transition and DESTROYED on Idle/Failed/Unavailable
+// (per CONTEXT.md D-13 — encoder lifecycle tied to camera state, but the
+// encoder THREAD only starts on Broadcast=on so idle preview costs nothing).
+//
+// setBroadcastVideo(true)  → opens the encoder (starts thread), attaches
+//                            publishSpsPps→SetVideoSPSPPS + publishEncodedNal→
+//                            QueueVideoFrame callbacks, passes
+//                            client->getAudioIntervalSeqPtr() as IDR-sync
+//                            atomic, and calls client->SetVideoBroadcastActive(true).
+// setBroadcastVideo(false) → calls client->SetVideoBroadcastActive(false) FIRST
+//                            (so the next on_new_interval emits END at deactivate
+//                            while the encoder thread is still alive to accept
+//                            any in-flight NAL publishes safely — between these
+//                            two calls, QueueVideoFrame's
+//                            `if (!m_video_active || !m_video_interval_open) return`
+//                            check inside m_video_cs gates the writes; T-20-03
+//                            mitigation), THEN closes the encoder (R4 H9
+//                            7-step teardown ordering inside Openh264Encoder::close).
+//
+// R4 M11: END-on-broadcast-off teardown paths:
+//   (1) Normal broadcast-off (this function): SetVideoBroadcastActive(false) →
+//       audio thread emits END at next natural on_new_interval (bounded ≤ ~8s
+//       NINJAM default).
+//   (2) Disconnect teardown: NJClient::Disconnect (run thread) enumerates the
+//       open video interval and queues END through m_rawdata_sendq BEFORE
+//       m_netcon teardown — see njclient.cpp video-interval-cleanup block AND
+//       test_processor_video_lifecycle sub-test 6 (R4 M11 path 2).
+//   (3) Plugin destruction: ~JamWideJuceProcessor invokes setBroadcastVideo(false)
+//       if broadcast was active; best-effort END via Disconnect path. The END
+//       is queued into m_rawdata_sendq but may not reach the wire if m_netcon
+//       is already torn down — accepted bounded loss per R4 M11 path 3.
+//
+// NO force-END from the message thread — would require message-thread →
+// audio-thread m_video_cs synchronization which the message thread MUST NOT
+// block on per Phase 15.1 D-01.
+//
+// See feedback_phase19_review_layers: lifecycle ordering matters because the
+// encoder thread publishes via captured callbacks; if we closed the encoder
+// before deactivating, an in-flight NAL publish would call SetVideoBroadcastActive
+// → QueueVideoFrame on a half-torn-down NJClient state. The active+open check
+// inside QueueVideoFrame's m_video_cs critical section is the canonical guard;
+// this ordering keeps it valid.
+void JamWideJuceProcessor::setBroadcastVideo(bool enabled)
+{
+    if (enabled) {
+        if (!client) {
+            juce::Logger::writeToLog("[Phase 20] setBroadcastVideo(true): no NJClient — ignored");
+            return;
+        }
+        if (!videoEncoder) {
+            juce::Logger::writeToLog(
+                "[Phase 20] setBroadcastVideo(true): videoEncoder is null — camera not Capturing");
+            return;
+        }
+        if (broadcastVideoEnabled.load(std::memory_order_acquire)) {
+            // Already broadcasting — idempotent no-op.
+            return;
+        }
+
+        const int preset = getCurrentCameraPreset();
+        const jamwide::VideoEncoderConfig cfg = jamwide::makeConfigForPreset(preset);
+
+        NJClient* njc = client.get();
+        auto publishSps = [njc](const void* data, int len) {
+            njc->SetVideoSPSPPS(data, len);
+        };
+        auto publishNal = [njc](const void* data, int len) {
+            njc->QueueVideoFrame(data, len);
+        };
+
+        if (!videoEncoder->open(cfg,
+                                frameDistributor.get(),
+                                njc->getAudioIntervalSeqPtr(),
+                                publishSps,
+                                publishNal,
+                                /*listener*/ this)) {
+            juce::Logger::writeToLog("[Phase 20] videoEncoder->open() failed — aborting Broadcast on");
+            return;
+        }
+        // ORDER: open encoder first, then SetVideoBroadcastActive(true). The
+        // next on_new_interval will emit BEGIN+marker+SPS-PPS. publishSpsPps
+        // may have already published SPS/PPS into m_video_spspps before
+        // SetVideoBroadcastActive(true) (cold-start option (b) per D-13).
+        njc->SetVideoBroadcastActive(true);
+        broadcastVideoEnabled.store(true, std::memory_order_release);
+        juce::Logger::writeToLog(
+            "[Phase 20] Broadcast ON (preset=" + juce::String(preset) + ")");
+    } else {
+        if (!broadcastVideoEnabled.load(std::memory_order_acquire))
+            return;  // Idempotent — not broadcasting.
+
+        NJClient* njc = client.get();
+        if (njc) {
+            // T-20-03 mitigation: deactivate FIRST so the next on_new_interval
+            // emits END at deactivate while the encoder is still alive.
+            njc->SetVideoBroadcastActive(false);
+#ifdef JAMWIDE_BUILD_TESTS
+            testLifecycleSeqDeactivate_.store(
+                testLifecycleSequenceCounter_.fetch_add(1, std::memory_order_relaxed),
+                std::memory_order_relaxed);
+#endif
+        }
+
+        // Let the audio thread emit END at the next natural interval — do NOT
+        // drive END from the message thread (would require m_video_cs
+        // synchronization, forbidden per Phase 15.1 D-01).
+
+        if (videoEncoder) {
+            videoEncoder->close();   // R4 H9 7-step teardown (Plan 20-01).
+#ifdef JAMWIDE_BUILD_TESTS
+            testLifecycleSeqEncoderClose_.store(
+                testLifecycleSequenceCounter_.fetch_add(1, std::memory_order_relaxed),
+                std::memory_order_relaxed);
+#endif
+        }
+        broadcastVideoEnabled.store(false, std::memory_order_release);
+        juce::Logger::writeToLog("[Phase 20] Broadcast OFF");
+    }
+}
+
+void JamWideJuceProcessor::onCameraStateChangedFromEditor(jamwide::CameraState newState)
+{
+    // D-13: encoder instance constructed on Capturing, destroyed on Idle /
+    // Failed / Unavailable. The encoder thread is NOT started here — that
+    // only happens in setBroadcastVideo(true).
+    switch (newState) {
+        case jamwide::CameraState::Capturing: {
+            if (!videoEncoder)
+                videoEncoder = std::make_unique<jamwide::Openh264Encoder>();
+            break;
+        }
+        case jamwide::CameraState::Idle:
+        case jamwide::CameraState::Unavailable:
+        case jamwide::CameraState::Failed: {
+            // Take broadcast down first if active (idempotent), then release
+            // the encoder. The order is critical: setBroadcastVideo(false)
+            // first → SetVideoBroadcastActive(false) → encoder.close() before
+            // we nullptr the encoder.
+            if (broadcastVideoEnabled.load(std::memory_order_acquire))
+                setBroadcastVideo(false);
+            videoEncoder.reset();
+            break;
+        }
+        case jamwide::CameraState::Opening:
+        case jamwide::CameraState::Retrying:
+        default:
+            // Transient — leave encoder state alone.
+            break;
+    }
+}
+
+// VideoEncoderListener — called on the encoder thread; marshal to main via
+// juce::Logger::writeToLog (thread-safe) and callAsync for any UI / reconfigure
+// retry path.
+void JamWideJuceProcessor::onEncoderOpened(const jamwide::VideoEncoderConfig& cfg)
+{
+    juce::Logger::writeToLog(
+        "[Phase 20] encoder opened " + juce::String(cfg.width) + "x" + juce::String(cfg.height)
+        + " @ " + juce::String(cfg.frameRate) + "fps, "
+        + juce::String(cfg.targetBitrateKbps) + " kbps");
+}
+
+void JamWideJuceProcessor::onEncoderClosed()
+{
+    juce::Logger::writeToLog("[Phase 20] encoder closed");
+}
+
+void JamWideJuceProcessor::onEncoderReconfigured(const jamwide::VideoEncoderConfig& cfg)
+{
+    juce::Logger::writeToLog(
+        "[Phase 20] encoder reconfigured " + juce::String(cfg.width) + "x" + juce::String(cfg.height)
+        + " @ " + juce::String(cfg.frameRate) + "fps, "
+        + juce::String(cfg.targetBitrateKbps) + " kbps");
+}
+
+void JamWideJuceProcessor::onEncoderFatalError(const char* reason)
+{
+    juce::Logger::writeToLog(
+        juce::String("[Phase 20] encoder fatal error: ")
+        + (reason ? reason : "(unknown)"));
+    // Self-heal attempt: schedule a reconfigure on the message thread. The
+    // current preset is the source of truth — if the codec config itself is
+    // bad (vendored ffmpeg mismatch), a same-preset reconfigure will fail
+    // identically; that's an acceptable failure mode (the listener will
+    // surface it again).
+    juce::MessageManager::callAsync([this]() {
+        if (videoEncoder && broadcastVideoEnabled.load(std::memory_order_acquire)) {
+            const jamwide::VideoEncoderConfig cfg =
+                jamwide::makeConfigForPreset(getCurrentCameraPreset());
+            videoEncoder->reconfigure(cfg);
+        }
+    });
+}
+
+void JamWideJuceProcessor::onSpsPpsPublished(int spsPpsLen)
+{
+    juce::Logger::writeToLog(
+        "[Phase 20] SPS/PPS published " + juce::String(spsPpsLen) + " bytes");
 }
 
 //==============================================================================

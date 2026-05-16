@@ -683,6 +683,45 @@ public:
     return m_encoder_input_drops_mirror.load(std::memory_order_relaxed);
   }
 
+#ifdef JAMWIDE_BUILD_TESTS
+  // Plan 20-03 Task 1 part E: audio-thread budget probe. Wraps the
+  // on_new_interval video block; CAS-updates the worst-case nanosecond
+  // duration. UAT acceptance gate: <= 200,000 ns (200 µs) worst-case under
+  // populated HD broadcast load. JAMWIDE_BUILD_TESTS-gated — the
+  // steady_clock::now() call is a vDSO read on macOS (~50 ns) but accept it
+  // as test-only instrumentation (NinjamZap-literal audio path otherwise).
+  uint64_t GetOnNewIntervalVideoBlockWorstCaseNs() const noexcept {
+    return m_on_new_interval_video_block_worst_case_ns.load(std::memory_order_relaxed);
+  }
+  void ResetOnNewIntervalVideoBlockWorstCaseNs() noexcept {
+    m_on_new_interval_video_block_worst_case_ns.store(0, std::memory_order_relaxed);
+  }
+
+  // Plan 20-03 Task 1: test accessors for the lifecycle tests. The video
+  // state machine's m_video_active / m_video_interval_open fields live
+  // under m_video_cs; the tests read them via these accessors for the
+  // T-20-03 lifecycle-ordering test (sub-test 3) without exposing the
+  // mutex.
+  bool GetVideoActiveForTest() const {
+    WDL_MutexLock lock(const_cast<WDL_Mutex*>(&m_video_cs));
+    return m_video_active;
+  }
+  bool GetVideoIntervalOpenForTest() const {
+    WDL_MutexLock lock(const_cast<WDL_Mutex*>(&m_video_cs));
+    return m_video_interval_open;
+  }
+
+  // Plan 20-03 Task 2 sub-test 6 (R4 M11 path 2): JAMWIDE_BUILD_TESTS-only
+  // test hook that runs ONLY the video-interval-cleanup branch of the
+  // production Disconnect path. The full Disconnect calls into m_users_cs /
+  // m_remoteusers / m_netcon teardown which a unit test cannot stand up
+  // without a real socket; this hook isolates the END-emit logic so the
+  // test can assert it runs WITHOUT requiring a full Net_Connection mock.
+  // Production Disconnect inserts the SAME block at the matching call site
+  // before m_netcon teardown.
+  void DisconnectVideoIntervalForTest();
+#endif
+
   // -------------------------------------------------------------------------
   // Phase 14.3-02 + Phase 20-00 (D-19): codec-agnostic transport scaffolding
   // (RawData send-side).
@@ -1172,6 +1211,15 @@ protected:
   // Plan 20-01 publishes encoder input drops here via getEncoderInputDropsPtr.
   // Plan 20-03 UAT asserts this == 0 at populated-load close.
   std::atomic<uint64_t> m_encoder_input_drops_mirror{0};
+
+#ifdef JAMWIDE_BUILD_TESTS
+  // Plan 20-03 Task 1 part E: audio-thread budget probe — worst-case
+  // duration in nanoseconds of the on_new_interval video block. CAS-updated
+  // inside on_new_interval; read via GetOnNewIntervalVideoBlockWorstCaseNs.
+  // JAMWIDE_BUILD_TESTS-only so production builds do not run the
+  // steady_clock::now() probe on the audio thread.
+  std::atomic<uint64_t> m_on_new_interval_video_block_worst_case_ns{0};
+#endif
 
   // Diagnostic counters for the 2026-05-02 RemoteUserMirror orphan-fields fix.
   // Bumped at PeerChannelInfoUpdate publish (run thread) and apply (audio

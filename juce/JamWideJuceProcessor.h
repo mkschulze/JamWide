@@ -16,6 +16,9 @@
 #include "video/VideoCompanion.h"
 #include "video/native/JamWideFrameDistributor.h"
 #include "video/native/JamWideCameraDevice.h"
+#include "video/encoder/VideoEncoder.h"
+#include "video/encoder/VideoEncoderConfig.h"
+#include "video/encoder/VideoEncoderListener.h"
 #include "midi/MidiMapper.h"
 #include "midi/MidiLearnManager.h"
 
@@ -56,6 +59,7 @@ class NinjamRunThread;
 //==============================================================================
 
 class JamWideJuceProcessor : public juce::AudioProcessor
+                           , public jamwide::VideoEncoderListener
 {
 public:
     JamWideJuceProcessor();
@@ -128,8 +132,76 @@ public:
     std::unique_ptr<jamwide::JamWideFrameDistributor> frameDistributor;
     std::unique_ptr<jamwide::JamWideCameraDevice> nativeCamera;
 
+    // Phase 20-03 — H.264 encoder owned by the processor. Constructed when
+    // the camera reaches Capturing (onCameraStateChangedFromEditor); reset
+    // when the camera goes Idle/Failed/Unavailable. The encoder THREAD
+    // only starts on Broadcast=on (videoEncoder->open() called by
+    // setBroadcastVideo(true)) — idle preview costs nothing per D-13.
+    // The frameDistributor MUST outlive the encoder — encoder releases
+    // its Subscription in step 2 of R4 H9 7-step close(); destructors
+    // run in reverse declaration order (frameDistributor declared first)
+    // but we also clear videoEncoder BEFORE frameDistributor explicitly
+    // in ~JamWideJuceProcessor to remove any ambiguity.
+    std::unique_ptr<jamwide::VideoEncoder> videoEncoder;
+    std::atomic<bool> broadcastVideoEnabled{false};
+
+#ifdef JAMWIDE_BUILD_TESTS
+    // Plan 20-03 Task 2 sub-test 3 (T-20-03 lifecycle-ordering enforcement):
+    // increment-and-record the call order of SetVideoBroadcastActive(false)
+    // and videoEncoder->close() during setBroadcastVideo(false). The test
+    // reads both indices and asserts deactivate_seq < encoder_close_seq.
+    mutable std::atomic<int> testLifecycleSequenceCounter_{0};
+    mutable std::atomic<int> testLifecycleSeqDeactivate_{-1};
+    mutable std::atomic<int> testLifecycleSeqEncoderClose_{-1};
+    void testResetLifecycleSequence() noexcept {
+        testLifecycleSequenceCounter_.store(0, std::memory_order_relaxed);
+        testLifecycleSeqDeactivate_.store(-1, std::memory_order_relaxed);
+        testLifecycleSeqEncoderClose_.store(-1, std::memory_order_relaxed);
+    }
+    int testGetLifecycleSeqDeactivate() const noexcept {
+        return testLifecycleSeqDeactivate_.load(std::memory_order_relaxed);
+    }
+    int testGetLifecycleSeqEncoderClose() const noexcept {
+        return testLifecycleSeqEncoderClose_.load(std::memory_order_relaxed);
+    }
+#endif
+
     jamwide::JamWideCameraDevice* getNativeCamera() { return nativeCamera.get(); }
     jamwide::JamWideFrameDistributor* getFrameDistributor() { return frameDistributor.get(); }
+
+    // ─── Phase 20-03 — H.264 broadcast surface ──────────────────────────────
+    // The processor owns the Openh264Encoder; the editor's FallbackListener
+    // forwards camera-state changes via onCameraStateChangedFromEditor so the
+    // encoder lifecycle tracks the camera per CONTEXT.md D-13: encoder
+    // instance is constructed when the camera reaches Capturing and destroyed
+    // when it goes Idle/Failed/Unavailable. The encoder THREAD only starts on
+    // Broadcast=on (open() call inside setBroadcastVideo(true)) — idle CPU
+    // cost is zero when previewing without broadcasting.
+    //
+    // Threading: setBroadcastVideo / isBroadcastingVideo / getCurrentCameraPreset
+    // run on the message thread. The VideoEncoderListener overrides run on
+    // the encoder thread (the encoder owns its own juce::Thread); they
+    // marshal logging/recovery via juce::Logger::writeToLog / callAsync.
+    void setBroadcastVideo(bool enabled);
+    bool isBroadcastingVideo() const noexcept {
+        return broadcastVideoEnabled.load(std::memory_order_acquire);
+    }
+    int  getCurrentCameraPreset() const noexcept {
+        return getCameraQualityPreset();   // Phase 19 D-25 source of truth
+    }
+    // The editor's FallbackListener calls this from onCameraStateChanged so
+    // the processor can drive encoder construction/destruction without
+    // taking ownership of the FallbackListener slot from the editor.
+    void onCameraStateChangedFromEditor(jamwide::CameraState newState);
+
+    // VideoEncoderListener overrides (Plan 20-01 contract; called on encoder
+    // thread). Default implementations log via juce::Logger::writeToLog;
+    // onEncoderFatalError schedules a reconfigure on the message thread.
+    void onEncoderOpened(const jamwide::VideoEncoderConfig& cfg) override;
+    void onEncoderClosed() override;
+    void onEncoderReconfigured(const jamwide::VideoEncoderConfig& cfg) override;
+    void onEncoderFatalError(const char* reason) override;
+    void onSpsPpsPublished(int spsPpsLen) override;
 
     // Phase 19-02 — persisted camera fields (D-24, D-25). Backed by atomics
     // for the lock-free read paths (UI thread reads + state save block) and

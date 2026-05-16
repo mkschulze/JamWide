@@ -295,6 +295,13 @@ class NJClient
 public:
   static constexpr int kRemoteNameMax = 128;
 
+  // Phase 20-00 (D-19): forward-decl so the public test helpers below can name
+  // the type; full declaration lives in the private section near
+  // m_rawdata_sendq. Field shape mirrors `ninjamzap-core/njclient.h:311-321`
+  // verbatim (int type / unsigned char guid[16] / unsigned int fourcc /
+  // int chidx / int estsize / int flags / WDL_HeapBuf data).
+  struct RawDataQueueItem;
+
   NJClient();
   ~NJClient();
 
@@ -602,19 +609,23 @@ public:
   void *ChatMessage_User;
 
   // -------------------------------------------------------------------------
-  // Phase 14.3-02: codec-agnostic transport scaffolding (RawData send-side).
+  // Phase 14.3-02 + Phase 20-00 (D-19): codec-agnostic transport scaffolding
+  // (RawData send-side).
   //
-  // Send side (this plan, 14.3-02):
+  // Send side:
   //   Public RawDataSendBegin / RawDataSendWrite — callable from ANY thread;
-  //   internally serialized via the SpscRing<RawDataItem, 64> m_rawdata_sendq
-  //   plus a run-thread drain inside NJClient::Run lexically adjacent to the
-  //   existing audio-encoder Send loop (Landmine L2: Net_Connection::Send is
-  //   NOT thread-safe, see src/core/netmsg.cpp:289 — direct Send from a
-  //   non-run-thread producer would corrupt m_sendq under encoder-loop races).
+  //   internally serialized via WDL_PtrList<RawDataQueueItem> m_rawdata_sendq
+  //   protected by WDL_Mutex m_rawdata_cs. Drain runs in NJClient::Run on the
+  //   run thread (sole writer to m_netcon->Send — Landmine L2: src/core/
+  //   netmsg.cpp:289). The Phase 14.3-02 SpscRing<RawDataItem, 64> substrate
+  //   was replaced in Phase 20-00 because the HYBRID video-emission model
+  //   needs multi-producer safety (audio thread + encoder thread). The
+  //   replacement matches `ninjamzap-core/njclient.cpp:2047-2082` verbatim;
+  //   drain matches `ninjamzap-core/njclient.cpp:1984-2040` verbatim.
   //
   // Receive side (forward reference to 14.3-03):
   //   When the wire-format DOWNLOAD_INTERVAL_BEGIN handler at
-  //   src/core/njclient.cpp:2148 receives a fourcc that is neither
+  //   src/core/njclient.cpp receives a fourcc that is neither
   //   NJ_ENCODER_FMT_TYPE nor NJ_ENCODER_FMT_FLAC AND RawData_Callback is
   //   registered, 14.3-03 dispatches eventType=0 (begin)/=1 (data)/=2 (end)
   //   to the callback below instead of routing into the Vorbis decoder.
@@ -633,16 +644,39 @@ public:
   RawDataCallback RawData_Callback;
   void *RawData_User;
 
-  // Both methods are callable from any thread. They allocate a small
-  // RawDataItem (and for Write, a WDL_HeapBuf payload when dataLen > 0) and
-  // try_push onto m_rawdata_sendq. On try_push failure (queue full), the
-  // payload heap-buf is deleted and m_rawdata_sendq_overflows is bumped.
-  // GetRawDataSendQueueOverflowCount() exposes the counter for 14.3 phase
-  // verification (post-UAT invariant: == 0).
+  // Both methods are callable from any thread. They allocate a single
+  // RawDataQueueItem (and, for Write, ResizeOK the inner WDL_HeapBuf when
+  // dataLen > 0), then take m_rawdata_cs and Add() the item to m_rawdata_sendq.
+  // No bounded-capacity drops (WDL_PtrList is unbounded per D-19; NinjamZap-
+  // literal). ResizeOK-failure is treated as a silent drop matching NinjamZap;
+  // Phase 20-03 observability watches the unbounded queue growing.
   void RawDataSendBegin(unsigned char outGuid[16], unsigned int fourcc,
                         int chidx, int estsize);
   void RawDataSendWrite(const unsigned char guid[16], const void *data,
                         int dataLen, bool isEnd);
+
+  // ---------------------------------------------------------------------
+  // Phase 20-00 + R3 MF4: queue observability surface for Plan 20-03.
+  //
+  // High-water-mark + mutex-contention counter + total-enqueue counter
+  // are declared here unconditionally. Plan 20-03's UAT acceptance gate
+  // reads them; Plan 20-03 does NOT add any of them. The three counters
+  // are bumped under m_rawdata_cs inside RawDataSendBegin and
+  // RawDataSendWrite (high-water via CAS, contention sampled before the
+  // Enter(), total-enqueue once per successful Add).
+  //
+  // Relaxed memory ordering on all three (observability only — not used
+  // for inter-thread synchronization).
+  // ---------------------------------------------------------------------
+  uint64_t GetRawDataSendQueueHighWaterMark() const noexcept {
+      return m_rawdata_sendq_high_water_mark.load(std::memory_order_relaxed);
+  }
+  uint64_t GetRawDataMutexContentionCount() const noexcept {
+      return m_rawdata_cs_contention_count.load(std::memory_order_relaxed);
+  }
+  uint64_t GetRawDataSendQueueTotalEnqueueCount() const noexcept {
+      return m_rawdata_sendq_total_enqueues.load(std::memory_order_relaxed);
+  }
 
 #ifdef JAMWIDE_BUILD_TESTS
   // Test-only public wrappers for the file-static is_video_fourcc helper +
@@ -650,11 +684,14 @@ public:
   // target at CMakeLists.txt:137 when tests are built; production builds do
   // not see these. See tests/test_rawdata_send.cpp for the consumers.
   bool IsVideoFourcc(unsigned int fcc) const;
-  void DrainRawDataSendQueueForTest(std::vector<jamwide::RawDataItem>& out);
+  // Destructive drain: hands ownership of every queued RawDataQueueItem* back
+  // to the caller (which must `delete` each pointer when done). Each item's
+  // by-value WDL_HeapBuf is freed automatically when the item is deleted.
+  void DrainRawDataSendQueueForTest(std::vector<RawDataQueueItem*>& out);
   // Chunking helper used by the run-thread drain block; exposed for test
   // observability so test_payload_chunking_at_max_enc_blocksize can verify
   // the chunk split without needing a real Net_Connection mock.
-  static void ChunkRawDataItem(const jamwide::RawDataItem& item,
+  static void ChunkRawDataItem(const RawDataQueueItem& item,
                                void (*emit)(void* ctx, const unsigned char guid[16],
                                             const void* data, int dataLen, int flags),
                                void* ctx);
@@ -743,26 +780,13 @@ public:
       return m_block_queue_drops.load(std::memory_order_relaxed);
   }
 
-  // 14.3-02 + Codex M-8: RawData send-queue true overflow counter accessor.
-  // Bumped ONLY on m_rawdata_sendq.try_push failure (queue full) — a genuine
-  // capacity defect. Does NOT include Pattern C disconnect discards (see
-  // GetRawDataSendQueueDiscardCount). 14.3 phase verification asserts this
-  // == 0 post-UAT. Non-zero == queue undersized for the workload.
-  // Relaxed semantics — observability only.
-  uint64_t GetRawDataSendQueueOverflowCount() const noexcept {
-      return m_rawdata_sendq_overflows.load(std::memory_order_relaxed);
-  }
-
-  // 14.3-02 + WR-03: Pattern C discard counter. Bumped per item drained
-  // from m_rawdata_sendq when m_netcon == nullptr (Disconnect path). A
-  // non-zero count is EXPECTED after any Disconnect/Reconnect cycle and does
-  // NOT indicate a queue-sizing defect. Separate from overflow counter so
-  // the post-UAT GetRawDataSendQueueOverflowCount() == 0 invariant remains
-  // actionable even when disconnects occur during the test run.
-  uint64_t GetRawDataSendQueueDiscardCount() const noexcept {
-      return m_rawdata_sendq_discards.load(std::memory_order_relaxed);
-  }
-
+  // Phase 20-00 (D-19): GetRawDataSendQueueOverflowCount() +
+  // GetRawDataSendQueueDiscardCount() accessors REMOVED — the SPSC capacity
+  // bound + Pattern-C disconnect-drain branch they reported on no longer
+  // exist. The replacement observability surface
+  // (GetRawDataSendQueueHighWaterMark / GetRawDataMutexContentionCount /
+  // GetRawDataSendQueueTotalEnqueueCount) is declared in the public RawData
+  // block above.
 
   // 15.1-07b CR-09: drain per-channel mirror block_q rings on the run thread,
   // forwarding their BlockRecord payloads into the legacy lc->m_bq.AddBlock
@@ -962,34 +986,65 @@ protected:
   // == 0 post-UAT. Relaxed semantics — observability only.
   std::atomic<uint64_t> m_remoteuser_update_overflows{0};
 
-  // 14.3-02: RawData send queue. Producer = ANY thread (RawDataSendBegin/Write
-  // callers — UI thread today; future audio thread for the v1.3 QueueVideoFrame
-  // path). Consumer = run thread inside NJClient::Run's drain block, lexically
-  // adjacent to the existing audio-encoder Send loop at njclient.cpp:2502 /
-  // 2549. Direct m_netcon->Send from a non-run-thread producer is forbidden:
-  // Landmine L2 (Net_Connection::Send is NOT thread-safe — see
-  // src/core/netmsg.cpp:289). Capacity rationale: video keyframe upload
-  // runs at the NINJAM interval cadence (~2-4 RawData items/sec/peer);
-  // 64 provides ~16x worst-case headroom. Post-UAT invariant
-  // (GetRawDataSendQueueOverflowCount() == 0) is asserted by 14.3 phase
-  // verification.
-  jamwide::SpscRing<jamwide::RawDataItem,
-                    jamwide::RAWDATA_SEND_QUEUE_CAPACITY>
-      m_rawdata_sendq;
+  // Phase 20-00 (D-19): NinjamZap-literal RawData send queue. Replaces the
+  // Phase 14.3-02 `SpscRing<jamwide::RawDataItem, 64>` substrate with the
+  // exact pattern from `ninjamzap-core/njclient.h:310-321 + cpp:1984-2082`:
+  // a `WDL_PtrList<RawDataQueueItem>` protected by `WDL_Mutex m_rawdata_cs`.
+  // Producer = ANY thread (RawDataSendBegin/Write callers — UI thread,
+  // audio thread on `on_new_interval` per Plan 20-02, encoder thread on
+  // QueueVideoFrame per Plan 20-01/02). Consumer = run thread inside
+  // NJClient::Run drain block, pop-one-unlock-Send-relock matching
+  // `ninjamzap-core/njclient.cpp:1984-2040`. Direct m_netcon->Send from a
+  // non-run-thread producer is forbidden — Landmine L2 (Net_Connection::Send
+  // is NOT thread-safe — see src/core/netmsg.cpp:289). Queue is unbounded
+  // (matches NinjamZap; backpressure exists only at the TCP send queue
+  // governed by ninjamzap-server's VideoCongestionThreshold).
 
-  // 14.3-02 + Codex M-8: overflow counter for m_rawdata_sendq. Producer side
-  // (RawDataSendBegin/Write, any thread) bumps on try_push failure ONLY —
-  // true queue-full drops where the ring was at capacity. Relaxed semantics
-  // — observability only. 14.3 phase verification asserts this == 0 post-UAT.
-  std::atomic<uint64_t> m_rawdata_sendq_overflows{0};
+  // Mirrors ninjamzap-core/njclient.h:311-321 field-for-field. Must be
+  // `public:` because the public forward-decl at the top of the class
+  // (right after kRemoteNameMax) was already `public:` — C++ requires the
+  // access specifier to match between forward-decl and full-decl. The data
+  // members of RawDataQueueItem are implementation-detail; production code
+  // should treat the type as opaque (only the test harness in
+  // tests/test_rawdata_send.cpp pokes at the fields directly, and that
+  // poking is guarded by JAMWIDE_BUILD_TESTS=1).
+public:
+  struct RawDataQueueItem {
+    int           type = 0;            // 0 = begin, 1 = data/end
+    unsigned char guid[16] = {0};
+    unsigned int  fourcc = 0;
+    int           chidx = 0;
+    int           estsize = 0;
+    int           flags = 0;           // & 1 = end (for type == 1)
+    WDL_HeapBuf   data;                // by-value; freed by ~WDL_HeapBuf when
+                                       // the queue item is `delete`d.
+  };
+protected:
 
-  // 14.3-02 + WR-03: separate discard counter for Pattern C (null m_netcon
-  // drain at NJClient::Run entry). Items in the ring are expected to be
-  // discarded on Disconnect — this is not a capacity defect. Keeping this
-  // counter separate makes GetRawDataSendQueueOverflowCount() actionable:
-  // non-zero == architectural defect (queue undersized); non-zero discard
-  // count is normal after any Disconnect/Reconnect cycle.
-  std::atomic<uint64_t> m_rawdata_sendq_discards{0};
+  WDL_PtrList<RawDataQueueItem> m_rawdata_sendq;
+  WDL_Mutex                     m_rawdata_cs;
+
+  // ----------------------------------------------------------------------
+  // Phase 20-00 (R3 MF4): queue observability counters. Plan 20-03 reads
+  // them at populated load to enforce contention-ratio + high-water-mark
+  // thresholds. All three are owned here unconditionally; Plan 20-03 adds
+  // none of them. Relaxed memory ordering — observability only.
+  //
+  // - high_water_mark: max WDL_PtrList depth observed at enqueue.
+  // - cs_contention_count: bumped per RawDataSend{Begin,Write} call that
+  //   could not enter m_rawdata_cs immediately. WDL_Mutex has no TryEnter
+  //   today (wdl/mutex.h is Enter/Leave only), so the contention sampling
+  //   path uses a coarser proxy — see RawDataSendBegin/RawDataSendWrite
+  //   in njclient.cpp for the exact wiring. The total-enqueue counter is
+  //   the denominator for the contention-ratio gate in Plan 20-03 UAT.
+  // - total_enqueues: bumped once per successful Add() inside
+  //   RawDataSendBegin AND once per successful Add() inside
+  //   RawDataSendWrite, paired with the high-water-mark CAS under
+  //   m_rawdata_cs.
+  // ----------------------------------------------------------------------
+  std::atomic<uint64_t> m_rawdata_sendq_high_water_mark{0};
+  std::atomic<uint64_t> m_rawdata_cs_contention_count{0};
+  std::atomic<uint64_t> m_rawdata_sendq_total_enqueues{0};
 
   // Diagnostic counters for the 2026-05-02 RemoteUserMirror orphan-fields fix.
   // Bumped at PeerChannelInfoUpdate publish (run thread) and apply (audio

@@ -15,6 +15,15 @@
 #include <variant>
 #include <ctime>
 
+// Phase 20-03: MAKE_NJ_FOURCC is file-local to njclient.cpp; define here for
+// the connect-up SetVideoChannel(1, H264) call. Same redefinition pattern as
+// juce/ui/ConnectionBar.cpp (Plan 20-02 task).
+#ifndef MAKE_NJ_FOURCC
+#define MAKE_NJ_FOURCC(a, b, c, d) \
+    (static_cast<unsigned int>(a) | (static_cast<unsigned int>(b) << 8) | \
+     (static_cast<unsigned int>(c) << 16) | (static_cast<unsigned int>(d) << 24))
+#endif
+
 namespace {
 
 //==============================================================================
@@ -385,6 +394,34 @@ void NinjamRunThread::handleStatusChange(NJClient* client, int currentStatus)
             // Reset measurement state for new session (allows re-measurement per review concern #5).
             client->resetInstaMeasurement();
             processor.instaMeasurementBroadcast.store(false, std::memory_order_relaxed);
+
+            // Phase 20-03 — register the video channel (chidx=1, name="video",
+            // flags=0x10, fourcc=H264) at NINJAM connect-up per D-18.
+            // Both calls are required (T-20-CONN-RACE mitigation; cite D-18 + Pitfall 6):
+            //   - SetLocalChannelInfo announces channel metadata (name="video",
+            //     flags=0x10) so receivers identify the video capability by name.
+            //   - SetVideoChannel announces the fourCC so receivers know it's H264.
+            // Channel registration is UNCONDITIONAL regardless of broadcast state —
+            // receivers see "user has video capability" with the proper channel
+            // name from connect-time onward; payload only flows after
+            // SetVideoBroadcastActive(true) lands (driven by the message-thread
+            // Broadcast button) and the next on_new_interval fires.
+            //
+            // Placement: AFTER all existing audio SetLocalChannelInfo calls and
+            // Instatalk wiring above, BEFORE NotifyServerOfChannelChange below.
+            // Same post-AUTH ordering as audio channel registration which is
+            // proven to land correctly. chidx=1 placement: audio channels
+            // occupy 0-3, Instatalk is at 4; chidx=1 is the convention
+            // documented in CONTEXT.md `<integration_points>` and ROADMAP's
+            // "broadcast video on NINJAM channel index 1" Phase 20 success
+            // criteria.
+            client->SetLocalChannelInfo(1, "video",
+                false, 0,        // setsrcch=false (no audio source for video channel)
+                false, 0,        // setbitrate=false (bitrate lives in VideoEncoderConfig)
+                false, false,    // setbcast=false (driven by SetVideoBroadcastActive)
+                false, 0,        // setoutch=false (unused for video)
+                true, 0x10);     // setflags=true, flags=0x10 (video channel marker per D-18)
+            client->SetVideoChannel(1, MAKE_NJ_FOURCC('H','2','6','4'));
 
             client->NotifyServerOfChannelChange();
         }

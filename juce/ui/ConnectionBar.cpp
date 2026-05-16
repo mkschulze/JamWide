@@ -33,6 +33,17 @@ public:
             menu.addItem(2, "Medium (640x480, 15fps)",  true, current == 1);
             menu.addItem(3, "High (1280x720, 30fps)",   true, current == 2);
             menu.addSeparator();
+            // Phase 20-03 — Broadcast toggle as a secondary state on the
+            // Camera button popup. Gated by cameraIsActive_ + the popup
+            // owner's connection state (the editor's wiring also requires
+            // an active NJClient connection; we expose the menu item even
+            // when not connected so the user gets visible affordance —
+            // disabled-but-visible per the existing Stop Camera pattern).
+            const bool broadcastEnabled = parent.cameraIsActive_;
+            menu.addItem(20,
+                parent.cameraIsBroadcasting_ ? "Stop Broadcast" : "Start Broadcast",
+                broadcastEnabled, /*ticked*/ false);
+            menu.addSeparator();
             const bool stopEnabled = parent.cameraIsActive_;
             menu.addItem(10, "Stop Camera", stopEnabled, /*ticked*/ false);
 
@@ -45,6 +56,9 @@ public:
                     } else if (result == 10) {
                         if (parent.onCameraStopRequested)
                             parent.onCameraStopRequested();
+                    } else if (result == 20) {
+                        if (parent.onBroadcastToggleRequested)
+                            parent.onBroadcastToggleRequested();
                     }
                 });
             return;

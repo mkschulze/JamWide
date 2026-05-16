@@ -44,12 +44,27 @@ public:
     std::function<void(int)> onCameraQualitySelected;
     std::function<void()> onCameraStopRequested;
 
+    // Phase 20-03 — Broadcast toggle. Lives as a secondary state on the Camera
+    // button's right-click popup menu so the right-cluster width stays within
+    // the 1200 px kBaseWidth budget set by commit 5250ff1.
+    std::function<void()> onBroadcastToggleRequested;
+
     // Phase 19-02 — camera button state (capturing → green; setCameraLabel swaps
     // the text on Unavailable to "Recheck permission"). setCameraQualityPreset
     // updates the right-click menu's checkmark state.
     void setCameraActive(bool active);
     void setCameraLabel(const juce::String& label);
     void setCameraQualityPreset(int preset);
+
+    // Phase 20-03 — Broadcast UI mirror. The editor calls this from its
+    // BroadcastToggle callback so the popup menu's label flips between
+    // "Start Broadcast" / "Stop Broadcast" coherently.
+    void setCameraIsBroadcasting(bool broadcasting) noexcept {
+        cameraIsBroadcasting_ = broadcasting;
+    }
+    bool getCameraIsBroadcasting() const noexcept {
+        return cameraIsBroadcasting_;
+    }
 
     void setRoutingModeHighlight(int mode);  // Updates Route button text color
     void updateSyncState(int state);
@@ -98,6 +113,11 @@ private:
     // Tracks whether the right-click "Stop Camera" item should be enabled
     // (only true while state==Capturing per MEDIUM-1 decision tree).
     bool cameraIsActive_{false};
+
+    // Phase 20-03 — current Broadcast state mirror. Drives the menu label flip
+    // ("Start Broadcast" vs "Stop Broadcast"). Written by the editor's
+    // BroadcastToggle callback via setCameraIsBroadcasting; read in CameraButton::mouseDown.
+    bool cameraIsBroadcasting_{false};
 
     // Debug snapshot button — writes current /rcmstats data + extra context
     // to a timestamped log file under userApplicationDataDirectory()/JamWide/Logs/.

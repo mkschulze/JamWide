@@ -1505,6 +1505,32 @@ void NJClient::Disconnect()
   m_pass.Set("");
   memset(m_auth_challenge, 0, 8);  // scrub saved challenge (Phase 15)
   // 15.1-03 H-01: m_debug_logged_remote field deleted (see _reinit comment).
+
+  // Plan 20-03 Task 1 part R4 M11 path 2: emit END for any open video interval
+  // BEFORE m_netcon teardown. The audio-channel-cleanup loop below
+  // enumerates m_locchannels for audio END; the video state machine lives
+  // on NJClient directly (not on a Local_Channel), so this is its
+  // explicit teardown site. RawDataSendWrite queues the END through
+  // m_rawdata_sendq; the queued item is freed via WDL_PtrList::Empty(true)
+  // at destruction time (Plan 20-00 substrate cleanup). In the normal
+  // Disconnect path (user-initiated; m_netcon still alive at entry) the
+  // queued END is drained by the next Run() tick before the destructor
+  // runs and reaches the wire. In the plugin-destruction path
+  // (R4 M11 path 3), m_netcon may already be torn down — the END is
+  // queued but may not reach the wire (accepted bounded loss per
+  // R4 M11 path 3). NO force-END from the message thread — m_video_cs
+  // serialization here is on the run thread (Disconnect caller), not
+  // the audio thread (Phase 15.1 D-01 message-thread invariant
+  // preserved).
+  {
+    WDL_MutexLock vlock(&m_video_cs);
+    if (m_video_interval_open) {
+      RawDataSendWrite(m_video_guid, NULL, 0, true);  // END
+      m_video_interval_open = false;
+    }
+    m_video_active = false;   // deactivate broadcast state
+  }
+
   delete m_netcon;
   m_netcon=0;
 
@@ -3601,6 +3627,25 @@ void NJClient::TestRestoreEvenParityForTest(NJClient::TestLocalChannelHandle& h)
   h.lc.m_curwritefile_guid_seq.fetch_add(1, std::memory_order_release);
 }
 
+// ---------------------------------------------------------------------------
+// Plan 20-03 Task 2 sub-test 6 (R4 M11 path 2): JAMWIDE_BUILD_TESTS-only test
+// hook that runs ONLY the video-interval-cleanup branch of the production
+// Disconnect path. The full Disconnect calls into m_users_cs / m_remoteusers /
+// m_netcon teardown which a unit test cannot stand up without a real socket.
+// Production Disconnect inserts the SAME block before m_netcon teardown — see
+// `NJClient::Disconnect` at line ~1508. Keep the two implementations in lock-
+// step or the test will go stale.
+// ---------------------------------------------------------------------------
+void NJClient::DisconnectVideoIntervalForTest()
+{
+  WDL_MutexLock vlock(&m_video_cs);
+  if (m_video_interval_open) {
+    RawDataSendWrite(m_video_guid, NULL, 0, true);  // END
+    m_video_interval_open = false;
+  }
+  m_video_active = false;
+}
+
 #endif // JAMWIDE_BUILD_TESTS
 
 void NJClient::SetEncoderFormat(unsigned int fourcc)
@@ -5182,6 +5227,14 @@ void NJClient::on_new_interval()
   // QueueVideoFrame mutex acquire — m_video_cs is the synchronization point
   // between audio framing and encoder NAL emission, the seq counter is the
   // observability channel only).
+  //
+  // Plan 20-03 Task 1 part E: audio-thread budget probe — wraps the video
+  // block with std::chrono::steady_clock::now() (vDSO read ~50 ns on macOS).
+  // CAS-updates m_on_new_interval_video_block_worst_case_ns. Gated by
+  // JAMWIDE_BUILD_TESTS so production builds do not pay the probe cost.
+#ifdef JAMWIDE_BUILD_TESTS
+  const auto t0_video_block = std::chrono::steady_clock::now();
+#endif
   {
     WDL_MutexLock vlock(&m_video_cs);
     m_sync_interval_cnt++;
@@ -5236,6 +5289,20 @@ void NJClient::on_new_interval()
       m_video_interval_open = false;
     }
   }
+#ifdef JAMWIDE_BUILD_TESTS
+  {
+    // Plan 20-03 Task 1 part E: audio-thread budget probe — CAS-update the
+    // worst-case ns duration of the video block. UAT threshold per
+    // CONTEXT.md Assumption A5 + Plan 20-03 success_criteria: <= 200,000 ns
+    // worst-case under HD populated load. JAMWIDE_BUILD_TESTS-gated.
+    const auto dt = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - t0_video_block).count();
+    const uint64_t cur = (uint64_t)((dt > 0) ? dt : 0);
+    uint64_t prev = m_on_new_interval_video_block_worst_case_ns.load(std::memory_order_relaxed);
+    while (cur > prev && !m_on_new_interval_video_block_worst_case_ns.compare_exchange_weak(
+        prev, cur, std::memory_order_relaxed)) { /* retry */ }
+  }
+#endif
 
   // 15.1-07a CR-01: m_users_cs.Enter/Leave removed. Audio thread iterates
   // m_remoteuser_mirror[MAX_PEERS]; the next_ds-advance pointer-shuffle

@@ -779,4 +779,51 @@ if(JAMWIDE_BUILD_TESTS)
     jamwide_use_ffmpeg(test_video_encoder)
     add_test(NAME video_encoder COMMAND test_video_encoder)
 
+    # Phase 20-03 Task 2: encoder + NJClient lifecycle wiring validation
+    # without standing up a JUCE plugin host. Exercises the same
+    # T-20-03 ordering (SetVideoBroadcastActive(false) BEFORE
+    # encoder.close()), R4 M11 path 2 (Disconnect emits END), and R4 M11
+    # path 3 (destructor cleanup) that JamWideJuceProcessor::setBroadcastVideo
+    # enforces in production. Links Openh264Encoder + JamWideFrameDistributor
+    # + njclient + JUCE + ffmpeg.
+    #
+    # The combined link brings in a large amount of static initializer state
+    # (njclient + juce_core + juce_events + juce_graphics + libavcodec /
+    # libswscale / libopenh264). macOS' default 8 MB main-thread stack is
+    # tight when those initializers run; ctest happens to launch with
+    # enough headroom but bare shell invocations can hit ___chkstk_darwin
+    # at startup. Bump the stack-size to 16 MB at link time so the test
+    # runs identically under ctest and direct invocation.
+    add_executable(test_processor_video_lifecycle
+        tests/test_processor_video_lifecycle.cpp
+        juce/video/encoder/Openh264Encoder.cpp
+        juce/video/native/JamWideFrameDistributor.cpp)
+    target_compile_definitions(test_processor_video_lifecycle PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_include_directories(test_processor_video_lifecycle PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/juce)
+    target_link_libraries(test_processor_video_lifecycle PRIVATE
+        njclient
+        juce::juce_core
+        juce::juce_events
+        juce::juce_graphics)
+    if(APPLE)
+        target_link_options(test_processor_video_lifecycle PRIVATE
+            "LINKER:-stack_size,0x1000000")  # 16 MB main-thread stack
+    endif()
+    jamwide_use_ffmpeg(test_processor_video_lifecycle)
+    add_test(NAME processor_video_lifecycle COMMAND test_processor_video_lifecycle)
+
+    # Phase 20-03 Task 3: convenience target for the 5-minute populated-server
+    # UAT. The script is the orchestrating harness; the actual broadcast is
+    # human-driven (see tests/uat/phase-20-broadcast-uat-procedure.md). The
+    # target is named `phase20-uat` so it stays grep-discoverable.
+    add_custom_target(phase20-uat
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/uat/phase-20-broadcast-uat.sh" --full
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        VERBATIM
+        USES_TERMINAL
+        COMMENT "Phase 20 broadcast UAT — opens the human-runnable procedure")
+
 endif()

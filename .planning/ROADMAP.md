@@ -330,7 +330,25 @@ Plans:
   2. A second user (or a ninjamzap-core reference receiver) successfully parses the JamWide broadcast: fourCC reads as `H264`, the first per-interval chunk is exactly 24 bytes and matches the marker spec, SPS/PPS appears as the second chunk, and each subsequent frame chunk carries a correct 4-byte BE length prefix
   3. User can run JamWide with audio broadcast AND video broadcast simultaneously on a populated NINJAM server for 5 minutes with no audio glitches and no `Net_Connection::Send` thread-safety races (verifiable under TSan)
   4. User who toggles camera off mid-session sees the sender emit a clean interval END (no truncated stream); receivers stop seeing new video without error
-**Plans**: 3 plans
+**Plans**: 4 plans
+Plans:
+- [ ] 20-00-PLAN-substrate-revision.md — Replace `m_rawdata_sendq` SPSC with NinjamZap-literal `WDL_PtrList<RawDataQueueItem> + WDL_Mutex m_rawdata_cs` (D-19); pop-one-unlock-Send-relock drain; retire overflow counter / Pattern C guard / RAWDATA_SEND_QUEUE_CAPACITY; add observability atomics (`m_rawdata_sendq_high_water_mark` + `m_rawdata_cs_contention_count` + `m_rawdata_sendq_total_enqueues` + accessors); strip residual `writeLog` calls in `RawDataSendBegin/Write`; write D-09 audit-allowlist entries to `realtime-audio-reviewer.md`; rewrite `tests/test_rawdata_send.cpp` (multi-producer + drain interleave + BEGIN/marker/SPS/frame ordering); mark RESEARCH.md stale sections with `<!-- STALE — DO NOT PLAN -->` markers; fix CONTEXT.md drain-semantics text per R3 MF2
+- [ ] 20-01-PLAN-video-encoder.md — Abstract `VideoEncoder` pure-virtual interface (D-01); `Openh264Encoder` impl owning its own thread + BGRA→YUV420P via `libswscale` (D-02); H.264 Baseline level 3.1 + `RC_BITRATE_MODE` (D-05/D-06); bitrate ladder Low=100/Medium=300/High=800 kbps (D-16); one IDR per interval via `eForceIntraFrame` triggered by `std::atomic<uint64_t> m_audio_interval_seq` change (D-15); drop-oldest backpressure + `m_encoder_input_drops` counter (D-07); reconfigure = tear-down + rebuild + republish SPS/PPS (D-04); encoder lifecycle starts at broadcast-on (D-13)
+- [ ] 20-02-PLAN-video-state-machine.md — `NJClient` video state machine: `on_new_interval` END/BEGIN/marker/SPS-PPS sequence under whole-block `m_video_cs` (D-08); `QueueVideoFrame` acquires `m_video_cs` to read `m_video_active`/`m_video_guid`/`m_video_interval_open` (D-11); `SetVideoSPSPPS` under `m_video_spspps_cs` (D-03); per-channel atomic seqlock on `Local_Channel::m_curwritefile.guid` for the D-20 marker read (R3 MF1 — deterministic, not deferred to TSan); cold-start SPS/PPS handled via NinjamZap-literal `if size > 0` gate, marker-only first interval accepted (R3 MF3 option (b)); 4-byte BE length prefix wrapping in `QueueVideoFrame`; introduce `m_sync_interval_cnt` counter
+- [ ] 20-03-PLAN-processor-wiring-and-uat.md — `JamWideJuceProcessor` owns the `VideoEncoder` (constructed on camera-open, encoder thread starts on broadcast-on); `ConnectionBar` Broadcast toggle; `NinjamRunThread` connect-up calls BOTH `SetLocalChannelInfo(1, "video", ..., flags=0x10)` AND `SetVideoChannel(1, H264)` + `NotifyServerOfChannelChange` unconditionally per D-18; UAT harness `tests/uat/phase-20-broadcast-uat.sh` for 5-min 2-peer broadcast at each preset on `video.ninjamzap.com:2049`; high-water < 32 items + contention rate < 1% of total enqueues + drops == 0 acceptance thresholds (R3 MF4); audio-thread budget measurement; TSan dual-scope verification on the broadcast happy path
+
+**Wave structure:**
+- Wave 0: 20-00 (substrate foundation; blocks all downstream)
+- Wave 1: 20-01 *(blocked on Wave 0 completion)*
+- Wave 2: 20-02 *(blocked on Wave 1 completion)*
+- Wave 3: 20-03 *(blocked on Wave 2 completion; `autonomous: false` — Task 4 is the 5-min populated-server UAT checkpoint)*
+
+**Cross-cutting constraints (must_haves.truths shared across plans):**
+- NinjamZap-literal substrate (D-19): `WDL_PtrList + WDL_Mutex m_rawdata_cs`, pop-one-unlock-Send-relock drain
+- Whole-block `m_video_cs` (D-08): audio thread holds across END/BEGIN/marker/SPS-PPS in `on_new_interval`; encoder thread waits on same mutex
+- Expanded Phase 15.1 audit-allowlist envelope (D-09): mutex acquisitions + RNG + heap-alloc/Resize + memcpy + canonical Local_Channel read; no `writeLog` on audio-thread video path
+- Phase 15.1-06 HIGH-2 carve-out (D-20): single-field-single-site `m_curwritefile.guid` read on audio thread, deterministic via per-channel seqlock per R3 MF1
+- TSan dual-scope verification (Phase 15.1 D-07): broadcast happy path must be TSan-clean
 
 ### Phase 21: H.264 Decoder & Receive Pipeline
 **Goal**: Users see remote peers' video decoded to a per-user `juce::Image` and synchronized to audio at interval boundaries via the GUID-pairing decision tree, fixing the "video one interval early" bug at the protocol level

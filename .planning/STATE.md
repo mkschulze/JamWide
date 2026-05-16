@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Native Video
 status: executing
-stopped_at: Phase 19 planned, reviewed, re-planned, and re-verified — `/gsd-execute-phase 19` is the next move
-last_updated: "2026-05-16T00:41:13.454Z"
-last_activity: 2026-05-16 -- Phase 19 execution started
+stopped_at: Phase 20 CONTEXT.md + RESEARCH.md revised post-codex (substrate revision locked, ready for re-review or plan)
+last_updated: "2026-05-16T18:36:43.389Z"
+last_activity: 2026-05-16 -- Phase 20 planning complete
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 0
-  percent: 0
+  completed_plans: 3
+  percent: 17
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-05)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Phase 19 — camera-capture-permission-ux
+**Current focus:** Phase 19 — camera-capture-permission-ux (machine-side UAT complete, closeout pending)
 
 ## Current Position
 
-Phase: 19 (camera-capture-permission-ux) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 19
-Last activity: 2026-05-16 -- Phase 19 execution started
+Phase: 19 (camera-capture-permission-ux) — UAT MACHINE-SIDE COMPLETE
+Plan: 3 of 3 — all done
+Status: Ready to execute
+Last activity: 2026-05-16 -- Phase 20 planning complete
 Milestone scope (v1.3 = macOS + Windows testable beta on upstream ninjamzap-server, `video.ninjamzap.com:2049` documented as the recommended public instance — JamWide's existing NINJAM server browser UI is untouched):
 
 - Phase 19 — Camera Capture & Permission UX (3 plans) — CAM-01, CAM-02, CAM-03, PKG-04 (entitlements). Cross-platform via JUCE `juce_CameraDevice_{mac,windows}.h`; REAPER fallback is macOS-only (SPARTA #82).
@@ -164,14 +164,62 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-05-16T02:30:00.000Z
-Stopped at: Phase 19 planned, reviewed, re-planned, and re-verified — `/gsd-execute-phase 19` is the next move
-Resume files:
+Last session: 2026-05-16T16:59:16.757Z
+Stopped at: Phase 20 CONTEXT.md + RESEARCH.md revised post-codex (substrate revision locked, ready for re-review or plan)
+Most recent commit on working branch: 4e44a02 (wip: phase-19-uat paused at machine-side complete)
 
-  - `.planning/phases/19-camera-capture-permission-ux/19-01-PLAN-capture-pipeline.md` (Wave 1, 5 tasks)
-  - `.planning/phases/19-camera-capture-permission-ux/19-02-PLAN-ui-and-persistence.md` (Wave 2, 3 tasks)
-  - `.planning/phases/19-camera-capture-permission-ux/19-03-PLAN-fallback-and-verification.md` (Wave 3, 3 tasks — serial after 19-02)
+### Phase 19 UAT — actual outcome (machine-side, macOS x86_64)
+
+Session 2026-05-16: ran `/gsd-verify-work 19` (11 UAT cells) with inline fixes for surfaced bugs.
+
+Build numbers: 318 → 319 → 320 → 321.
+Commits made this session: 5250ff1, fb98ce0, 9679e7b, 76f509b (and wip 4e44a02).
+
+| Cell | Status | Notes |
+|------|--------|-------|
+| 1 — Standalone happy path (Intel) | PASS | Surfaced connection-bar overlap → fixed in 5250ff1 (removed legacy Video button, bumped kBaseWidth 1030→1200) |
+| 2 — Logic Pro AU happy path | BLOCKED | Logic Pro not installed; user observation that Bitwig works on same code path |
+| 3 — REAPER VST3 plugin fallback | PASS | CameraStatusDialog appears with REAPER bundle context |
+| 4 — Apple Silicon Standalone | BLOCKED | x86_64 dev machine; defer to Phase 23 universal lane |
+| 5 — Mid-session revoke watchdog | BLOCKED_SPEC_GAP | macOS Sonoma+ defers TCC revoke to next launch — System Settings toggle CANNOT produce mid-session frame stall. FrameStallWatchdog code is correct (unit-tested via test_camera_frame_stall.cpp); only the integration trigger spec is wrong. Needs rewrite against USB unplug, scripted AVCaptureSession invalidation, or rolled into Cell 10. |
+| 6 — Notarization stapler validate | BLOCKED | Needs Developer-ID-signed + notarized + stapled build; deferred to Phase 23 packaging lane |
+| 7 — Windows standalone happy path | BLOCKED | No Windows machine in session; defer to Phase 23-03 |
+| 8 — Windows privacy block | BLOCKED | Same as Cell 7 |
+| 9 — VDO.Ninja coexistence toast (D-27) | SKIPPED / N-A | Toast condition unreachable after Video button removal in 5250ff1. Recommend retiring D-27 from v1.3 acceptance criteria + removing coexistence-toast code with next VideoCompanion cleanup. |
+| 10 — Recheck permission still-denied | PASS (after fix) | Surfaced D-12 silent-no-op gap (D-14 dialog cache suppression suppressed re-show) → fixed in 9679e7b: editor's RecheckPermission handler now calls cameraStatusDialog_.reset() before cam->recheckPermission() |
+| 11 — License flow (juce_video AGPL gate) | PASS | Risk C confirmed properly gated |
+
+Net: 4 PASS, 1 SKIPPED (Cell 9), 6 BLOCKED (Cells 2/4/6/7/8 environment, Cell 5 spec gap), 0 ISSUES.
+
+### Decisions captured this session (carry forward — STATE-of-record after HANDOFF.json deletion)
+
+- [Phase 19 UAT]: Removed legacy VDO.Ninja Video button from ConnectionBar (commit 5250ff1). Connection bar's right cluster was overlapping the left cluster at default 1030 px width. With Phase 19 Camera as sole video entry point, the legacy affordance is redundant. kBaseWidth bumped 1030 → 1200 to fit post-removal layout (left ~700 + right ~458 + 130 'Recheck permission' label needs ~1175; 1200 gives ~85 px breathing room).
+- [Phase 19 UAT]: Cell 9 (D-27 VDO.Ninja coexistence toast) marked SKIPPED/N-A. Coexistence toast at JamWideJuceEditor.cpp:193 required activating VDO.Ninja via the Video button → VideoPrivacyDialog → launchCompanion(). With that UI path removed, videoCompanion->isActive() cannot become true via user interaction. Recommend retiring D-27 from v1.3 acceptance criteria.
+- [Phase 19 UAT]: Cell 5 spec is incompatible with macOS Sonoma+ TCC behavior — needs rewrite. macOS does not enforce TCC revoke mid-session; shows 'Quit & Reopen / Later' modal and defers to next launch. FrameStallWatchdog code is fine. Alternative triggers to consider: USB camera physical unplug, scripted AVCaptureSession invalidation, or accept Cell 5 is exercised only by unit tests + Cell 10's TCC-revoke-on-relaunch path.
+- [Phase 19 UAT]: Patched D-12 Recheck-permission silent-no-op gap (commit 9679e7b). When user clicked Recheck while still denied, state machine emitted same cause and D-14 dialog cache silently dismissed the re-show. Fix: editor's Action::RecheckPermission handler now calls cameraStatusDialog_.reset() before cam->recheckPermission(). On still-denied path the dialog re-displays; on now-authorized path no fallback is emitted and the camera opens normally.
+- [v1.4+ deferred idea]: Browser-fed JTBv capture path. User raised: 'streaming the video via web again but using this new method with GUID matching?' Phase 14.3's RawDataSendWrite(guid[16], ..., JTBv, ...) is producer-agnostic — a browser companion using WebCodecs/getUserMedia could feed frames into the same pipeline. Unentitled hosts (REAPER) could get camera via the browser. Strictly v1.4+ (v1.3 PASS 3 lock: no VDO.Ninja teardown, no new web stack). Saved to user memory as `project_web_capture_fallback.md`.
+
+### Advisory constraints surfaced this session (carry forward)
+
+- **macOS Sonoma TCC revoke is deferred-to-restart.** Toggling camera permission OFF for a running app on Sonoma+ shows a 'Quit & Reopen / Later' modal and defers actual enforcement until the next app launch. Frames continue flowing through the open AVCaptureSession. Any UAT/test that assumes a System Settings toggle will produce mid-session frame stop is wrong. Use USB unplug, scripted session invalidation, or restart-path testing instead. Discovered via Phase 19 UAT Cell 5.
+- **scripts/build.sh default target includes failing test_encryption.** Running `./scripts/build.sh` with no args enumerates all targets including test_encryption.cpp (pre-existing compile failure — encrypt_payload_with_iv undeclared identifier, documented in May-15 HANDOFF as deferred). Workaround: pass JUCE plugin targets explicitly — `./scripts/build.sh JamWideJuce_Standalone JamWideJuce_AU JamWideJuce_VST3 JamWideJuce_CLAP`. ninja's per-target dependency graph correctly skips test_encryption since it's not a dep of those targets. Discovered via Phase 19 UAT first build attempt.
+- **Cell 5 UAT spec is documentation gap, not code gap.** FrameStallWatchdog at juce/video/native/JamWideCameraDevice.cpp:83-99 is correctly implemented and unit-tested via tests/test_camera_frame_stall.cpp. The Phase 19 integration UAT Cell 5 description is what's wrong. When rewriting, validate against tests/test_camera_frame_stall.cpp's trigger model, not the System Settings toggle assumption.
+
+### Human actions still pending (all non-blocking)
+
+1. **Decide Phase 19 closeout direction** — close-on-this-platform vs hold-for-Phase-23. Machine-side UAT complete on macOS-x86_64. 6 cells blocked on other environments. Phase 23 packaging will unlock Cell 6; Phase 23-03 CI lane will unlock Cells 4/7/8. Phase 19 is functionally validated for the Intel-Mac happy path + plugin fallback + privacy sequence + license. Closure question is purely milestone bookkeeping.
+2. **Rewrite UAT Cell 5** against a trigger macOS actually supports.
+3. **Decide `.planning/config.json`** — pre-existing dirty file (newline-EOF fix per May-15 HANDOFF, orthogonal to Phase 19).
+4. **(orthogonal) Decide merge timing** for quick/260515-0pc-jamtaba-video-port. Branch is 95 commits ahead of origin/main. Phase 14.3 substrate + Phase 19 native camera both live here. Milestone-merge bookkeeping.
+5. **(orthogonal) Address pre-existing Phase 15.1 awaiting-UAT-decision.** Phase 15.1 stabilization at build 290 has been awaiting decision since pre-Phase-14.3. Three 15.1-07a fixes (b8ca083 / 7e69e1a / 00dfee7) need either real-DAW-evidence close OR formal bundled UAT (TSan Standalone rebuild + lldb counter readout + Instruments perf budget). Independent of Phase 19.
+
+### Phase 19 planning artifacts (kept for cross-phase context)
+
+  - `.planning/phases/19-camera-capture-permission-ux/19-01-PLAN-capture-pipeline.md` (Wave 1, 5 tasks) — DONE
+  - `.planning/phases/19-camera-capture-permission-ux/19-02-PLAN-ui-and-persistence.md` (Wave 2, 3 tasks) — DONE
+  - `.planning/phases/19-camera-capture-permission-ux/19-03-PLAN-fallback-and-verification.md` (Wave 3, 3 tasks — serial after 19-02) — DONE
   - `.planning/phases/19-camera-capture-permission-ux/19-REVIEWS.md` (codex review, all findings addressed in revision 2)
 
-Phase 19 planning summary: research (47d8317) → validation (76d656a) → 3 plans (227bac0) → revision 1 [plan-checker blockers] (0a88d42) → STATE.md (aedb46d) → codex review NEEDS_REVISION (3fb83b0) → revision 2 [reviews mode] (74c9c01) → plan-checker re-verification PASSED. 30 locked decisions, 7 STRIDE threats (5 original + T-19-SC license-supply-chain + T-19-PT preview-tile UAF), 10 Wave 0 gaps (8 original + test_frame_distributor_lifetime + test_camera_frame_stall), 5 ROADMAP success criteria all covered. Surprise risks closed in research: Risk E (JUCE_USE_CAMERA on plugin target — first task of 19-01) and Risk F (TCC reads host bundle ID — cause-aware fallback dialog). Risk C (JUCE GPLv2+ upgrade clause for juce_video AGPLv3 compatibility) gated as 19-01 Task 1 Step 0 preflight (moved from 19-03 per MEDIUM-4). Key architectural patterns introduced in revision 2: Subscription RAII for FrameDistributor (HIGH-2), atomic generation tokens for 5 async-callback sites (HIGH-3), juce::AsyncUpdater for preview-tile repaints (HIGH-4), privacy-modal AFTER auth grant (HIGH-5), continuous frame-stall watchdog for mid-session revoke detection (HIGH-6), Action-enum + actionFor() helper for JUCE button-index mapping (HIGH-7), pure-C++ CameraStateMachine class (MEDIUM-3).
+Phase 19 planning summary: research (47d8317) → validation (76d656a) → 3 plans (227bac0) → revision 1 [plan-checker blockers] (0a88d42) → STATE.md (aedb46d) → codex review NEEDS_REVISION (3fb83b0) → revision 2 [reviews mode] (74c9c01) → plan-checker re-verification PASSED → execution → security 7/7 STRIDE closed → validation 7/7 automated + 10 manual UAT cells classified → UAT machine-side 2026-05-16 (4 pass, 1 skip, 6 blocked, 0 issues). 30 locked decisions, 7 STRIDE threats (5 original + T-19-SC license-supply-chain + T-19-PT preview-tile UAF), 10 Wave 0 gaps (8 original + test_frame_distributor_lifetime + test_camera_frame_stall), 5 ROADMAP success criteria all covered. Key architectural patterns introduced in revision 2: Subscription RAII for FrameDistributor (HIGH-2), atomic generation tokens for 5 async-callback sites (HIGH-3), juce::AsyncUpdater for preview-tile repaints (HIGH-4), privacy-modal AFTER auth grant (HIGH-5), continuous frame-stall watchdog for mid-session revoke detection (HIGH-6), Action-enum + actionFor() helper for JUCE button-index mapping (HIGH-7), pure-C++ CameraStateMachine class (MEDIUM-3).
+
 Prior session (Phase 15.1-07b — keep for cross-phase context): 15.1-07b COMPLETE (commits dbdaf98, edb2769) — broadcast restored end-to-end. All 7 audio-thread BufferQueue::AddBlock sites replaced with SPSC try_push. Resume file (v1.2): `.planning/phases/15.1-rt-safety-hardening/15.1-07b-SUMMARY.md`.

@@ -49,7 +49,7 @@ created: 2026-05-16
 
 ## Wave 0 Requirements
 
-- [ ] `tests/test_rawdata_send_mutex.cpp` — multi-producer + drain interleave + BEGIN/marker/SPS/frame ordering (replaces SPSC overflow-counter tests; per D-19)
+- [ ] `tests/test_rawdata_send.cpp` (rewritten in-place by Plan 20-00 Task 2) — multi-producer + drain interleave + BEGIN/marker/SPS/frame ordering (replaces SPSC overflow-counter tests; per D-19)
 - [ ] `tests/test_video_encoder.cpp` — openh264 encoder bring-up + SPS/PPS publish + IDR-sync counter (per D-15)
 - [ ] `tests/test_video_state_machine.cpp` — `on_new_interval` END/BEGIN/marker/SPS-PPS sequence under simulated whole-block `m_video_cs` (per D-08)
 - [ ] `tests/uat/phase-20-broadcast-uat.sh` — UAT harness scaffold for the 5-minute 2-peer broadcast acceptance gate

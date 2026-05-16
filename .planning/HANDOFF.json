@@ -1,103 +1,136 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-15T18:29:44.316Z",
-  "phase": "14.3",
-  "phase_name": "Native Video Foundation",
-  "phase_dir": ".planning/phases/14.3-native-video-foundation",
-  "plan": null,
+  "timestamp": "2026-05-16T14:23:36.951Z",
+  "phase": "19",
+  "phase_name": "Camera Capture & Permission UX",
+  "phase_dir": ".planning/phases/19-camera-capture-permission-ux",
+  "plan": 3,
   "task": null,
-  "total_tasks": 10,
-  "status": "complete_all_gates_green",
+  "total_tasks": 3,
+  "status": "uat_partial_machine_complete",
   "completed_tasks": [
-    {"id": "wave1-14.3-01", "name": "Cross-platform LGPL ffmpeg + openh264 vendoring (Tasks 1-3; Task 4 deferred to v1.3)", "status": "done", "commits": ["cbe2e08", "489b03c", "6bbbe30", "d8147c9", "eded17e", "dd9f6d1"]},
-    {"id": "wave2-14.3-02", "name": "RawDataSend API + SPSC + is_video_fourcc (8/8 ctest GREEN)", "status": "done", "commits": ["0827b18", "90110fb", "2a41bc6", "b87f040", "11754e6", "ad84953"]},
-    {"id": "wave3-14.3-03", "name": "Receive-path dispatch INSERT at njclient.cpp:2148 (8/8 ctest GREEN)", "status": "done", "commits": ["ea76f46", "3136971", "6a43f09", "c60fdff", "f523fba", "0bc8f02"]},
-    {"id": "code-review-pass1", "name": "gsd-code-review 14.3 — found 2 Critical + 3 Warning + 3 Info", "status": "done", "commit": "80bd6a7"},
-    {"id": "verification", "name": "gsd-verifier 14.3 — 8/8 SCs PASS (SC-1 accepted-partial deferral)", "status": "done", "commits": ["db51e2c", "18f124d"]},
-    {"id": "security-audit-pass1", "name": "gsd-security-auditor 14.3 — 18/20 closed; 2 OPEN (T-14.3-01 SHA-256, T-14.3-08 OOM)", "status": "done", "commit": "a4158d5"},
-    {"id": "security-fixes", "name": "Fix T-14.3-01 (SHA-256 verification) + T-14.3-08 (ResizeOK + NULL guard)", "status": "done", "commits": ["0ec8dcd", "8e594f8"]},
-    {"id": "security-audit-pass2", "name": "Re-audit — SECURED (20/20 threats closed)", "status": "done", "commit": "7f89c3d"},
-    {"id": "code-review-fix-iter1", "name": "gsd-code-fixer (critical_warning) — 4 fixed: CR-02, WR-01, WR-02, WR-03; 1 skipped (CR-01 already fixed by 8e594f8)", "status": "done", "commits": ["adae28e", "8fffe27", "c33543d", "c9214c3", "125cfef"]},
-    {"id": "code-review-fix-iter2", "name": "gsd-code-fixer --all — 2 more fixed: IN-02, IN-03; 1 subsumed (IN-01 by CR-02); ALL_FIXED status", "status": "done", "commits": ["c8dc01e", "519482e", "e2269b8"]}
+    {"id": "19-01", "name": "Capture pipeline (CameraDevice + FrameDistributor + auth)", "status": "done"},
+    {"id": "19-02", "name": "UI and persistence (Camera button + state machine + privacy modal)", "status": "done"},
+    {"id": "19-03", "name": "Fallback and verification (CameraStatusDialog + entitlement verifier + UAT)", "status": "done"},
+    {"id": "review", "name": "Cross-AI plan review (codex) + post-exec code review", "status": "done"},
+    {"id": "security", "name": "STRIDE threat verification — 7/7 closed", "status": "done"},
+    {"id": "validation", "name": "Nyquist validation strategy — 7/7 automated + 10 manual UAT cells classified", "status": "done"},
+    {"id": "uat-session-2026-05-16", "name": "Phase 19 UAT machine-side run — 4 passed, 1 skipped, 6 blocked, 1 gap (resolved)", "status": "done", "commits": ["5250ff1", "fb98ce0", "9679e7b", "76f509b"]}
   ],
   "remaining_tasks": [
-    {"id": "decide-merge-to-milestone", "name": "Decide when to merge quick/260515-0pc-jamtaba-video-port to the v1.1 milestone integration branch (manual git operation; not blocking)", "status": "blocked_on_user_decision"},
-    {"id": "decide-15.1-uat-mode", "name": "Pre-existing pending decision (NOT this session's work): close Phase 15.1 on real-DAW evidence + mechanical signals, OR rebuild build 287 TSan Standalone with the three 15.1-07a stabilization fixes (b8ca083 / 7e69e1a / 00dfee7) baked in and run formal bundled UAT", "status": "blocked_on_user_decision"}
+    {"id": "uat-cell-2", "name": "UAT Cell 2 — Logic Pro AU happy path", "status": "blocked", "blocker": "Logic Pro not installed on this machine; defer to a machine with Logic Pro 10.7+", "cross_evidence": "Bitwig works per user observation — same code path"},
+    {"id": "uat-cell-4", "name": "UAT Cell 4 — Apple Silicon Standalone", "status": "blocked", "blocker": "x86_64 dev machine; defer to Phase 23 CI universal lane"},
+    {"id": "uat-cell-5", "name": "UAT Cell 5 — Mid-session revoke watchdog", "status": "blocked_spec_gap", "blocker": "macOS Sonoma+ defers TCC revoke to next launch; System Settings toggle does NOT produce mid-session frame stall. FrameStallWatchdog code is correct (gates on FRAME_STALL_THRESHOLD_MS; unit-tested via test_camera_frame_stall.cpp). Cell 5 description needs rewrite against a trigger macOS actually supports (USB unplug, scripted AVCaptureSession invalidation)."},
+    {"id": "uat-cell-6", "name": "UAT Cell 6 — Notarization stapler validate", "status": "blocked", "blocker": "Needs Developer-ID-signed + notarized + stapled build; deferred to Phase 23 packaging lane"},
+    {"id": "uat-cells-7-8", "name": "UAT Cells 7/8 — Windows standalone + privacy block", "status": "blocked", "blocker": "No Windows machine in session; defer to Phase 23-03 Windows CI lane or a separate Windows UAT pass"},
+    {"id": "phase-19-closeout-decision", "name": "Decide Phase 19 close-on-this-platform vs hold for Phase 23 packaging", "status": "blocked_on_user_decision"},
+    {"id": "stale-state-md", "name": "Refresh .planning/STATE.md to reflect Phase 19 actual progress (uncommitted, pre-existing)", "status": "pending_cleanup"},
+    {"id": "stale-config-json", "name": "Decide on .planning/config.json (uncommitted, newline-EOF fix per old HANDOFF, pre-existing)", "status": "pending_cleanup"}
   ],
   "blockers": [],
   "human_actions_pending": [
     {
-      "action": "Decide when to merge quick/260515-0pc-jamtaba-video-port to v1.1 milestone integration branch",
-      "context": "Phase 14.3 is fully closed: 8/8 SCs verified, 20/20 threats secured, all 8 code-review findings addressed. The working branch is on `quick/260515-0pc-jamtaba-video-port` (intentional per commit 098a536 — aligned with v1.1 milestone scope). Merging is a manual git operation; can land alongside or after the 15.1 UAT closure depending on milestone strategy.",
+      "action": "Decide Phase 19 close-on-this-platform vs hold-for-Phase-23",
+      "context": "Machine-side UAT is complete on macOS-x86_64. 6 cells blocked on other environments (Logic Pro install, Apple Silicon hardware, notarized build, Windows). Phase 23 packaging will unlock Cell 6; Phase 23-03 CI lane will unlock Cell 7-8 (and Cell 4 on the universal lane). Phase 19 itself is functionally validated for the Intel-Mac happy path + plugin fallback + privacy sequence + license. The closure question is purely about milestone bookkeeping.",
+      "blocking": false
+    },
+    {
+      "action": "Rewrite UAT Cell 5 against a trigger macOS actually supports",
+      "context": "Current Cell 5 spec ('toggle JamWide OFF in System Settings; preview stops within 5s; CameraStatusDialog appears with TCCDenied cause') is incompatible with macOS Sonoma+ TCC behavior. The OS shows a 'Quit & Reopen / Later' modal and defers enforcement until next launch — frames keep flowing through the open AVCaptureSession. The FrameStallWatchdog code is correctly implemented and unit-tested via tests/test_camera_frame_stall.cpp; only the integration UAT trigger is wrong. Suggested alternative triggers: USB camera physical unplug, scripted AVCaptureSession invalidation, or accept that Cell 5 is exercised only by unit tests + Cell 10's TCC-revoke-on-relaunch path.",
+      "blocking": false
+    },
+    {
+      "action": "Refresh .planning/STATE.md to reflect Phase 19 actual progress",
+      "context": "STATE.md frontmatter says 'Phase 19 execution started' but Phase 19 has been fully executed, reviewed, secured, validated, and UAT'd this session. The 'last activity' and progress fields are stale.",
+      "blocking": false
+    },
+    {
+      "action": "(orthogonal) Decide merge timing for quick/260515-0pc-jamtaba-video-port branch",
+      "context": "Working branch is 95 commits ahead of origin/main. Phase 14.3 substrate + Phase 19 native camera both live here. Carryover from the May-15 HANDOFF — not blocking, milestone-merge bookkeeping.",
       "blocking": false
     },
     {
       "action": "(orthogonal) Address pre-existing 15.1 awaiting-UAT-decision",
-      "context": "Phase 15.1 stabilization at build 290 has been awaiting a decision since before this session. The three 15.1-07a fixes (b8ca083 / 7e69e1a / 00dfee7) need either a real-DAW-evidence close OR a formal bundled UAT (TSan Standalone rebuild + lldb counter readout + Instruments perf budget). Independent of 14.3.",
+      "context": "Phase 15.1 stabilization at build 290 has been awaiting decision since pre-Phase-14.3. Three 15.1-07a fixes (b8ca083 / 7e69e1a / 00dfee7) need either real-DAW-evidence close OR formal bundled UAT (TSan Standalone rebuild + lldb counter readout + Instruments perf budget). Independent of Phase 19.",
       "blocking": false
     }
   ],
   "decisions": [
     {
-      "decision": "Skip CONTEXT.md gate for 14.3 — use SPEC.md + spike substrate as locked contract",
-      "rationale": "14.3 had a SPEC.md (from /gsd-spec-phase, commit 86c4d04) plus rich spike substrate. SPEC.md is the equivalent of a locked CONTEXT.md; re-running /gsd-discuss-phase would have been redundant work.",
-      "phase": "14.3"
+      "decision": "Removed legacy VDO.Ninja Video button entirely from ConnectionBar",
+      "rationale": "Connection bar's right cluster was overlapping the left cluster at default 1030px width (Conn truncation; right-cluster buttons drawing over Connect/Browse). User explicitly requested removing the Video button. With Phase 19 Camera as the sole video entry point, the legacy VDO.Ninja affordance is redundant.",
+      "phase": "19",
+      "commit": "5250ff1"
     },
     {
-      "decision": "Task 4 of 14.3-01 deferred to v1.3 (non-x86_64-mac ffmpeg vendoring)",
-      "rationale": "User-approved at the human-verify checkpoint. Phase 14.3 ships the deterministic substrate (cross-platform script + verify gate + CI wiring); v1.3 produces the binary trees for macos-arm64 / linux-x86_64 / windows-x86_64 when those CI lanes are exercised. SC-1 is accepted-partial; SC-2/3/7/8 verifiable on macos-x86_64 (the platform present).",
-      "phase": "14.3"
+      "decision": "Bumped kBaseWidth 1030 → 1200 to fit the post-Phase-19 connection bar",
+      "rationale": "Math: left cluster ~700 px + right cluster ~458 px after Video removal = 1175 px content needed (with 130 px Camera for 'Recheck permission' label). 1030 was ~145 px short; 1200 gives ~85 px breathing room and matches the VB-Audio Voicemeeter Banana aesthetic preference.",
+      "phase": "19",
+      "commit": "5250ff1"
     },
     {
-      "decision": "Pinned ffmpeg-7.1.2 tarball SHA-256 to ffmpeg.org canonical hash 089bc60fb59d6aecc5d994ff530fd0dcb3ee39aa55867849a2bbc4e555f9c304 (T-14.3-01 closure)",
-      "rationale": "Plan T-14.3-01 mitigation required SHA-256 verification step; executor only implemented HTTPS + git SHA-1 sub-mitigations. Auditor flagged. Computed canonical hash via curl + shasum on 2026-05-15; pinned in EXPECTED_FFMPEG_SHA256 with FFMPEG_TARBALL_SHA256 env-var override; hard-fail abort BEFORE tar extraction.",
-      "phase": "14.3"
+      "decision": "Cell 9 (D-27 VDO.Ninja coexistence toast) marked skipped/N-A",
+      "rationale": "Coexistence toast required activating VDO.Ninja via the Video button → VideoPrivacyDialog → launchCompanion(). With that UI path removed, videoCompanion->isActive() cannot become true via user interaction, so the toast condition at JamWideJuceEditor.cpp:193 is unreachable. Recommend retiring D-27 from v1.3 acceptance criteria and removing the coexistence-toast code with the next VideoCompanion cleanup.",
+      "phase": "19"
     },
     {
-      "decision": "Use ResizeOK + NULL guard for OOM safety in RawDataSendWrite (T-14.3-08 + CR-01 dual closure)",
-      "rationale": "WDL_HeapBuf::Resize returns without updating m_size on alloc failure; subsequent Get() returns NULL and memcpy(NULL) is guaranteed UB. ResizeOK returns NULL on failure; treat OOM as send-drop symmetric with queue-full path. Single 14-line edit closed both the T-14.3-08 security threat AND the CR-01 Critical code-review finding.",
-      "phase": "14.3"
+      "decision": "Cell 5 spec is incompatible with macOS Sonoma+ TCC behavior — needs rewrite",
+      "rationale": "macOS does not enforce TCC revoke mid-session for a running app; the OS shows a 'Quit & Reopen / Later' modal and defers enforcement until the next launch. The Cell 5 trigger (System Settings toggle) cannot produce a frame stall the FrameStallWatchdog would detect. Watchdog code itself is fine (gates on FRAME_STALL_THRESHOLD_MS; unit-tested). Suggested alternative triggers: USB camera physical unplug, scripted AVCaptureSession invalidation.",
+      "phase": "19"
     },
     {
-      "decision": "Split m_rawdata_sendq_overflows into two atomic counters: overflows (try_push failures) + discards (Pattern C disconnect drain) — WR-03 fix",
-      "rationale": "Original implementation bumped the same counter on both true overflow and expected Pattern C discard. This made the post-UAT `GetRawDataSendQueueOverflowCount() == 0` invariant unactionable after any Disconnect/Reconnect cycle. New separate counter `GetRawDataSendQueueDiscardCount()` lets the overflow invariant remain meaningful.",
-      "phase": "14.3"
+      "decision": "Patched D-12 Recheck-permission silent-no-op gap",
+      "rationale": "When the user clicked Recheck while still denied, the state machine emitted the same cause and CameraStatusDialog::show's D-14 duplicate-suppression silently dismissed the re-show, making the button appear broken. Fix: call cameraStatusDialog_.reset() in the editor's Action::RecheckPermission handler before cam->recheckPermission(). On still-denied path the dialog now re-displays (implicit 'still denied, no change' feedback); on now-authorized path no fallback is emitted and the camera opens normally.",
+      "phase": "19",
+      "commit": "9679e7b"
     },
     {
-      "decision": "Manual MINGW case-pattern refinement to add MSYS/CYGWIN coverage",
-      "rationale": "Fixer agent's WR-02 fix corrected the quote ordering for MINGW64_NT only. Manual refinement subsequently extended the case arm to also match MSYS_NT-* and CYGWIN_NT-* hosts with the same x86_64 architecture suffix. Strictly broader than the agent's fix.",
-      "phase": "14.3"
-    },
-    {
-      "decision": "IN-03 ldd 'not found' fix uses explicit `grep -q ' => not found'` rather than reshaping the awk pipeline",
-      "rationale": "The original awk pipeline (`-F'=>' | '{print $1}'`) reduces `'libfoo.so => not found'` to the bare token `'not'`, which the /usr/local|/opt|/home blocklist doesn't match. Adding a dedicated `grep -q' => not found'` check before the blocklist preserves the existing logic and makes the new gate explicit. Lint-trap shape worth documenting.",
-      "phase": "14.3"
+      "decision": "Captured browser-fed JTBv capture path as v1.4+ deferred idea",
+      "rationale": "User raised: 'maybe at some point streaming the video via web again but using this new method with GUID matching?' Phase 14.3's RawDataSendWrite(guid[16], ..., JTBv, ...) is producer-agnostic, so a browser companion using WebCodecs/getUserMedia could feed frames into the same pipeline. Unentitled hosts (REAPER) would get camera via the browser. Strictly v1.4+ — explicitly excluded by v1.3 roadmap PASS 3 lock (no VDO.Ninja teardown, no new web stack). Saved to user memory as [[web-capture-fallback]].",
+      "phase": "19"
     }
   ],
   "uncommitted_files": [
-    ".planning/config.json (newline-EOF fix, orthogonal to 14.3)"
+    ".planning/STATE.md (pre-existing dirty — needs Phase 19 progress refresh)",
+    ".planning/config.json (pre-existing dirty — orthogonal newline-EOF fix per May-15 HANDOFF)"
   ],
-  "next_action": "Resume by deciding milestone-merge timing for quick/260515-0pc-jamtaba-video-port OR addressing the pre-existing 15.1 awaiting-UAT-decision. Phase 14.3 itself needs no further work — every gate is GREEN.",
-  "context_notes": "This session: end-to-end /gsd-execute-phase 14.3 (3 waves with Wave 1 hitting a human-verify checkpoint that resolved as v1.3-deferral), then /gsd-code-review (2 Critical + 3 Warning + 3 Info), then /gsd-secure-phase (20 threats; first audit found 18/20 closed, 2 fixes applied, re-audit secured 20/20), then /gsd-code-review --fix iter 1 (critical_warning: 4 fixed + 1 already-fixed skip), then /gsd-code-review --fix --all iter 2 (IN-02 + IN-03 fixed + 1 subsumed skip). All gates GREEN. 33 commits on quick/260515-0pc-jamtaba-video-port (e5fad2c..e2269b8). The phase is merge-ready.",
+  "next_action": "Refresh .planning/STATE.md to reflect Phase 19 machine-side complete + commit pre-existing pending files, OR /gsd-progress to decide Phase 19 closeout direction (close-on-this-platform vs hold-for-Phase-23). The Cell 5 rewrite + Cell 9 retirement are documentation gaps that can be addressed inline with Phase 19's STATE refresh.",
+  "context_notes": "This session was launched as a /gsd-resume-work that found Phase 19 in 'execution started' state per STATE.md but git log showed Phase 19 had actually been executed, reviewed, secured, and validated since the morning. The session pivoted into /gsd-verify-work for the 11-cell HUMAN-UAT. Cell 1 surfaced a real bug (connection bar overlap due to Video+Camera+rest fighting for 1030 px), which led to the Video button removal + kBaseWidth bump. Subsequent cells either passed (3, 10, 11), were blocked on environment (Logic Pro, Apple Silicon, Windows, notarized build), revealed a spec gap (Cell 5: macOS Sonoma TCC revoke model), or became unreachable after the Video button removal (Cell 9). One UX gap was filed and fixed inline (Recheck silent no-op via D-14 suppression). User raised a v1.4+ idea about reviving browser-based capture via the new GUID-matching wire format — saved to memory. 4 commits landed cleanly on quick/260515-0pc-jamtaba-video-port (95 ahead of origin/main). 2 pre-existing dirty files (.planning/STATE.md, .planning/config.json) remain uncommitted — those predate this session and the user has not yet decided on disposition.",
   "branch": "quick/260515-0pc-jamtaba-video-port",
-  "head_commit": "e2269b8",
-  "milestone": "v1.1 (with v1.2 stabilization parallel)",
+  "head_commit": "76f509b",
+  "milestone": "v1.3 Native Video (Phase 19 of 24; 16 plans total, 3 done)",
   "session_summary": {
-    "session_id": "2026-05-15 evening — Phase 14.3 execution + verification + security + review-fix",
-    "primary_work": "/gsd-execute-phase 14.3 (3 waves)",
-    "secondary_work": "/gsd-code-review + /gsd-secure-phase + /gsd-code-review --fix (iter 1 + iter 2 --all)",
-    "agents_spawned": [
-      {"agent": "gsd-executor (14.3-01)", "model": "opus", "outcome": "Tasks 1-3 done; Task 4 deferred to v1.3 per checkpoint"},
-      {"agent": "gsd-executor (14.3-02)", "model": "opus", "outcome": "All tasks done; 8/8 ctest GREEN"},
-      {"agent": "gsd-executor (14.3-03)", "model": "opus", "outcome": "All tasks done; 8/8 ctest GREEN; Landmine L4 INSERT preserved"},
-      {"agent": "gsd-code-reviewer", "model": "sonnet", "outcome": "2 Critical + 3 Warning + 3 Info"},
-      {"agent": "gsd-verifier", "model": "sonnet", "outcome": "PASSED (8/8 SCs)"},
-      {"agent": "gsd-security-auditor (pass 1)", "model": "opus", "outcome": "18/20 closed; 2 OPEN"},
-      {"agent": "gsd-security-auditor (pass 2)", "model": "opus", "outcome": "SECURED (20/20)"},
-      {"agent": "gsd-code-fixer (iter 1)", "model": "sonnet", "outcome": "4 fixed (CR-02 + WR-01/02/03); 1 skip"},
-      {"agent": "gsd-code-fixer (iter 2 --all)", "model": "sonnet", "outcome": "2 fixed (IN-02 + IN-03); 1 subsumed"}
+    "session_id": "2026-05-16 — Phase 19 UAT + connection bar fix + Recheck UX patch",
+    "primary_work": "/gsd-verify-work 19 (11 UAT cells) with embedded /gsd-fast-style code fixes for surfaced bugs",
+    "agents_spawned": [],
+    "commits_made_count": 4,
+    "commits_made": [
+      {"sha": "5250ff1", "subject": "fix(ui): remove legacy Video button and widen connection bar (Phase 19 UAT Cell 1)"},
+      {"sha": "fb98ce0", "subject": "test(19): Phase 19 UAT session — 4 passed, 1 skipped, 6 blocked, 1 gap"},
+      {"sha": "9679e7b", "subject": "fix(camera): reset dialog cache on Recheck so still-denied state re-shows the dialog (Phase 19 UAT gap)"},
+      {"sha": "76f509b", "subject": "docs(19): mark Recheck-permission UAT gap resolved by 9679e7b"}
     ],
-    "commits_made_count": 33,
-    "post_merge_ctest": "15/17 GREEN (2 pre-existing failures: test_encryption compile, test_flac_codec runtime — both documented in deferred-items.md, orthogonal to 14.3)"
-  }
+    "build_numbers": [318, 319, 320, 321],
+    "uat_summary": {"total": 11, "passed": 4, "skipped": 1, "blocked": 6, "issues": 0}
+  },
+  "advisory_constraints": [
+    {
+      "name": "macOS Sonoma TCC revoke is deferred-to-restart",
+      "severity": "advisory",
+      "description": "When toggling camera permission OFF for a running app, macOS Sonoma+ shows a 'Quit & Reopen / Later' modal and defers actual enforcement until the next app launch. Frames continue flowing through the open AVCaptureSession. Any UAT/test that assumes a System Settings toggle will produce a mid-session frame stop is wrong. Use USB unplug, scripted session invalidation, or restart-path testing instead.",
+      "discovered_via": "Phase 19 UAT Cell 5 attempt"
+    },
+    {
+      "name": "scripts/build.sh default target includes failing test_encryption",
+      "severity": "advisory",
+      "description": "Running `./scripts/build.sh` with no args enumerates all targets in build-juce/, which includes test_encryption.cpp — a pre-existing compile failure (encrypt_payload_with_iv undeclared identifier, documented in HANDOFF.json from May 15 as deferred). The build appears to 'fail' but JUCE plugin targets may not even start linking. Workaround: pass JUCE plugin targets explicitly — `./scripts/build.sh JamWideJuce_Standalone JamWideJuce_AU JamWideJuce_VST3 JamWideJuce_CLAP`. ninja's per-target dependency graph correctly skips test_encryption since it's not a dep of those targets.",
+      "discovered_via": "Phase 19 UAT first build attempt"
+    },
+    {
+      "name": "Cell 5 UAT spec is documentation gap, not code gap",
+      "severity": "advisory",
+      "description": "FrameStallWatchdog at juce/video/native/JamWideCameraDevice.cpp:83-99 is correctly implemented and unit-tested via tests/test_camera_frame_stall.cpp. The Phase 19 integration UAT Cell 5 description is what's wrong (incompatible with macOS Sonoma TCC behavior). When rewriting, validate against tests/test_camera_frame_stall.cpp's trigger model, not the System Settings toggle assumption.",
+      "discovered_via": "Phase 19 UAT Cell 5 attempt"
+    }
+  ]
 }

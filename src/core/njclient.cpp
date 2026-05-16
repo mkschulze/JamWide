@@ -1222,14 +1222,14 @@ NJClient::~NJClient()
   // and reaps). Empty(true) deletes every tracked entry.
   m_rawdata_downloads.Empty(true);
 
-  // 14.3-02: drain any residual queued RawData send items so heap-buf
-  // payloads are freed on shutdown. Matches the Pattern C discard branch
-  // in NJClient::Run's drain block but runs without bumping the overflow
-  // counter (destructor-time tear-down is not an overflow event — by the
-  // time we reach the dtor, the producers have stopped).
-  m_rawdata_sendq.drain([](jamwide::RawDataItem&& item) {
-    delete item.payload;
-  });
+  // Phase 20-00 (D-19): free residual queued RawData send items so the
+  // inner WDL_HeapBufs are released on shutdown. NinjamZap-literal:
+  // WDL_PtrList::Empty(true) deletes every owned pointer; ~RawDataQueueItem
+  // (compiler-generated, calls ~WDL_HeapBuf on the by-value `data` member)
+  // frees the payload buffer in turn. Producers have already stopped by
+  // the time we reach the dtor — no mutex acquisition needed for the
+  // sweep itself.
+  m_rawdata_sendq.Empty(true);
 
   for (x = 0; x < m_locchannels.GetSize(); x ++) delete m_locchannels.Get(x);
   m_locchannels.Empty();
@@ -2798,94 +2798,103 @@ int NJClient::Run() // nonzero if sleep ok
 #endif
 
   // -------------------------------------------------------------------------
-  // 14.3-02: drain the RawData send queue.
+  // Phase 20-00 (D-19): drain the RawData send queue, NinjamZap-literal
+  // pop-one-unlock-Send-relock matching `ninjamzap-core/njclient.cpp:1984-2040`
+  // verbatim.
   //
   // Single-thread invariant locked: this drain block lives lexically inside
   // NJClient::Run, the same thread context that calls m_netcon->Send for the
-  // audio-encoder loop at lines 2502 / 2549. The producer side (any thread
-  // calling RawDataSendBegin/Write) enqueues to the SPSC and returns. Direct
-  // m_netcon->Send from a non-run-thread producer is forbidden — Landmine L2
-  // (Net_Connection::Send is NOT thread-safe).
+  // audio-encoder loop above. The producer side (any thread calling
+  // RawDataSendBegin/Write) takes m_rawdata_cs, Adds, releases. Direct
+  // m_netcon->Send from a non-run-thread producer is forbidden — Landmine
+  // L2 (Net_Connection::Send is NOT thread-safe).
   //
-  // Pattern C discard guard: if m_netcon has been torn down (Disconnect /
-  // pre-Connect), drain-and-discard every queued item, deleting its
-  // WDL_HeapBuf payload (if any) and bumping the overflow counter per
-  // discarded item. Mirrors drainBroadcastBlocks at njclient.cpp:3806-3815.
-  // Without this guard the producer would fill the ring forever and payload
-  // heap-bufs would leak.
+  // No `if (!m_netcon)` Pattern-C discard branch — NinjamZap-literal does
+  // not have it. When m_netcon is null we simply skip the drain; items
+  // accumulate in the unbounded WDL_PtrList until either (a) the next Run
+  // tick finds m_netcon non-null (reconnect) and drains them, or (b) the
+  // NJClient destructor calls m_rawdata_sendq.Empty(true) which frees every
+  // remaining item and its inner WDL_HeapBuf.
   //
-  // Send branch: pop each item; type==0 builds mpb_client_upload_interval_begin
-  // and Sends; type==1 splits the owned payload at MAX_ENC_BLOCKSIZE,
-  // emitting one mpb_client_upload_interval_write per chunk, with flags=1
-  // only on the FINAL chunk if item.flags&1. Empty-payload writes (item.payload
-  // null or zero-size) emit a single empty write with flags=item.flags.
-  // Drain deletes item.payload after the Send to prevent leak.
-  // Verbatim port: ninjamzap-core/njclient.cpp:1984-2039.
+  // Body:
+  //   - Take m_rawdata_cs, peek Get(0), Delete(0) (without freeing — we
+  //     own the pointer next), release mutex.
+  //   - type==0: build mpb_client_upload_interval_begin and Send.
+  //   - type==1: split item.data at MAX_ENC_BLOCKSIZE, emit one
+  //     mpb_client_upload_interval_write per chunk, flags=1 only on the
+  //     FINAL chunk when item.flags&1. Empty-payload + isEnd emits a
+  //     single empty write with item.flags (matches NinjamZap source).
+  //   - delete item (which runs ~RawDataQueueItem → ~WDL_HeapBuf, freeing
+  //     the payload buffer).
+  //   - Re-acquire m_rawdata_cs and loop.
   // -------------------------------------------------------------------------
-  if (!m_netcon)
+  if (m_netcon)
   {
-    // Pattern C: Disconnect discard — items in the ring were queued while
-    // connected but m_netcon became null before the drain ran. This is
-    // expected on Disconnect/Reconnect; bump the DISCARD counter (not the
-    // OVERFLOW counter) so the post-UAT overflow==0 invariant stays
-    // actionable even after a connect/disconnect cycle.
-    m_rawdata_sendq.drain([this](jamwide::RawDataItem&& item) {
-      delete item.payload;
-      m_rawdata_sendq_discards.fetch_add(1, std::memory_order_relaxed);
-    });
-  }
-  else
-  {
-    m_rawdata_sendq.drain([this](jamwide::RawDataItem&& item) {
-      if (item.type == 0)
+    m_rawdata_cs.Enter();
+    while (m_rawdata_sendq.GetSize())
+    {
+      RawDataQueueItem *item = m_rawdata_sendq.Get(0);
+      m_rawdata_sendq.Delete(0);              // pointer removed from list;
+                                              // ownership now ours.
+      m_rawdata_cs.Leave();
+
+      if (item)
       {
-        // BEGIN: build mpb_client_upload_interval_begin from the queued
-        // guid/fourcc/chidx/estsize and Send.
-        mpb_client_upload_interval_begin cuib;
-        memcpy(cuib.guid, item.guid, sizeof(cuib.guid));
-        cuib.fourcc = item.fourcc;
-        cuib.chidx = item.chidx;
-        cuib.estsize = item.estsize;
-        m_netcon->Send(cuib.build());
-        // BEGIN items don't carry payload; nothing to free.
-      }
-      else // type == 1: WRITE (data / end)
-      {
-        if (!item.payload || item.payload->GetSize() == 0)
+        if (item->type == 0)
         {
-          // Empty-payload + isEnd writes a single empty WRITE with the
-          // item's flags (matches ninjamzap-core/njclient.cpp:2007-2015).
-          mpb_client_upload_interval_write wh;
-          memcpy(wh.guid, item.guid, sizeof(wh.guid));
-          wh.audio_data = nullptr;
-          wh.audio_data_len = 0;
-          wh.flags = (char)item.flags;
-          m_netcon->Send(wh.build());
+          // BEGIN: build mpb_client_upload_interval_begin from the queued
+          // guid/fourcc/chidx/estsize and Send.
+          mpb_client_upload_interval_begin cuib;
+          memcpy(cuib.guid, item->guid, sizeof(cuib.guid));
+          cuib.fourcc = item->fourcc;
+          cuib.chidx = item->chidx;
+          cuib.estsize = item->estsize;
+          m_netcon->Send(cuib.build());
         }
-        else
+        else // type == 1: WRITE (data / end)
         {
-          // Chunked WRITE: split payload at MAX_ENC_BLOCKSIZE, emit one
-          // mpb_client_upload_interval_write per chunk. flags=1 only on
-          // the FINAL chunk when item.flags & 1.
-          int remaining = item.payload->GetSize();
-          const unsigned char *ptr = (const unsigned char *)item.payload->Get();
-          while (remaining > 0)
+          const int payload_sz = item->data.GetSize();
+          const unsigned char *payload_ptr =
+              (const unsigned char *)item->data.Get();
+          if (payload_sz <= 0 || !payload_ptr)
           {
-            int chunk = remaining > MAX_ENC_BLOCKSIZE ? MAX_ENC_BLOCKSIZE
-                                                      : remaining;
+            // Empty-payload + isEnd writes a single empty WRITE with the
+            // item's flags (matches ninjamzap-core/njclient.cpp:2007-2015).
             mpb_client_upload_interval_write wh;
-            memcpy(wh.guid, item.guid, sizeof(wh.guid));
-            wh.audio_data = ptr;
-            wh.audio_data_len = chunk;
-            remaining -= chunk;
-            ptr += chunk;
-            wh.flags = (char)((remaining <= 0 && (item.flags & 1)) ? 1 : 0);
+            memcpy(wh.guid, item->guid, sizeof(wh.guid));
+            wh.audio_data = nullptr;
+            wh.audio_data_len = 0;
+            wh.flags = (char)item->flags;
             m_netcon->Send(wh.build());
           }
+          else
+          {
+            // Chunked WRITE: split payload at MAX_ENC_BLOCKSIZE, emit one
+            // mpb_client_upload_interval_write per chunk. flags=1 only on
+            // the FINAL chunk when item->flags & 1.
+            int remaining = payload_sz;
+            const unsigned char *ptr = payload_ptr;
+            while (remaining > 0)
+            {
+              int chunk = remaining > MAX_ENC_BLOCKSIZE ? MAX_ENC_BLOCKSIZE
+                                                        : remaining;
+              mpb_client_upload_interval_write wh;
+              memcpy(wh.guid, item->guid, sizeof(wh.guid));
+              wh.audio_data = ptr;
+              wh.audio_data_len = chunk;
+              remaining -= chunk;
+              ptr += chunk;
+              wh.flags = (char)((remaining <= 0 && (item->flags & 1)) ? 1 : 0);
+              m_netcon->Send(wh.build());
+            }
+          }
         }
-        delete item.payload;
+        delete item;                          // runs ~WDL_HeapBuf on .data
       }
-    });
+
+      m_rawdata_cs.Enter();
+    }
+    m_rawdata_cs.Leave();
   }
 
   // Update cached status for lock-free audio thread access
@@ -2976,21 +2985,68 @@ void NJClient::ChatMessage_Send(const char *parm1, const char *parm2, const char
 }
 
 // ---------------------------------------------------------------------------
-// 14.3-02: RawDataSendBegin / RawDataSendWrite — codec-agnostic transport
-// scaffolding for the v1.3 Native Video Foundation milestone.
+// Phase 20-00 (D-19): RawDataSendBegin / RawDataSendWrite — NinjamZap-literal
+// substrate, verbatim port of `ninjamzap-core/njclient.cpp:2047-2082`. The
+// Phase 14.3-02 SpscRing<RawDataItem, 64> wrapper was retired because the
+// Phase 20 HYBRID emission model needs multi-producer safety on the queue
+// (audio thread + encoder thread per D-08 / D-19).
 //
 // Anti-pattern reminder: ChatMessage_Send above calls m_netcon->Send DIRECTLY
 // because it is invoked from the run thread (lines 2432, 2599). RawDataSend
-// is invoked from ANY thread (UI today; future audio thread for the v1.3
-// QueueVideoFrame path), so direct-Send is wrong — Phase 15.1 Q3 finding +
-// src/core/netmsg.cpp:289 confirm Net_Connection::Send is NOT thread-safe.
-// Both methods below ENQUEUE to the SPSC and return; the run-thread drain
-// inside NJClient::Run consumes and forwards to m_netcon->Send.
+// is invoked from ANY thread (UI today; audio thread from Plan 20-02's
+// on_new_interval; encoder thread from Plan 20-01/20-02's QueueVideoFrame),
+// so direct-Send is wrong — Phase 15.1 Q3 finding + src/core/netmsg.cpp:289
+// confirm Net_Connection::Send is NOT thread-safe. Both methods below
+// allocate a heap RawDataQueueItem, take m_rawdata_cs, Add() to
+// m_rawdata_sendq, release; the run-thread drain in NJClient::Run consumes
+// pop-one-unlock-Send-relock per `ninjamzap-core/njclient.cpp:1984-2040`.
 //
-// Verbatim port source: ninjamzap-core/njclient.cpp:2047-2082. JamWide
-// adaptation replaces unbounded WDL_PtrList<RawDataQueueItem>+WDL_Mutex with
-// SpscRing<RawDataItem, 64> + atomic overflow counter (Phase 15.1 invariant).
+// R3 MF4 observability is wired here: contention counter (sampled best-effort
+// before Enter() — WDL_Mutex has no TryEnter today, so the proxy used is a
+// pre-Enter timestamp delta over a small threshold), high-water-mark CAS,
+// and total-enqueue counter. The total-enqueue counter is the denominator
+// for Plan 20-03's contention-ratio gate.
+//
+// R4 M12 (writeLog removal): the previous three writeLog sites
+// ("RawDataSendBegin: SPSC full", "RawDataSendWrite: OOM ...", "RawDataSendWrite:
+// SPSC full") all reported on the retired SPSC overflow path and the
+// allocation-failure path that NinjamZap silently drops. Pre-removal caller
+// audit (see Plan 20-00 SUMMARY's R4 M12 section) confirmed no non-video
+// production caller relies on any of those logs for a required diagnostic
+// (the test suite is the only caller at the time of Plan 20-00; Plan 20-02
+// adds the audio-thread + encoder-thread video callers later). Logs deleted.
 // ---------------------------------------------------------------------------
+
+// Phase 20-00 contention-sampling helper.
+//
+// WDL_Mutex (wdl/mutex.h) exposes only Enter()/Leave() — there is no
+// TryEnter(). The fallback is to time the Enter() call; if it took longer
+// than `kRawdataCsContentionThresholdNs` (a coarse "uncontested lock
+// shouldn't take this long" bound — 1 µs covers the typical pthread/mutex
+// fast-path on macOS/Windows by an order of magnitude), bump the contention
+// counter. This is a best-effort proxy, NOT a true contention sample; the
+// total-enqueue counter is the canonical denominator for Plan 20-03's UAT
+// contention-ratio gate. The proxy noise floor is documented in Plan 20-00
+// SUMMARY; Plan 20-03 calibrates the threshold against real populated-load
+// data.
+namespace {
+constexpr long long kRawdataCsContentionThresholdNs = 1000;  // 1 µs
+
+inline void enter_rawdata_cs_with_contention_sample(
+    WDL_Mutex& cs, std::atomic<uint64_t>& contention_counter)
+{
+  const auto t0 = std::chrono::steady_clock::now();
+  cs.Enter();
+  const auto t1 = std::chrono::steady_clock::now();
+  const long long ns =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+  if (ns > kRawdataCsContentionThresholdNs)
+  {
+    contention_counter.fetch_add(1, std::memory_order_relaxed);
+  }
+}
+} // namespace
+
 void NJClient::RawDataSendBegin(unsigned char outGuid[16], unsigned int fourcc,
                                 int chidx, int estsize)
 {
@@ -2998,73 +3054,73 @@ void NJClient::RawDataSendBegin(unsigned char outGuid[16], unsigned int fourcc,
   // WDL_RNG_bytes is internally locked, callable from any thread.
   WDL_RNG_bytes(outGuid, 16);
 
-  jamwide::RawDataItem item;
-  item.type = 0;            // begin
-  memcpy(item.guid, outGuid, sizeof(item.guid));
-  item.fourcc = fourcc;
-  item.chidx = chidx;
-  item.estsize = estsize;
-  item.flags = 0;
-  item.payload = nullptr;   // begin has no payload
+  RawDataQueueItem *item = new RawDataQueueItem;
+  item->type    = 0;        // begin
+  memcpy(item->guid, outGuid, sizeof(item->guid));
+  item->fourcc  = fourcc;
+  item->chidx   = chidx;
+  item->estsize = estsize;
+  item->flags   = 0;
+  // item->data is by-value WDL_HeapBuf — default-constructed empty.
 
-  if (!m_rawdata_sendq.try_push(item))
+  enter_rawdata_cs_with_contention_sample(m_rawdata_cs,
+                                          m_rawdata_cs_contention_count);
+  m_rawdata_sendq.Add(item);
+  m_rawdata_sendq_total_enqueues.fetch_add(1, std::memory_order_relaxed);
+  const uint64_t depth = (uint64_t)m_rawdata_sendq.GetSize();
+  uint64_t prev =
+      m_rawdata_sendq_high_water_mark.load(std::memory_order_relaxed);
+  while (depth > prev &&
+         !m_rawdata_sendq_high_water_mark.compare_exchange_weak(
+             prev, depth, std::memory_order_relaxed))
   {
-    // Queue full — drop the begin. Bump observability counter; no payload
-    // to delete here (begin items don't carry one).
-    m_rawdata_sendq_overflows.fetch_add(1, std::memory_order_relaxed);
-    writeLog("RawDataSendBegin: SPSC full (capacity %zu) — dropped begin "
-             "fourcc=%08x chidx=%d\n",
-             jamwide::RAWDATA_SEND_QUEUE_CAPACITY, fourcc, chidx);
+    // loop until CAS succeeds; `prev` updates on failure.
   }
+  m_rawdata_cs.Leave();
 }
 
 void NJClient::RawDataSendWrite(const unsigned char guid[16], const void *data,
                                 int dataLen, bool isEnd)
 {
-  jamwide::RawDataItem item;
-  item.type = 1;            // data / end
-  memcpy(item.guid, guid, sizeof(item.guid));
-  item.fourcc = 0;          // unused for type==1; preserved for symmetry
-  item.chidx = 0;
-  item.estsize = 0;
-  item.flags = isEnd ? 1 : 0;
-  item.payload = nullptr;
+  RawDataQueueItem *item = new RawDataQueueItem;
+  item->type    = 1;        // data / end
+  memcpy(item->guid, guid, sizeof(item->guid));
+  item->fourcc  = 0;        // unused for type==1; preserved for symmetry
+  item->chidx   = 0;
+  item->estsize = 0;
+  item->flags   = isEnd ? 1 : 0;
+  // item->data is by-value WDL_HeapBuf — default-constructed empty.
 
   if (data && dataLen > 0)
   {
-    // Producer allocates; SPSC carries ownership; drain (or destructor
-    // tear-down, or discard branch) deletes. Trivially copyable invariant
-    // is preserved because item.payload is a raw pointer.
-    //
-    // T-14.3-08 / CR-01: ResizeOK (not Resize) — Resize() returns without
-    // updating m_size on alloc failure, after which Get() returns NULL and
-    // the memcpy below would NULL-deref. ResizeOK returns NULL on failure
-    // and we treat OOM as a send drop (matches the queue-full path below).
-    WDL_HeapBuf* buf = new WDL_HeapBuf;
-    if (!buf->ResizeOK(dataLen))
+    // T-14.3-08 / CR-01 preserved: ResizeOK (not Resize). Resize() returns
+    // without updating m_size on alloc failure, after which Get() returns
+    // NULL and the memcpy below would NULL-deref. ResizeOK returns NULL on
+    // failure; we treat OOM as a silent drop matching NinjamZap (the queue
+    // is unbounded per D-19, so this is the only producer-side failure
+    // path that survives the substrate swap).
+    if (!item->data.ResizeOK(dataLen))
     {
-      delete buf;
-      m_rawdata_sendq_overflows.fetch_add(1, std::memory_order_relaxed);
-      writeLog("RawDataSendWrite: OOM allocating %d-byte payload — dropped"
-               "%s\n",
-               dataLen, isEnd ? " (isEnd)" : "");
+      delete item;            // ~WDL_HeapBuf runs; no allocation leaked.
       return;
     }
-    memcpy(buf->Get(), data, (size_t)dataLen);
-    item.payload = buf;
+    memcpy(item->data.Get(), data, (size_t)dataLen);
   }
 
-  if (!m_rawdata_sendq.try_push(item))
+  enter_rawdata_cs_with_contention_sample(m_rawdata_cs,
+                                          m_rawdata_cs_contention_count);
+  m_rawdata_sendq.Add(item);
+  m_rawdata_sendq_total_enqueues.fetch_add(1, std::memory_order_relaxed);
+  const uint64_t depth = (uint64_t)m_rawdata_sendq.GetSize();
+  uint64_t prev =
+      m_rawdata_sendq_high_water_mark.load(std::memory_order_relaxed);
+  while (depth > prev &&
+         !m_rawdata_sendq_high_water_mark.compare_exchange_weak(
+             prev, depth, std::memory_order_relaxed))
   {
-    // Queue full — drop the write; free the just-allocated payload to
-    // prevent leak; bump observability counter.
-    delete item.payload;
-    m_rawdata_sendq_overflows.fetch_add(1, std::memory_order_relaxed);
-    writeLog("RawDataSendWrite: SPSC full (capacity %zu) — dropped %d-byte "
-             "write%s\n",
-             jamwide::RAWDATA_SEND_QUEUE_CAPACITY, dataLen,
-             isEnd ? " (isEnd)" : "");
+    // loop until CAS succeeds; `prev` updates on failure.
   }
+  m_rawdata_cs.Leave();
 }
 
 #ifdef JAMWIDE_BUILD_TESTS
@@ -3081,32 +3137,44 @@ bool NJClient::IsVideoFourcc(unsigned int fcc) const
   return is_video_fourcc(fcc);
 }
 
-void NJClient::DrainRawDataSendQueueForTest(std::vector<jamwide::RawDataItem>& out)
+void NJClient::DrainRawDataSendQueueForTest(
+    std::vector<NJClient::RawDataQueueItem*>& out)
 {
-  m_rawdata_sendq.drain([&out](jamwide::RawDataItem&& item) {
-    out.push_back(item);
-  });
+  // Phase 20-00 (D-19): destructive drain of the WDL_PtrList. Ownership of
+  // every popped RawDataQueueItem* transfers to the caller, which MUST
+  // `delete` each pointer to release the by-value WDL_HeapBuf inside.
+  m_rawdata_cs.Enter();
+  while (m_rawdata_sendq.GetSize())
+  {
+    RawDataQueueItem *item = m_rawdata_sendq.Get(0);
+    m_rawdata_sendq.Delete(0);    // remove from list without freeing.
+    if (item) out.push_back(item);
+  }
+  m_rawdata_cs.Leave();
 }
 
-void NJClient::ChunkRawDataItem(const jamwide::RawDataItem& item,
-                                void (*emit)(void* ctx, const unsigned char guid[16],
-                                             const void* data, int dataLen, int flags),
-                                void* ctx)
+void NJClient::ChunkRawDataItem(
+    const NJClient::RawDataQueueItem& item,
+    void (*emit)(void* ctx, const unsigned char guid[16],
+                 const void* data, int dataLen, int flags),
+    void* ctx)
 {
-  // Matches the run-thread drain semantics in NJClient::Run below: a type==1
+  // Matches the run-thread drain semantics in NJClient::Run above: a type==1
   // item with payload P is split into ceil(P/MAX_ENC_BLOCKSIZE) chunks; only
   // the final chunk sets flags=1 if item.flags&1; empty-payload + isEnd
   // emits a single empty write with flags=item.flags.
   if (item.type != 1) return;
 
-  if (!item.payload || item.payload->GetSize() == 0)
+  const int payload_sz = item.data.GetSize();
+  const unsigned char *payload_ptr = (const unsigned char *)item.data.Get();
+  if (payload_sz <= 0 || !payload_ptr)
   {
     emit(ctx, item.guid, nullptr, 0, item.flags);
     return;
   }
 
-  int remaining = item.payload->GetSize();
-  const unsigned char *ptr = (const unsigned char *)item.payload->Get();
+  int remaining = payload_sz;
+  const unsigned char *ptr = payload_ptr;
   while (remaining > 0)
   {
     int chunk = remaining > MAX_ENC_BLOCKSIZE ? MAX_ENC_BLOCKSIZE : remaining;

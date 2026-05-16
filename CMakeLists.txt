@@ -815,4 +815,15 @@ if(JAMWIDE_BUILD_TESTS)
     jamwide_use_ffmpeg(test_processor_video_lifecycle)
     add_test(NAME processor_video_lifecycle COMMAND test_processor_video_lifecycle)
 
+    # Phase 20-03 Task 3: convenience target for the 5-minute populated-server
+    # UAT. The script is the orchestrating harness; the actual broadcast is
+    # human-driven (see tests/uat/phase-20-broadcast-uat-procedure.md). The
+    # target is named `phase20-uat` so it stays grep-discoverable.
+    add_custom_target(phase20-uat
+        COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/uat/phase-20-broadcast-uat.sh" --full
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        VERBATIM
+        USES_TERMINAL
+        COMMENT "Phase 20 broadcast UAT — opens the human-runnable procedure")
+
 endif()

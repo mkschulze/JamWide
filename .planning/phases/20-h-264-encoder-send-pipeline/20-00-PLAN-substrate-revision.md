@@ -21,9 +21,12 @@ requirements:
 threat_refs:
   - T-20-00
   - T-20-SC
+  - T-20-AUDIO-RT
 review_refs:
   - R3-MF2-context-drain-semantics
   - R3-MF5-research-staleness-markers
+  - R4-M12-writeLog-caller-audit
+  - R4-M13-audit-allowlist-line-numbers
 
 must_haves:
   truths:
@@ -31,7 +34,8 @@ must_haves:
     - "RawDataSendBegin and RawDataSendWrite each acquire m_rawdata_cs once per call, allocate a heap RawDataQueueItem (matching NinjamZap's struct exactly), and append to the WDL_PtrList; no SPSC try_push, no overflow counter, no Pattern C discard guard"
     - "Run-thread drain in NJClient::Run is NinjamZap-literal pop-one-unlock-Send-relock, matching ninjamzap-core/njclient.cpp:1987-2039; no swap-list-out semantics anywhere in the source"
     - "All three writeLog calls on the RawData send path (njclient.cpp lines around 3015, 3048, 3063 in the as-shipped 14.3-02 code) are removed; the audit-allowlist file:line entries in realtime-audio-reviewer.md explicitly state no writeLog calls remain on the audio-thread video send path"
-    - "Audit allowlist envelope (D-09) is published in .claude/agents/realtime-audio-reviewer.md AND .codex/agents/realtime-audio-reviewer.toml — covers m_video_cs / m_video_spspps_cs / m_rawdata_cs mutex Enter on audio thread, WDL_RNG_bytes, new WDL_HeapBuf / WDL_HeapBuf::Resize / ResizeOK, marker+SPS/PPS memcpy on audio thread, and the Phase 15.1-06 HIGH-2 carve-out for direct m_locchans[0]->m_curwritefile.guid read at the marker construction site"
+    - "Per R4 M12 (writeLog removal caller audit): BEFORE removing the three writeLog calls in RawDataSendBegin/RawDataSendWrite, Plan 20-00 Task 1 enumerates ALL callers of these substrate APIs (via `grep -nE \"RawDataSendBegin|RawDataSendWrite\" src/`) and confirms no non-video caller relies on the writeLog for required production diagnostics. If any caller does, the diagnostic is moved to the CALLER side (not inside RawDataSendBegin/Write which is audio-thread per D-08 + D-09); the removal proceeds only after this audit is complete and documented in the SUMMARY"
+    - "Audit allowlist envelope (D-09) is published in .claude/agents/realtime-audio-reviewer.md AND .codex/agents/realtime-audio-reviewer.toml — covers m_video_cs / m_video_spspps_cs / m_rawdata_cs mutex Enter on audio thread, WDL_RNG_bytes, new WDL_HeapBuf / WDL_HeapBuf::Resize / ResizeOK, marker+SPS/PPS memcpy on audio thread, and the Phase 15.1-06 HIGH-2 carve-out for atomic-halves seqlock read of the canonical audio_ch0_guid (R4 H8 atomic two-uint64_t halves contract per Plan 20-02). Per R4 M13: the allowlist initially contains `TBD:line` placeholders for the audio-thread sites that Plan 20-02 will create; Plan 20-02 Task 4 refreshes those placeholders with concrete file:line entries after the code lands. The audit gate fails if any `TBD:line` entry remains after Phase 20 close."
     - "tests/test_rawdata_send.cpp replaces SPSC overflow-counter assertions with mutex-correctness assertions: 2+ producer thread stress, run-thread drain interleaved with active producers, BEGIN/marker/SPS/frame wire-ordering, destructor cleanup of pending items, per-producer FIFO preservation"
     - "GetRawDataSendQueueOverflowCount() accessor and m_rawdata_sendq_overflows counter are deleted; m_rawdata_sendq_discards retained renamed-or-not (planner picks; the Pattern C path is also retired since the WDL_PtrList drains in NJClient::Run only when m_netcon is non-null, and the destructor frees remaining items via WDL_PtrList::Empty(true))"
     - "RAWDATA_SEND_QUEUE_CAPACITY constant in spsc_payloads.h is deleted (unbounded WDL_PtrList per D-19); RawDataItem POD type and SpscRing<RawDataItem, ...> static_assert are deleted (RawDataQueueItem is the new nested type living in njclient.h)"
@@ -45,7 +49,7 @@ must_haves:
       provides: "WDL_PtrList-based RawDataQueueItem queue + WDL_Mutex m_rawdata_cs; deletion of SPSC + overflow counter + capacity constant + Pattern C accessor; declaration of m_rawdata_sendq_high_water_mark + m_rawdata_cs_contention_count + m_rawdata_sendq_total_enqueues atomics + their accessors (GetRawDataSendQueueHighWaterMark, GetRawDataMutexContentionCount, GetRawDataSendQueueTotalEnqueueCount) for Plan 20-03 observability — all three counters owned here unconditionally"
       contains: "WDL_PtrList<RawDataQueueItem> m_rawdata_sendq"
     - path: "src/core/njclient.cpp"
-      provides: "NinjamZap-literal RawDataSendBegin/RawDataSendWrite + NinjamZap-literal run-thread drain; all writeLog calls on this path deleted; high-water-mark + contention counter + total-enqueue counter increments wired inside RawDataSendBegin and RawDataSendWrite (each paired with the existing Add() call under m_rawdata_cs)"
+      provides: "NinjamZap-literal RawDataSendBegin/RawDataSendWrite + NinjamZap-literal run-thread drain; all writeLog calls on this path deleted (after R4 M12 caller audit); high-water-mark + contention counter + total-enqueue counter increments wired inside RawDataSendBegin and RawDataSendWrite (each paired with the existing Add() call under m_rawdata_cs)"
       contains: "m_rawdata_cs.Enter()"
     - path: "src/threading/spsc_payloads.h"
       provides: "RawDataItem POD + RAWDATA_SEND_QUEUE_CAPACITY constant + SpscRing<RawDataItem, ...> static_assert deleted (lines 31-69 carve-out comment also retired); the rest of spsc_payloads.h MUST remain UNCHANGED per Phase 15.1-04 Codex M-9 Wave-0 finality"
@@ -53,10 +57,10 @@ must_haves:
       provides: "8 sub-tests replacing 14.3-02 SPSC-overflow assertions with NinjamZap-literal mutex semantics"
       min_lines: 350
     - path: ".claude/agents/realtime-audio-reviewer.md"
-      provides: "Audit-allowlist envelope per D-09 — explicit accept-list of audio-thread carve-out file:line entries for the on_new_interval video block, with rationale referencing CONTEXT.md decisions"
+      provides: "Audit-allowlist envelope per D-09 — explicit accept-list of audio-thread carve-out file:line entries for the on_new_interval video block, with rationale referencing CONTEXT.md decisions. R4 M13: initial entries use `TBD:line` placeholders for sites that Plan 20-02 will create; Plan 20-02 Task 4 refreshes them with concrete line numbers"
       contains: "Phase 20 audit allowlist envelope"
     - path: ".codex/agents/realtime-audio-reviewer.toml"
-      provides: "Mirror of allowlist envelope for the codex agent path; same content shape"
+      provides: "Mirror of allowlist envelope for the codex agent path; same content shape; R4 M13 `TBD:line` placeholders refreshed by Plan 20-02 Task 4"
       contains: "phase = 20"
     - path: ".planning/phases/20-h-264-encoder-send-pipeline/20-CONTEXT.md"
       provides: "Drain-semantics sentence corrected per R3 MF2"
@@ -75,20 +79,24 @@ must_haves:
       pattern: "m_rawdata_sendq\\.Delete\\(0\\)"
     - from: "audio-thread call sites (Plan 20-02 will use)"
       to: ".claude/agents/realtime-audio-reviewer.md allowlist"
-      via: "explicit file:line + rationale for each carve-out"
+      via: "explicit file:line + rationale for each carve-out; R4 M13 — TBD placeholders refreshed post-20-02 by Plan 20-02 Task 4"
       pattern: "Phase 20 audit allowlist envelope"
     - from: "Plan 20-00 m_rawdata_sendq_total_enqueues counter"
       to: "Plan 20-03 UAT contention-ratio gate (R3 MF4)"
       via: "denominator for `m_rawdata_cs_contention_count / m_rawdata_sendq_total_enqueues < 1%`; counter incremented once per successful Add inside RawDataSendBegin and once per successful Add inside RawDataSendWrite, both under m_rawdata_cs"
       pattern: "m_rawdata_sendq_total_enqueues\\.fetch_add"
+    - from: "Plan 20-00 Task 1 writeLog-removal caller audit (R4 M12)"
+      to: "shared substrate API callers (audio Vorbis/FLAC, telemetry diagnostics, etc.)"
+      via: "pre-removal `grep -nE 'RawDataSendBegin|RawDataSendWrite' src/` enumeration; per-caller assessment of whether the writeLog inside the substrate API provides a required production diagnostic that must be moved caller-side"
+      pattern: "RawDataSendBegin|RawDataSendWrite"
 ---
 
 <objective>
-Plan 20-00 corrects the Phase 14.3-02 SPSC substrate that was discovered to violate the multi-producer requirement of the Phase 20 HYBRID emission model (codex Round 1 H1; see 20-REVIEWS.md). The substrate is reverted to NinjamZap-literal `WDL_PtrList<RawDataQueueItem> + WDL_Mutex` per D-19, the audit-allowlist envelope for the audio-thread carve-outs (D-09) is published, residual `writeLog` calls on the send path are stripped, and the rewritten `test_rawdata_send` suite asserts mutex correctness instead of SPSC capacity/overflow semantics. The plan also discharges the two pre-planning artifact-edit items from Round 3: the CONTEXT.md drain-semantics contradiction (MF2) and the RESEARCH.md staleness markers (MF5).
+Plan 20-00 corrects the Phase 14.3-02 SPSC substrate that was discovered to violate the multi-producer requirement of the Phase 20 HYBRID emission model (codex Round 1 H1; see 20-REVIEWS.md). The substrate is reverted to NinjamZap-literal `WDL_PtrList<RawDataQueueItem> + WDL_Mutex` per D-19, the audit-allowlist envelope for the audio-thread carve-outs (D-09) is published, residual `writeLog` calls on the send path are stripped (AFTER a pre-removal caller audit per R4 M12), and the rewritten `test_rawdata_send` suite asserts mutex correctness instead of SPSC capacity/overflow semantics. The plan also discharges the two pre-planning artifact-edit items from Round 3: the CONTEXT.md drain-semantics contradiction (MF2) and the RESEARCH.md staleness markers (MF5).
 
 Purpose: this is the Wave-0 substrate that Plans 20-01 / 20-02 / 20-03 depend on. Without it, the audio thread + encoder thread cannot both producer-safely call `RawDataSendWrite` for the same channel within an interval, and the auditor `realtime-audio-reviewer` would CRITICAL-flag every audio-thread carve-out site that Plan 20-02 introduces. Without the artifact-edit cleanup, downstream plan reviewers risk re-introducing retired Path-A / atomic-pointer-swap / swap-list-out designs from stale documentation.
 
-Output: A `WDL_PtrList`-backed `m_rawdata_sendq` whose multi-producer correctness is verified by 8 sub-tests in `test_rawdata_send`. A `realtime-audio-reviewer` config that explicitly accepts the audio-thread mutex/RNG/heap/memcpy carve-out envelope at the file:line level, so Plan 20-02's audit run reports CRITICAL count = 0. A `20-CONTEXT.md` whose `<code_context>` drain-semantics sentence matches D-19 + the source. A `20-RESEARCH.md` whose stale body sections are clearly tagged so plan authors cannot accidentally consume retired designs. Queue observability scaffolding (high-water-mark + contention atomics + total-enqueue counter + accessors — all three counters owned here unconditionally per R3 MF4) is added here so Plan 20-03's UAT thresholds in MF4 have something to read at populated load; runtime increments for the high-water-mark, contention counter, and total-enqueue counter are wired by Plan 20-00 in RawDataSendBegin/RawDataSendWrite directly — Plan 20-03 only reads them.
+Output: A `WDL_PtrList`-backed `m_rawdata_sendq` whose multi-producer correctness is verified by 8 sub-tests in `test_rawdata_send`. A `realtime-audio-reviewer` config that explicitly accepts the audio-thread mutex/RNG/heap/memcpy carve-out envelope at the file:line level (initially with `TBD:line` placeholders for Plan-20-02-created sites; refreshed to concrete line numbers by Plan 20-02 Task 4 per R4 M13), so Plan 20-02's audit run reports CRITICAL count = 0. A `20-CONTEXT.md` whose `<code_context>` drain-semantics sentence matches D-19 + the source. A `20-RESEARCH.md` whose stale body sections are clearly tagged so plan authors cannot accidentally consume retired designs. Queue observability scaffolding (high-water-mark + contention atomics + total-enqueue counter + accessors — all three counters owned here unconditionally per R3 MF4) is added here so Plan 20-03's UAT thresholds in MF4 have something to read at populated load; runtime increments for the high-water-mark, contention counter, and total-enqueue counter are wired by Plan 20-00 in RawDataSendBegin/RawDataSendWrite directly — Plan 20-03 only reads them. **Per R4 M12, the writeLog removal is preceded by a documented caller audit** to confirm no required production diagnostic is stripped from non-video callers of the shared substrate APIs.
 </objective>
 
 <execution_context>
@@ -181,8 +189,8 @@ From JamWide src/core/njclient.h as-shipped (BEFORE this plan — deletions list
 
 From JamWide src/core/njclient.cpp as-shipped (BEFORE this plan — sites being rewritten):
   line 2825-2889  run-thread drain block (Pattern C if(!m_netcon) + drain lambda for connected path)             ← REWRITE pop-one-unlock-Send-relock
-  line 2994-3019  RawDataSendBegin (SpscRing try_push + overflow counter + writeLog at line 3015)               ← REWRITE NinjamZap-literal + remove writeLog
-  line 3021-3068  RawDataSendWrite (SpscRing try_push + overflow counter + writeLog at lines 3048/3063)         ← REWRITE NinjamZap-literal + remove writeLog
+  line 2994-3019  RawDataSendBegin (SpscRing try_push + overflow counter + writeLog at line 3015)               ← REWRITE NinjamZap-literal + remove writeLog (after R4 M12 audit)
+  line 3021-3068  RawDataSendWrite (SpscRing try_push + overflow counter + writeLog at lines 3048/3063)         ← REWRITE NinjamZap-literal + remove writeLog (after R4 M12 audit)
   line 3084-3089  DrainRawDataSendQueueForTest (JAMWIDE_BUILD_TESTS test helper)                                ← REWRITE to drain WDL_PtrList (still hands ownership back to caller)
   line 3091+      ChunkRawDataItem (JAMWIDE_BUILD_TESTS test helper)                                            ← KEEP — chunking logic unchanged; signature may need RawDataItem → RawDataQueueItem rename
 
@@ -203,23 +211,35 @@ Observability frontmatter (new, declared here so Plan 20-03 can read — ALL THR
   // The total-enqueue counter is bumped at the same site, paired with the high-water-mark CAS, so the
   // three counters move together under m_rawdata_cs.
 
-Audit-allowlist envelope text (the file content this plan writes into realtime-audio-reviewer.md):
+Audit-allowlist envelope text (the file content this plan writes into realtime-audio-reviewer.md; R4 M13 — entries that reference Plan-20-02-created sites start as `TBD:line` placeholders and are refreshed to concrete file:line by Plan 20-02 Task 4):
   ## Phase 20 audit allowlist envelope
   The following audio-thread sites are accepted Phase 15.1 carve-outs under CONTEXT.md D-09 + D-20:
-    src/core/njclient.cpp `NJClient::on_new_interval` video block (lines TBD when Plan 20-02 lands):
-      - `m_video_cs.Enter() / Leave()` — held across whole video block (D-08, NinjamZap-literal)
-      - `m_video_spspps_cs.Enter() / Leave()` — nested inside m_video_cs for SPS/PPS read (D-03)
-      - direct read of `m_locchans[0]->m_curwritefile.guid` for marker audio_ch0_guid (D-20 Phase 15.1-06 HIGH-2 carve-out)
-      - `memcpy(marker+8, ...)` of 16 bytes from the canonical Local_Channel field
+    src/core/njclient.cpp `NJClient::on_new_interval` video block (Plan 20-02 Task 1 creates these; line numbers TBD):
+      - src/core/njclient.cpp:TBD:line  — `WDL_MutexLock vlock(&m_video_cs)` opening the whole-block critical section (D-08, NinjamZap-literal)
+      - src/core/njclient.cpp:TBD:line  — `WDL_MutexLock slock(&m_video_spspps_cs)` nested inside m_video_cs for SPS/PPS read (D-03)
+      - src/core/njclient.cpp:TBD:line  — `readGuidSeqlock(*lc, marker + 8)` atomic two-uint64_t halves seqlock read of the canonical audio_ch0_guid (D-20 + R4 H8 carve-out; audit-allowlist scope: atomic-halves load only — no plain non-atomic byte read from the audio thread)
+      - src/core/njclient.cpp:TBD:line  — `memcpy(marker + N, ...)` of 16 bytes from atomic-halves local temporaries into the marker buffer (safe: local temporaries are not shared)
+      - src/core/njclient.cpp:TBD:line  — `RawDataSendWrite(m_video_guid, NULL, 0, true)` END-previous call inside on_new_interval video block
+      - src/core/njclient.cpp:TBD:line  — `RawDataSendBegin(m_video_guid, m_video_fourcc, m_video_chidx, 0)` BEGIN-new call
+      - src/core/njclient.cpp:TBD:line  — `RawDataSendWrite(m_video_guid, marker, 24, false)` marker write
+      - src/core/njclient.cpp:TBD:line  — `RawDataSendWrite(m_video_guid, m_video_spspps.Get(), m_video_spspps.GetSize(), false)` SPS/PPS write
+      - src/core/njclient.cpp:TBD:line  — `RawDataSendWrite(m_video_guid, NULL, 0, true)` END-at-deactivate call
+    src/core/njclient.cpp `NJClient::QueueVideoFrame` (encoder-thread call site; also acquires m_video_cs — same carve-out envelope applies to the audio-thread cohabitants):
+      - src/core/njclient.cpp:TBD:line  — `WDL_MutexLock vlock(&m_video_cs)` opening the critical section
+      - src/core/njclient.cpp:TBD:line  — `RawDataSendWrite(m_video_guid, prefix, 4, false)` 4-byte BE length-prefix write (COD-02 two-call split, first call)
+      - src/core/njclient.cpp:TBD:line  — `RawDataSendWrite(m_video_guid, data, len, false)` NAL data write (COD-02 two-call split, second call)
     src/core/njclient.cpp `NJClient::RawDataSendBegin` (any thread; called from audio thread inside on_new_interval):
-      - `m_rawdata_cs.Enter() / Leave()` (D-09)
-      - `WDL_RNG_bytes(outGuid, 16)` (D-09 — internally locked, per-call cost ~5 µs)
-      - `new RawDataQueueItem` (D-09 — single heap alloc per call)
+      - src/core/njclient.cpp:TBD:line  — `m_rawdata_cs.Enter() / Leave()` (D-09)
+      - src/core/njclient.cpp:TBD:line  — `WDL_RNG_bytes(outGuid, 16)` (D-09 — internally locked, per-call cost ~5 µs)
+      - src/core/njclient.cpp:TBD:line  — `new RawDataQueueItem` (D-09 — single heap alloc per call)
     src/core/njclient.cpp `NJClient::RawDataSendWrite` (any thread; called from audio thread inside on_new_interval AND from encoder thread inside QueueVideoFrame):
-      - `m_rawdata_cs.Enter() / Leave()` (D-09)
-      - `new RawDataQueueItem` + `item->data.Resize(dataLen)` / `ResizeOK` + `memcpy` of payload (D-09)
-    src/core/njclient.cpp on the RawDataSendBegin/Write paths: NO `writeLog` calls remain (verify; this plan strips them per D-19 + R2 H7).
+      - src/core/njclient.cpp:TBD:line  — `m_rawdata_cs.Enter() / Leave()` (D-09)
+      - src/core/njclient.cpp:TBD:line  — `new RawDataQueueItem` + `item->data.Resize(dataLen)` / `ResizeOK` + `memcpy` of payload (D-09)
+    src/core/njclient.cpp on the RawDataSendBegin/Write paths: NO `writeLog` calls remain (verify; this plan strips them per D-19 + R2 H7 + R4 M12 audit).
   All other audio-path violations remain CRITICAL — these are the only carve-outs accepted under the D-09 envelope.
+
+  ## R4 M13 enforcement
+  Every `TBD:line` placeholder above MUST be replaced by Plan 20-02 Task 4 with the concrete file:line as committed by Plan 20-02 (Task 1 video block, Task 2 seqlock reader). The audit gate `grep -c 'TBD:line' .claude/agents/realtime-audio-reviewer.md` MUST return 0 after Phase 20 close. If any `TBD:line` remains, Phase 20 acceptance FAILS the R4 M13 gate.
 </interfaces>
 </context>
 
@@ -230,7 +250,7 @@ Audit-allowlist envelope text (the file content this plan writes into realtime-a
 |----------|-------------|
 | audio thread → m_rawdata_cs → run thread | mutex-mediated cross-thread queue handoff; audio thread is one of N producers (N=1 in 14.3-02, N≥2 from Plan 20-02 onward) |
 | run thread → m_netcon->Send | sole writer to the NINJAM socket per Phase 14.3-02 D-04 invariant |
-| `realtime-audio-reviewer` audit → audio-path source | reviewer reports CRITICAL on heap/lock/log violations; this plan publishes the accept-list envelope |
+| `realtime-audio-reviewer` audit → audio-path source | reviewer reports CRITICAL on heap/lock/log violations; this plan publishes the accept-list envelope; Plan 20-02 Task 4 refreshes the file:line entries per R4 M13 |
 | package supply chain (none added this plan) | this plan does not add or change any npm/pip/cargo packages; T-20-SC remains nominal |
 
 ## STRIDE Threat Register
@@ -241,18 +261,26 @@ Audit-allowlist envelope text (the file content this plan writes into realtime-a
 | T-20-RT | Real-time safety (audio-thread budget) | on_new_interval (Plan 20-02 lands the audio-thread caller; this plan publishes the carve-out envelope) | accept | Per D-09: ~50-100 µs of mutex+RNG+alloc+memcpy work per interval is intentional NinjamZap-literal cost; the envelope is published here so the auditor accepts the carve-out; Plan 20-03 measures actual audio-thread budget at populated HD broadcast and escalates if > 200 µs worst-case |
 | T-20-SC | Tampering (supply chain) | none added this plan | n/a | No package installs added; Phase 14.3-01 vendored libavcodec/libavutil/libswscale/libopenh264 audit deferred to Plan 23 — this plan touches only existing source |
 | T-20-OBS | Information disclosure (silent OOM growth on unbounded queue) | m_rawdata_sendq (WDL_PtrList) | mitigate | Add m_rawdata_sendq_high_water_mark + m_rawdata_cs_contention_count + m_rawdata_sendq_total_enqueues atomics + accessors in this plan; Plan 20-03's UAT acceptance threshold (high-water < 32 items, contention < 1% of enqueues at each preset) is fed by these counters (contention ratio = contention_count / total_enqueues); if exceeded → substrate-tuning subplan per CONTEXT.md Deferred Ideas |
+| T-20-AUDIO-RT | Information disclosure (diagnostic regression in non-video callers of RawDataSendBegin/Write when writeLog calls are removed from the substrate API) | shared substrate API callers (audio Vorbis/FLAC, telemetry diagnostics) | mitigate | R4 M12: BEFORE removing the three writeLog calls in RawDataSendBegin/Write, Task 1 enumerates all callers via `grep -nE 'RawDataSendBegin\\|RawDataSendWrite' src/`, documents what each call site relies on diagnostically, and confirms no production diagnostic is silently stripped. If any non-video caller relies on the writeLog for a required diagnostic, the log is moved to that caller's call site (NOT inside RawDataSendBegin/Write which is audio-thread per D-08). Audit and disposition recorded in the SUMMARY. |
 </threat_model>
 
 <tasks>
 
 <task type="auto" tdd="true">
-  <name>Task 1: Substrate revision in NJClient (header + cpp) — replace SPSC with WDL_PtrList+WDL_Mutex, NinjamZap-literal</name>
+  <name>Task 1: Substrate revision in NJClient (header + cpp) — replace SPSC with WDL_PtrList+WDL_Mutex, NinjamZap-literal; pre-removal writeLog caller audit (R4 M12)</name>
   <files>
     src/core/njclient.h,
     src/core/njclient.cpp,
     src/threading/spsc_payloads.h
   </files>
   <behavior>
+    PRE-REMOVAL AUDIT (R4 M12): Before deleting any writeLog call from RawDataSendBegin/RawDataSendWrite, perform the following audit steps and document the results in the SUMMARY:
+      a. Enumerate all callers of `RawDataSendBegin` and `RawDataSendWrite` in the codebase via `grep -nE "RawDataSendBegin|RawDataSendWrite" src/ tests/`. Expected callers in the as-shipped 14.3-02 code: the existing audio Vorbis/FLAC encode path (run-thread caller — these are the ONLY production callers at 14.3-02; Plan 20-02 adds the audio-thread + encoder-thread video callers later in the wave order, so video callers are NOT present at the time Plan 20-00 executes).
+      b. For each caller path, document what the writeLog at lines 3015 / 3048 / 3063 provides diagnostically. Common diagnostic content in 14.3-02: SPSC overflow drop counts, allocation failure traces — both of which become moot under the WDL_PtrList substrate (no fixed-capacity overflow; ResizeOK failure is the same OOM path that NinjamZap silently drops per D-19 spec).
+      c. Confirm no non-video caller relies on the writeLog for required production diagnostics. The expected outcome (per the 14.3-02 source code and D-19): the three writeLog calls all related to SPSC-overflow or allocation-failure paths that are retired by the substrate swap; no production diagnostic is stripped from non-video callers.
+      d. If any non-video caller IS found to rely on a writeLog inside RawDataSendBegin/Write for a required production diagnostic, REPLACE the writeLog with a caller-side log at the call site (NOT inside the substrate API which is audio-thread per D-08 + D-09). Document the relocation in the SUMMARY.
+
+    After audit confirmation, proceed with the substrate revision:
     - After this task, `NJClient::m_rawdata_sendq` is `WDL_PtrList<RawDataQueueItem>` (RawDataQueueItem is the new private nested struct inside NJClient, mirroring NinjamZap's ninjamzap-core/njclient.h:311-321 field-for-field). `WDL_Mutex NJClient::m_rawdata_cs` exists alongside it.
     - `RawDataSendBegin(outGuid, fourcc, chidx, estsize)` matches ninjamzap-core/njclient.cpp:2047-2062 verbatim: `WDL_RNG_bytes(outGuid, 16)` → `new RawDataQueueItem` → populate fields → `m_rawdata_cs.Enter() / m_rawdata_sendq.Add(item) / m_rawdata_cs.Leave()`. No `writeLog`. No overflow counter increment. No try_push, no SPSC reference.
     - `RawDataSendWrite(guid, data, dataLen, isEnd)` matches ninjamzap-core/njclient.cpp:2064-2082 verbatim: `new RawDataQueueItem` → populate fields → if `data && dataLen > 0` then `item->data.ResizeOK(dataLen)` (keep JamWide's existing ResizeOK preference over Resize per 14.3-02 CR-01) + `memcpy(item->data.Get(), data, dataLen)` → `m_rawdata_cs.Enter() / m_rawdata_sendq.Add(item) / m_rawdata_cs.Leave()`. No `writeLog`. ResizeOK-failure path: `delete item; return;` (no counter; treat OOM as silent drop in NinjamZap fashion — Plan 20-03 observability will catch it via the unbounded queue growing or the run-thread drain measuring drain rate).
@@ -294,14 +322,16 @@ Audit-allowlist envelope text (the file content this plan writes into realtime-a
     - In spsc_payloads.h: delete RawDataItem POD declaration (current lines ~331-368), delete RAWDATA_SEND_QUEUE_CAPACITY constant (line 387), delete static_assert that RawDataItem is trivially copyable (line 366-368), delete the "Phase 14.3-02 carve-out" header comment block (lines 31-69 that explain the SPSC carve-out for video). Phase 15.1-04 Codex M-9 finality applies to the rest of this file; touch ONLY the RawData lines.
   </behavior>
   <action>
-    Apply the canonical NinjamZap substrate verbatim per the `<interfaces>` block above and the behavior list. Field ordering of RawDataQueueItem MUST exactly match ninjamzap-core/njclient.h:311-321 (int type; unsigned char guid[16]; unsigned int fourcc; int chidx; int estsize; int flags; WDL_HeapBuf data;) — do not reorder, do not rename fields, do not introduce additional bookkeeping fields. The chunking helper `NJClient::ChunkRawDataItem` (JAMWIDE_BUILD_TESTS-gated; currently takes `const jamwide::RawDataItem&`) MUST be retained for test_rawdata_send compatibility but its signature changes to take `const RawDataQueueItem&` (the nested type); the static lookup of item.payload becomes `item.data.Get() / item.data.GetSize()` — that is, by-value WDL_HeapBuf instead of pointer. `DrainRawDataSendQueueForTest` becomes a destructive drain that pops every queue item into an output `std::vector<RawDataQueueItem*>` (callers `delete` each pointer when done); this is the standard WDL_PtrList ownership-handoff idiom. Confirm `m_rawdata_cs` is declared NEAR `m_rawdata_sendq` and the destructor calls `m_rawdata_sendq.Empty(true)` (frees each owned item). Verify all three observability accessors (GetRawDataSendQueueHighWaterMark, GetRawDataMutexContentionCount, GetRawDataSendQueueTotalEnqueueCount) are public on NJClient so Plan 20-03's UAT harness can read them.
+    PRE-REMOVAL AUDIT FIRST (R4 M12): Run `grep -nE "RawDataSendBegin|RawDataSendWrite" src/ tests/` and enumerate every match. For each match, document the call site's source file + line + the surrounding context (function name, comment if any). For each writeLog inside RawDataSendBegin / RawDataSendWrite (lines 3015, 3048, 3063 in as-shipped 14.3-02), document: what error condition triggers the log; what production-relevant information the log carries (overflow count, dropped guid, etc.); whether that information is still meaningful under the WDL_PtrList substrate (where there is no overflow, no try_push failure). Capture the audit results in a working note that will be lifted verbatim into the SUMMARY's "R4 M12 caller audit" section. Only AFTER this audit is complete, proceed with the substrate-revision behavior block above.
+
+    Then apply the canonical NinjamZap substrate verbatim per the `<interfaces>` block above and the behavior list. Field ordering of RawDataQueueItem MUST exactly match ninjamzap-core/njclient.h:311-321 (int type; unsigned char guid[16]; unsigned int fourcc; int chidx; int estsize; int flags; WDL_HeapBuf data;) — do not reorder, do not rename fields, do not introduce additional bookkeeping fields. The chunking helper `NJClient::ChunkRawDataItem` (JAMWIDE_BUILD_TESTS-gated; currently takes `const jamwide::RawDataItem&`) MUST be retained for test_rawdata_send compatibility but its signature changes to take `const RawDataQueueItem&` (the nested type); the static lookup of item.payload becomes `item.data.Get() / item.data.GetSize()` — that is, by-value WDL_HeapBuf instead of pointer. `DrainRawDataSendQueueForTest` becomes a destructive drain that pops every queue item into an output `std::vector<RawDataQueueItem*>` (callers `delete` each pointer when done); this is the standard WDL_PtrList ownership-handoff idiom. Confirm `m_rawdata_cs` is declared NEAR `m_rawdata_sendq` and the destructor calls `m_rawdata_sendq.Empty(true)` (frees each owned item). Verify all three observability accessors (GetRawDataSendQueueHighWaterMark, GetRawDataMutexContentionCount, GetRawDataSendQueueTotalEnqueueCount) are public on NJClient so Plan 20-03's UAT harness can read them.
   </action>
   <verify>
     <automated>cd build-juce &amp;&amp; cmake --build . --target njclient -- -j8 2>&amp;1 | tail -40</automated>
     Confirm no compile errors on njclient static library after the substrate swap. The lib must build before tests can link.
   </verify>
   <done>
-    `src/core/njclient.{h,cpp}` builds with `WDL_PtrList<RawDataQueueItem> m_rawdata_sendq + WDL_Mutex m_rawdata_cs` in place of the SPSC. `spsc_payloads.h` no longer declares `RawDataItem` or `RAWDATA_SEND_QUEUE_CAPACITY`. All references to `m_rawdata_sendq_overflows` / `m_rawdata_sendq_discards` / `GetRawDataSendQueueOverflowCount` / `GetRawDataSendQueueDiscardCount` are deleted across both files. No `writeLog` call remains anywhere in `RawDataSendBegin` / `RawDataSendWrite` / the run-thread drain block (verify with `grep -nE 'writeLog' src/core/njclient.cpp | sed -n '1,200p'` showing the existing writeLog sites are all on other paths). New observability atomics + accessors exist: `m_rawdata_sendq_high_water_mark`, `m_rawdata_cs_contention_count`, `m_rawdata_sendq_total_enqueues`, with public accessors `GetRawDataSendQueueHighWaterMark()`, `GetRawDataMutexContentionCount()`, `GetRawDataSendQueueTotalEnqueueCount()`. Total-enqueue counter is incremented inside both RawDataSendBegin and RawDataSendWrite under m_rawdata_cs, paired with the high-water-mark CAS. njclient static library compiles cleanly.
+    R4 M12 caller audit complete: every caller of RawDataSendBegin/RawDataSendWrite has been enumerated and the disposition of each writeLog inside those substrate APIs is documented in the SUMMARY's "R4 M12 caller audit" section; no required production diagnostic from a non-video caller has been silently stripped (or, if any was, the diagnostic has been moved caller-side and that relocation is documented). `src/core/njclient.{h,cpp}` builds with `WDL_PtrList<RawDataQueueItem> m_rawdata_sendq + WDL_Mutex m_rawdata_cs` in place of the SPSC. `spsc_payloads.h` no longer declares `RawDataItem` or `RAWDATA_SEND_QUEUE_CAPACITY`. All references to `m_rawdata_sendq_overflows` / `m_rawdata_sendq_discards` / `GetRawDataSendQueueOverflowCount` / `GetRawDataSendQueueDiscardCount` are deleted across both files. No `writeLog` call remains anywhere in `RawDataSendBegin` / `RawDataSendWrite` / the run-thread drain block (verify with `grep -nE 'writeLog' src/core/njclient.cpp | sed -n '1,200p'` showing the existing writeLog sites are all on other paths). New observability atomics + accessors exist: `m_rawdata_sendq_high_water_mark`, `m_rawdata_cs_contention_count`, `m_rawdata_sendq_total_enqueues`, with public accessors `GetRawDataSendQueueHighWaterMark()`, `GetRawDataMutexContentionCount()`, `GetRawDataSendQueueTotalEnqueueCount()`. Total-enqueue counter is incremented inside both RawDataSendBegin and RawDataSendWrite under m_rawdata_cs, paired with the high-water-mark CAS. njclient static library compiles cleanly.
   </done>
 </task>
 
@@ -342,7 +372,7 @@ Audit-allowlist envelope text (the file content this plan writes into realtime-a
 </task>
 
 <task type="auto">
-  <name>Task 3: Publish audit-allowlist envelope (.claude + .codex agent configs) + edit 20-CONTEXT.md drain-semantics + tag 20-RESEARCH.md stale sections</name>
+  <name>Task 3: Publish audit-allowlist envelope (.claude + .codex agent configs) with R4 M13 TBD:line placeholders + edit 20-CONTEXT.md drain-semantics + tag 20-RESEARCH.md stale sections</name>
   <files>
     .claude/agents/realtime-audio-reviewer.md,
     .codex/agents/realtime-audio-reviewer.toml,
@@ -350,9 +380,16 @@ Audit-allowlist envelope text (the file content this plan writes into realtime-a
     .planning/phases/20-h-264-encoder-send-pipeline/20-RESEARCH.md
   </files>
   <action>
-    A) Add a `## Phase 20 audit allowlist envelope` section to `.claude/agents/realtime-audio-reviewer.md` between the existing "Important rules" and end-of-file. Content per the `<interfaces>` block above — explicit accept-list of file:line carve-out entries for: `m_video_cs / m_video_spspps_cs / m_rawdata_cs` mutex Enter/Leave on audio thread; `WDL_RNG_bytes`; `new RawDataQueueItem` + `item->data.ResizeOK` + `memcpy`; marker construction memcpy; direct read of `m_locchans[0]->m_curwritefile.guid` (D-20 Phase 15.1-06 HIGH-2 carve-out, audit-allowlist scope: ONE field, ONE read site — the marker construction inside `on_new_interval`'s video block under `m_video_cs`); explicit "NO `writeLog` on this path" reaffirmation. Each carve-out cites the CONTEXT.md decision ID (D-08 / D-09 / D-19 / D-20). Trailing note: "All other audio-path violations remain CRITICAL — these are the only carve-outs accepted under the D-09 envelope. Auditor zero-CRITICAL gate applies OUTSIDE this envelope."
-    B) Mirror the same envelope into `.codex/agents/realtime-audio-reviewer.toml` (TOML structure: top-level `[phase_20_allowlist]` table with key/value pairs for each carve-out site; preserve the existing TOML schema fields). If the existing TOML schema doesn't have an extensible structure, append a free-form `[phase_20_allowlist.notes]` table containing the same markdown content as a multi-line string. Goal: codex agent path consumes the same envelope content as the claude agent path.
+    A) Add a `## Phase 20 audit allowlist envelope` section to `.claude/agents/realtime-audio-reviewer.md` between the existing "Important rules" and end-of-file. Content per the `<interfaces>` block above — explicit accept-list of file:line carve-out entries with `TBD:line` placeholders for the sites that Plan 20-02 will create (R4 M13). The envelope MUST include:
+       - The full list of TBD:line carve-out entries for: `m_video_cs / m_video_spspps_cs / m_rawdata_cs` mutex Enter/Leave on audio thread; `WDL_RNG_bytes`; `new RawDataQueueItem` + `item->data.ResizeOK` + `memcpy`; marker construction memcpy from atomic-halves local temporaries; `readGuidSeqlock` call site (D-20 + R4 H8 atomic two-uint64_t halves carve-out, audit-allowlist scope: atomic-halves load ONLY — no plain non-atomic byte read from the audio thread); explicit "NO `writeLog` on this path" reaffirmation.
+       - Each carve-out cites the CONTEXT.md decision ID (D-08 / D-09 / D-19 / D-20 / R4 H8 / R4 M12 / R4 M13).
+       - Trailing R4 M13 enforcement note: "All `TBD:line` placeholders MUST be refreshed by Plan 20-02 Task 4 with concrete file:line entries from the as-committed code. The audit gate `grep -c 'TBD:line' .claude/agents/realtime-audio-reviewer.md` MUST return 0 after Phase 20 close. If any `TBD:line` remains, Phase 20 acceptance FAILS R4 M13."
+       - Trailing note: "All other audio-path violations remain CRITICAL — these are the only carve-outs accepted under the D-09 envelope. Auditor zero-CRITICAL gate applies OUTSIDE this envelope."
+
+    B) Mirror the same envelope (including `TBD:line` placeholders + R4 M13 enforcement note) into `.codex/agents/realtime-audio-reviewer.toml` (TOML structure: top-level `[phase_20_allowlist]` table with key/value pairs for each carve-out site; preserve the existing TOML schema fields). If the existing TOML schema doesn't have an extensible structure, append a free-form `[phase_20_allowlist.notes]` table containing the same markdown content as a multi-line string. Goal: codex agent path consumes the same envelope content as the claude agent path.
+
     C) Edit `.planning/phases/20-h-264-encoder-send-pipeline/20-CONTEXT.md` at the `<code_context> → Reusable Assets` block (currently line ~153 "Run-thread drain swaps the list out under the mutex, processes outside.") — REPLACE that sentence with: "Run-thread drain is NinjamZap-literal pop-one-unlock-Send-relock matching `ninjamzap-core/njclient.cpp:1987-2039`; per-item ownership transfers from the WDL_PtrList to the drain loop (Get(0) → Delete(0) → process outside the lock → delete item)." This closes R3 must-fix item 2 + Round 2 M8.
+
     D) Edit `.planning/phases/20-h-264-encoder-send-pipeline/20-RESEARCH.md` to add `<!-- STALE — DO NOT PLAN FROM THIS SECTION; see CRITICAL UPDATE at top, CONTEXT.md is authoritative -->` markers IMMEDIATELY ABOVE each of these section headings (R3 must-fix item 5):
       • `## Summary` (line 42)
       • `### Locked Decisions` (line 79)
@@ -364,11 +401,11 @@ Audit-allowlist envelope text (the file content this plan writes into realtime-a
     The CRITICAL UPDATE block at lines 1-40 of 20-RESEARCH.md MUST remain unchanged. The Validation Architecture section (line 897+), Code Examples → NinjamZap Send-Side State Machine (line 637), NinjamZap Encoder Thread Call (line 676), JamTaba openh264 Configure Block (line 694), Forcing IDR for Interval-Boundary Keyframes (line 738), Common Pitfalls (other than #4 which IS stale), and Don't Hand-Roll (line 530) sections remain unmarked — these are referenced by Plans 20-01 / 20-02 as port targets and are accurate.
   </action>
   <verify>
-    <automated>set -e; grep -c "Phase 20 audit allowlist envelope" .claude/agents/realtime-audio-reviewer.md | grep -vq "^0$"; grep -c "pop-one-unlock-Send-relock" .planning/phases/20-h-264-encoder-send-pipeline/20-CONTEXT.md | grep -vq "^0$"; STALE=$(grep -v '^#' .planning/phases/20-h-264-encoder-send-pipeline/20-RESEARCH.md | grep -c "STALE — DO NOT PLAN"); test "$STALE" -ge 7 || { echo "expected >= 7 STALE markers, found $STALE"; exit 1; }; echo "edits OK"</automated>
-    Audit-allowlist section exists in `realtime-audio-reviewer.md`; drain-semantics sentence is corrected in CONTEXT.md; at least 7 STALE markers exist in RESEARCH.md.
+    <automated>set -e; grep -c "Phase 20 audit allowlist envelope" .claude/agents/realtime-audio-reviewer.md | grep -vq "^0$"; grep -c "pop-one-unlock-Send-relock" .planning/phases/20-h-264-encoder-send-pipeline/20-CONTEXT.md | grep -vq "^0$"; STALE=$(grep -v '^#' .planning/phases/20-h-264-encoder-send-pipeline/20-RESEARCH.md | grep -c "STALE — DO NOT PLAN"); test "$STALE" -ge 7 || { echo "expected >= 7 STALE markers, found $STALE"; exit 1; }; TBD=$(grep -c "TBD:line" .claude/agents/realtime-audio-reviewer.md); test "$TBD" -ge 5 || { echo "expected >= 5 TBD:line placeholders (R4 M13), found $TBD"; exit 1; }; echo "edits OK"</automated>
+    Audit-allowlist section exists in `realtime-audio-reviewer.md` with at least 5 `TBD:line` placeholders (R4 M13 — to be refreshed by Plan 20-02 Task 4); drain-semantics sentence is corrected in CONTEXT.md; at least 7 STALE markers exist in RESEARCH.md.
   </verify>
   <done>
-    All four files edited per the action block. Grep confirms the envelope header exists, the corrected drain-semantics sentence exists, and the 7 stale-section markers are present in RESEARCH.md. CRITICAL UPDATE block at RESEARCH.md lines 1-40 is byte-identical to its pre-edit content (no incidental whitespace changes).
+    All four files edited per the action block. Grep confirms the envelope header exists, the R4 M13 `TBD:line` placeholders are present (≥5), the corrected drain-semantics sentence exists, and the 7 stale-section markers are present in RESEARCH.md. CRITICAL UPDATE block at RESEARCH.md lines 1-40 is byte-identical to its pre-edit content (no incidental whitespace changes).
   </done>
 </task>
 
@@ -378,12 +415,13 @@ Audit-allowlist envelope text (the file content this plan writes into realtime-a
 - `cd build-juce && cmake --build . --target njclient -- -j8` exits 0
 - `ctest -R rawdata_send --output-on-failure` exits 0; 8/8 sub-tests green
 - `ctest --output-on-failure` exits 0 (regression check; existing video_fourcc / video_sync / spsc_state_updates and other unrelated tests are unaffected by the substrate swap)
-- `grep -c '"writeLog"' src/core/njclient.cpp | awk '{print $1}'` shows reduced count vs the pre-plan baseline by exactly 3 (the three sites removed: previously around lines 3015, 3048, 3063)
+- `grep -c '"writeLog"' src/core/njclient.cpp | awk '{print $1}'` shows reduced count vs the pre-plan baseline by exactly 3 (the three sites removed: previously around lines 3015, 3048, 3063) — and the R4 M12 caller audit confirmed those three removals are diagnostic-safe
 - `grep -nE "GetRawDataSendQueueOverflowCount|m_rawdata_sendq_overflows|RAWDATA_SEND_QUEUE_CAPACITY|jamwide::RawDataItem" src/ tests/` returns NO matches (all references removed)
 - `grep -nE "WDL_PtrList<RawDataQueueItem>\\s+m_rawdata_sendq" src/core/njclient.h` returns at least one match
 - `grep -nE "m_rawdata_sendq_total_enqueues|GetRawDataSendQueueTotalEnqueueCount" src/core/njclient.h` returns at least one match (the new total-enqueue counter + accessor are declared)
 - `grep -c "m_rawdata_sendq_total_enqueues.fetch_add" src/core/njclient.cpp` returns at least 2 (incremented inside both RawDataSendBegin and RawDataSendWrite)
 - `grep -c "Phase 20 audit allowlist envelope" .claude/agents/realtime-audio-reviewer.md` returns ≥ 1
+- `grep -c "TBD:line" .claude/agents/realtime-audio-reviewer.md` returns ≥ 5 at end of Plan 20-00 (R4 M13 placeholders awaiting Plan 20-02 Task 4 refresh; the value goes to 0 at end of Phase 20)
 - `grep -c "pop-one-unlock-Send-relock" .planning/phases/20-h-264-encoder-send-pipeline/20-CONTEXT.md` returns ≥ 1
 - `grep -v '^#' .planning/phases/20-h-264-encoder-send-pipeline/20-RESEARCH.md | grep -c "STALE — DO NOT PLAN"` returns ≥ 7
 - TSan optional smoke (Plan 20-03 owns the populated-UAT-scale TSan run): if `JAMWIDE_TSAN=ON` build is locally available, `ctest -R rawdata_send` under TSan exits 0 with zero TSan-reported races
@@ -391,13 +429,15 @@ Audit-allowlist envelope text (the file content this plan writes into realtime-a
 
 <success_criteria>
 - Plan 20-00 closes R3 must-fix items 2 (drain semantics contradiction) and 5 (RESEARCH.md staleness markers).
+- Plan 20-00 closes R4 M12 (writeLog removal caller audit) by enumerating all callers of RawDataSendBegin/RawDataSendWrite, documenting the disposition of each writeLog inside the substrate APIs, and confirming no required production diagnostic from a non-video caller is silently stripped.
+- Plan 20-00 closes the SETUP half of R4 M13 (audit-allowlist line numbers) by publishing the envelope with explicit `TBD:line` placeholders for the audio-thread sites that Plan 20-02 will create; Plan 20-02 Task 4 closes the other half by refreshing those placeholders with concrete line numbers.
 - The audit-allowlist envelope is published BEFORE Plan 20-02 lands, so Plan 20-02's audio-thread carve-out sites do not surface as CRITICAL when the audit runs at phase close.
 - The substrate is NinjamZap-literal and ready for Plan 20-02 to drive a second producer (encoder thread via Plan 20-01) and a single drain consumer (run thread) without ABA, torn reads, or capacity-bound surprises.
 - Queue observability scaffolding (high-water-mark + contention counter + total-enqueue counter atomics + their three accessors) is in place so Plan 20-03's UAT acceptance thresholds (MF4) read live data instead of mocking. The total-enqueue counter is the denominator for the contention-ratio gate; Plan 20-03 reads all three counters and adds none of them.
 </success_criteria>
 
 <output>
-On completion, write `.planning/phases/20-h-264-encoder-send-pipeline/20-00-SUMMARY.md` per the get-shit-done summary template. Capture in the summary: (a) the exact NinjamZap-source citations the port pulled from (file:line) and any deviations from those; (b) any TryEnter/contention-counter fallback the executor chose if WDL_Mutex does not expose TryEnter (note: the total-enqueue counter is NOT optional and must be wired regardless of TryEnter availability); (c) the final list of stale-section markers added to RESEARCH.md (file:line); (d) one screenshot or `head -60` of the new envelope section in `.claude/agents/realtime-audio-reviewer.md` so subsequent plans can quote it verbatim.
+On completion, write `.planning/phases/20-h-264-encoder-send-pipeline/20-00-SUMMARY.md` per the get-shit-done summary template. Capture in the summary: (a) the exact NinjamZap-source citations the port pulled from (file:line) and any deviations from those; (b) any TryEnter/contention-counter fallback the executor chose if WDL_Mutex does not expose TryEnter (note: the total-enqueue counter is NOT optional and must be wired regardless of TryEnter availability); (c) the final list of stale-section markers added to RESEARCH.md (file:line); (d) one screenshot or `head -60` of the new envelope section in `.claude/agents/realtime-audio-reviewer.md` so subsequent plans can quote it verbatim; (e) **R4 M12 caller audit results**: the full output of `grep -nE "RawDataSendBegin|RawDataSendWrite" src/ tests/` plus a per-call-site disposition of every writeLog inside the substrate APIs (what it logged, whether it was required production diagnostic, where it landed if relocated caller-side); (f) **R4 M13 setup confirmation**: the count of `TBD:line` placeholders written into `.claude/agents/realtime-audio-reviewer.md` and `.codex/agents/realtime-audio-reviewer.toml` (these are intentional placeholders for Plan 20-02 Task 4 to refresh).
 </output>
 </content>
 </invoke>

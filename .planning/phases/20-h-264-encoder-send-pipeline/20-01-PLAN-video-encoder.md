@@ -22,6 +22,7 @@ threat_refs:
   - T-20-SC
 review_refs:
   - R3-no-mustfix-direct (encoder side; D-15 IDR sync from CONTEXT.md)
+  - R4-H9-encoder-lifetime-ordering
 
 must_haves:
   truths:
@@ -33,11 +34,11 @@ must_haves:
     - "Bitrate ladder: Low=100 kbps, Medium=300 kbps, High=800 kbps mapped from Phase 19 capture preset (D-16)"
     - "One IDR per NINJAM interval via std::atomic<uint64_t> m_audio_interval_seq read on the encoder thread before each avcodec_send_frame; on change, frame_->pict_type=AV_PICTURE_TYPE_I and frame_->key_frame=1 are set so libavcodec/openh264 emits an IDR NAL — port of CONTEXT.md `<canonical_refs>` 'Forcing IDR' example"
     - "Drop-oldest backpressure on the input SPSC ring between JamWideFrameDistributor::onFrame (camera-callback thread, producer) and the encoder thread (consumer) per D-07; observable counter m_encoder_input_drops increments on overwrite; getInputDropCount() reads it; counter being non-zero at phase close fails Plan 20-03's UAT (D-07)"
-    - "Reconfigure (preset change, fatal error, resolution change) tears down the libavcodec context, opens a new one, and re-publishes SPS/PPS via the publishSpsPps callback (D-04); existing input frames-in-flight are flushed gracefully (drain avcodec on encoder thread, no race)"
-    - "Encoder lifecycle: instance constructed when camera opens (Plan 20-03 wiring); encoder thread starts on open() — open() is called by Plan 20-03 ONLY when broadcast toggles on (D-13 idle-cost zero when not broadcasting); close() stops the thread and frees the libavcodec context"
+    - "Reconfigure (preset change, fatal error, resolution change) sends a `reconfigure(newConfig)` signal via SPSC or message to the encoder thread; the encoder thread drains the current openh264 instance, opens a new instance with new params, regenerates SPS/PPS, and publishes via the existing publishSpsPps callback — **WITHOUT touching the JamWideFrameDistributor::Subscription** (R4 H9). The Subscription survives reconfigure so onFrame callbacks continue to flow into the slab pool with zero gap; the encoder thread may briefly buffer frames at the input SPSC during the libavcodec instance swap"
+    - "Encoder lifecycle: instance constructed when camera opens (Plan 20-03 wiring); encoder thread starts on open() — open() is called by Plan 20-03 ONLY when broadcast toggles on (D-13 idle-cost zero when not broadcasting); close() runs the documented 7-step teardown ordering (R4 H9): set m_closing=true (release) → release Subscription + wait for in-flight onFrame → signal encoder thread to wake-and-exit → encoder thread drains pending frames to no-op + exits loop → join encoder thread → free libavcodec/swscale/slabs/SPSC"
     - "publishSpsPps is invoked on the encoder thread once per session and after each reconfigure; payload is raw [SPS-NAL][PPS-NAL] concatenation, no per-NAL length prefix (CONTEXT.md `<specifics>`); Plan 20-02 attaches NJClient::SetVideoSPSPPS as the publishSpsPps target"
     - "publishEncodedNal is invoked on the encoder thread for each frame's NAL bytes (or NAL-group bytes); payload is the RAW NAL bytes WITHOUT the 4-byte BE length prefix — Plan 20-02 owns the length-prefix wrapping inside QueueVideoFrame BEFORE calling RawDataSendWrite (since the prefix is per CONTEXT.md `<specifics>` 'Per-frame chunk format' the same 4-byte BE convention as the marker; Plan 20-02 already holds m_video_cs when this lands)"
-    - "tests/test_video_encoder.cpp covers (a) bring-up: open(config) → publishSpsPps fires within 200ms with non-zero len; (b) IDR-sync counter: notifyIntervalStart(seq+1) → next encoded frame is an IDR (detect by NAL nal_unit_type==5 or by avcodec frame_->pict_type==AV_PICTURE_TYPE_I in the test's mock encoder publishEncodedNal callback inspection); (c) drop-oldest backpressure: producer overruns the input SPSC at 60fps for 100 frames while consumer is gated → getInputDropCount() > 0 + getFrameOutputCount() unaffected by drops (drops are pre-encode); (d) reconfigure: switch from Low to High preset → publishSpsPps fires AGAIN with potentially different bytes"
+    - "tests/test_video_encoder.cpp covers (a) bring-up: open(config) → publishSpsPps fires within 200ms with non-zero len; (b) IDR-sync counter: notifyIntervalStart(seq+1) → next encoded frame is an IDR (detect by NAL nal_unit_type==5 or by avcodec frame_->pict_type==AV_PICTURE_TYPE_I in the test's mock encoder publishEncodedNal callback inspection); (c) drop-oldest backpressure: producer overruns the input SPSC at 60fps for 100 frames while consumer is gated → getInputDropCount() > 0 + getFrameOutputCount() unaffected by drops (drops are pre-encode); (d) reconfigure: switch from Low to High preset → publishSpsPps fires AGAIN with potentially different bytes WITHOUT subscription churn (R4 H9 — the Subscription pointer is the same before and after reconfigure); (e) teardown ordering: under continuous onFrame load, call close(); assert no use-after-free on the slab pool and no frames lost between Subscription release and encoder thread join (R4 H9)"
   artifacts:
     - path: "juce/video/encoder/VideoEncoder.h"
       provides: "Abstract VideoEncoder interface with open/close/reconfigure/notifyIntervalStart + getInputDropCount/getFrameOutputCount + SPS/PPS and encoded-NAL publish callbacks; namespace jamwide; pure C++ (no NJClient include)"
@@ -51,18 +52,18 @@ must_haves:
         - "struct VideoEncoderConfig"
         - "enum class H264Profile { Baseline }"
     - path: "juce/video/encoder/Openh264Encoder.h"
-      provides: "Openh264Encoder concrete VideoEncoder implementation; owns juce::Thread; subscribes to JamWideFrameDistributor::Subscription"
+      provides: "Openh264Encoder concrete VideoEncoder implementation; owns juce::Thread; subscribes to JamWideFrameDistributor::Subscription; closes per R4 H9 7-step teardown ordering"
       exports:
         - "class Openh264Encoder : public VideoEncoder"
     - path: "juce/video/encoder/Openh264Encoder.cpp"
-      provides: "libavcodec H.264 encoder via libopenh264 backend; ported from JamTaba FFMpegMuxer.cpp:237-277; BGRA→YUV420P via libswscale sws_scale; one-IDR-per-interval via m_audio_interval_seq atomic; drop-oldest backpressure on input SPSC; per-preset bitrate ladder"
+      provides: "libavcodec H.264 encoder via libopenh264 backend; ported from JamTaba FFMpegMuxer.cpp:237-277; BGRA→YUV420P via libswscale sws_scale; one-IDR-per-interval via m_audio_interval_seq atomic; drop-oldest backpressure on input SPSC; per-preset bitrate ladder; reconfigure preserves the Subscription (R4 H9)"
       min_lines: 400
     - path: "juce/video/encoder/VideoEncoderListener.h"
       provides: "Optional listener interface for fatal-error notifications and reconfigure-completed events (planner picks granularity per D-Discretion 'Debug logging surface'); used by Plan 20-03 to log encoder events via juce::Logger::writeToLog on the message thread"
       exports:
         - "class VideoEncoderListener"
     - path: "tests/test_video_encoder.cpp"
-      provides: "Bring-up + IDR-sync + drop-oldest + reconfigure unit-test coverage"
+      provides: "Bring-up + IDR-sync + drop-oldest + reconfigure (no-subscription-churn) + teardown-ordering unit-test coverage"
       min_lines: 250
     - path: "CMakeLists.txt"
       provides: "Wire VideoEncoder.h + VideoEncoderConfig.h + Openh264Encoder.{h,cpp} + VideoEncoderListener.h into the JamWideJuce target; add test_video_encoder executable under JAMWIDE_BUILD_TESTS with jamwide_use_ffmpeg(test_video_encoder) AND link against JamWideJuce's encoder-only sources (NOT the full plugin lib, per Phase 19 MEDIUM-5 pure-C++ test discipline); add_test(NAME video_encoder ...)"
@@ -70,7 +71,7 @@ must_haves:
   key_links:
     - from: "Openh264Encoder"
       to: "JamWideFrameDistributor"
-      via: "Subscription handle held as a member; ~Openh264Encoder releases it under the existing Phase 19 HIGH-2 RAII semantics so onFrame can no longer reach a destroyed encoder"
+      via: "Subscription handle held as a member; close() releases it BEFORE the encoder thread join per R4 H9 step 2; ~Subscription blocks until in-flight onFrame returns (Phase 19 HIGH-2 RAII semantics) so the slab pool is alive when onFrame stops"
       pattern: "registerSubscriber"
     - from: "Openh264Encoder encoder thread"
       to: "NJClient::m_audio_interval_seq (Plan 20-02 owns the field; this plan reads via a configurable atomic-pointer or a function-pointer hand-off)"
@@ -87,11 +88,24 @@ must_haves:
 ---
 
 <objective>
-Plan 20-01 stands up the abstract `VideoEncoder` interface + the openh264 (libavcodec backend) concrete implementation that consumes Phase 19's `JamWideFrameDistributor` BGRA frames and emits H.264 NAL units + SPS/PPS at the spike-validated baseline (D-02 D-05 D-06). The encoder owns its own thread; the audio thread and NJClient are NOT involved at this layer. Per-preset bitrate ladder (Low/Medium/High → 100/300/800 kbps) is mapped from Phase 19's preset enum at open() time per D-16. One IDR per NINJAM interval is achieved by reading a `std::atomic<uint64_t>* m_audio_interval_seq` injected by Plan 20-02 — on counter change, the encoder forces an IDR for that frame via libavcodec's `pict_type=AV_PICTURE_TYPE_I + key_frame=1` request to libopenh264, per CONTEXT.md `<canonical_refs>` "Forcing IDR for Interval-Boundary Keyframes" (D-15). Drop-oldest backpressure on the SPSC input ring + the observable `m_encoder_input_drops` counter implement D-07. Reconfigure (preset change, fatal error, resolution change) is tear-down + rebuild + republish SPS/PPS (D-04).
+Plan 20-01 stands up the abstract `VideoEncoder` interface + the openh264 (libavcodec backend) concrete implementation that consumes Phase 19's `JamWideFrameDistributor` BGRA frames and emits H.264 NAL units + SPS/PPS at the spike-validated baseline (D-02 D-05 D-06). The encoder owns its own thread; the audio thread and NJClient are NOT involved at this layer. Per-preset bitrate ladder (Low/Medium/High → 100/300/800 kbps) is mapped from Phase 19's preset enum at open() time per D-16. One IDR per NINJAM interval is achieved by reading a `std::atomic<uint64_t>* m_audio_interval_seq` injected by Plan 20-02 — on counter change, the encoder forces an IDR for that frame via libavcodec's `pict_type=AV_PICTURE_TYPE_I + key_frame=1` request to libopenh264, per CONTEXT.md `<canonical_refs>` "Forcing IDR for Interval-Boundary Keyframes" (D-15). Drop-oldest backpressure on the SPSC input ring + the observable `m_encoder_input_drops` counter implement D-07.
+
+**Lifecycle ordering (R4 H9 closure)**: close() follows ONE documented 7-step ordering:
+  1. Set `m_closing = true` (release) so onFrame can short-circuit if it races.
+  2. Release the `JamWideFrameDistributor::Subscription` — Phase 19 HIGH-2 ~Subscription blocks until in-flight onFrame returns, so no further onFrame callbacks queue into the slab pool after this returns.
+  3. (Equivalent in step 2: the Subscription destructor implicitly waits for in-flight onFrame to complete.)
+  4. Signal the encoder thread to wake-and-exit (condition variable / WaitableEvent on the input SPSC).
+  5. Encoder thread observes `m_closing`, drains any pending frames-in-flight to a no-op, exits its loop.
+  6. join() the encoder thread.
+  7. Free openh264 instance, libswscale context, slabs, input SPSC.
+
+This ordering guarantees: no new frames arrive after step 2; in-flight frames complete before resource teardown; the encoder thread runs through its loop once more to drain; then resources are freed. The threat table and Task 2's action sequence are aligned on this single ordering.
+
+**Reconfigure path (R4 H9 — also locked)**: reconfigure DOES NOT release the Subscription. The encoder thread receives a `reconfigure(newConfig)` signal via the input SPSC (or a dedicated message slot), drains the current openh264 instance, opens a new instance with new params, regenerates SPS/PPS, and publishes via `SetVideoSPSPPS` — **without touching the Subscription**. Frames arriving on the camera-callback thread during the libavcodec instance swap continue to enqueue into the slab pool; they are processed by the new instance once it's open. No `close()` is called during reconfigure (which would tear down the Subscription and lose frames).
 
 Purpose: this is the encoder side of the Phase 20 architecture. It is autonomous (no NJClient include, no audio-thread contact, no `m_video_cs` involvement) so it can be unit-tested in isolation against synthetic frames before Plan 20-02 wires it into the NJClient state machine. The SPS/PPS publish callback + per-NAL publish callback are the seams that Plan 20-02 attaches to.
 
-Output: A `juce::Thread`-backed H.264 encoder that opens with a config, subscribes to the frame distributor, encodes 320×240@10fps at ~98 kbps on the spike baseline, force-IDRs at interval boundaries, and surfaces SPS/PPS + encoded NALs to attached callbacks. A pure-C++ in-process test (`test_video_encoder`) that exercises bring-up, IDR-sync, drop-oldest backpressure, and reconfigure — all without an NJClient or JUCE plugin target link, mirroring Phase 19 MEDIUM-5's pure-C++ test discipline.
+Output: A `juce::Thread`-backed H.264 encoder that opens with a config, subscribes to the frame distributor, encodes 320×240@10fps at ~98 kbps on the spike baseline, force-IDRs at interval boundaries, and surfaces SPS/PPS + encoded NALs to attached callbacks. The encoder closes via the documented 7-step ordering; reconfigure preserves the Subscription. A pure-C++ in-process test (`test_video_encoder`) that exercises bring-up, IDR-sync, drop-oldest backpressure, reconfigure (no subscription churn), and teardown ordering — all without an NJClient or JUCE plugin target link, mirroring Phase 19 MEDIUM-5's pure-C++ test discipline.
 </objective>
 
 <execution_context>
@@ -225,6 +239,7 @@ Input SPSC ring (DEFINE INSIDE Openh264Encoder.cpp; do NOT put in src/threading/
     - SPSC ring of 4 indices (head/tail relaxed atomics); onFrame writes to slot[head], advances head; encoder reads from slot[tail], advances tail.
     - Drop-oldest: when onFrame finds head+1 == tail (full), overwrite slot[tail] (i.e. drop the oldest unconsumed frame), advance tail, then enqueue the new frame at head — increments m_encoder_input_drops.
     - All onFrame work is pre-allocated copy + atomic-store; no heap allocation in steady state.
+    - Reconfigure path also uses this SPSC: a special sentinel-typed slot (e.g. slot.type=RECONFIGURE) carries the new VideoEncoderConfig; encoder thread sees it, drains pending real frames, swaps openh264 instance, continues. NO close() during reconfigure — Subscription is preserved (R4 H9).
 </interfaces>
 </context>
 
@@ -236,17 +251,17 @@ Input SPSC ring (DEFINE INSIDE Openh264Encoder.cpp; do NOT put in src/threading/
 | camera-callback thread → encoder input SPSC | Subscribers receive frames on JUCE "any thread"; Openh264Encoder's onFrame copies into a pre-allocated slot under SPSC discipline |
 | encoder thread → libavcodec / libopenh264 | single-thread context per encoder instance (D-Discretion thread_count=1); no cross-thread ffmpeg API calls within an encoder |
 | encoder thread → Plan 20-02 (publishSpsPps / publishEncodedNal callbacks) | callbacks are invoked on the encoder thread; Plan 20-02's QueueVideoFrame internally takes m_video_cs, so cross-thread serialization is the callee's responsibility |
-| encoder thread → JamWideFrameDistributor::Subscription lifetime | Phase 19 HIGH-2 contract: ~Subscription blocks until in-flight onFrame exits; Openh264Encoder MUST hold its Subscription as a member that gets destroyed BEFORE the encoder thread joins and BEFORE the libavcodec context is freed |
+| encoder thread → JamWideFrameDistributor::Subscription lifetime | Phase 19 HIGH-2 contract: ~Subscription blocks until in-flight onFrame exits; Openh264Encoder holds its Subscription as a member; close() releases the Subscription BEFORE the encoder thread join (R4 H9 step 2 precedes step 6) so onFrame stops queueing into the slab pool before the thread joins; resources are freed last (step 7) so the slab pool is alive while onFrame may still be returning |
 
 ## STRIDE Threat Register
 
 | Threat ID | Category | Component | Disposition | Mitigation Plan |
 |-----------|----------|-----------|-------------|-----------------|
-| T-20-01 | Tampering (encoder use-after-free / data-race) | Openh264Encoder + JamWideFrameDistributor + Plan 20-02 callbacks | mitigate | Subscription RAII (Phase 19 HIGH-2) ensures onFrame can't reach a destroyed Openh264Encoder; encoder thread join in close() happens BEFORE Subscription release so the encoder's own slab pool is alive when onFrame stops; publishSpsPps / publishEncodedNal are std::function copies captured at open(), so Plan 20-02 lifecycle of those callbacks is Plan 20-02's responsibility (per the layered review pattern from memory feedback_phase19_review_layers) |
+| T-20-01 | Tampering (encoder use-after-free / data-race on close) | Openh264Encoder + JamWideFrameDistributor + Plan 20-02 callbacks | mitigate | Single documented teardown ordering per R4 H9: (1) set m_closing=true (release); (2) release JamWideFrameDistributor::Subscription (Phase 19 HIGH-2 wait-for-in-flight); (3) signal encoder thread to wake-and-exit on the input SPSC; (4) encoder thread observes m_closing, drains pending frames to no-op, exits loop; (5) join() encoder thread; (6) free openh264 / swscale / slabs / SPSC. Reconfigure path does NOT touch the Subscription — encoder thread receives a `reconfigure` signal via the input SPSC, drains current libavcodec instance, opens new instance, publishes new SPS/PPS, continues. publishSpsPps / publishEncodedNal are std::function copies captured at open(), so Plan 20-02 lifecycle of those callbacks is Plan 20-02's responsibility (per the layered review pattern from memory feedback_phase19_review_layers) |
 | T-20-IDR | Tampering (IDR-sync drift exceeding 1 frame) | m_audio_interval_seq atomic read in encoder thread | accept | D-15 explicitly accepts up to 1 frame of drift (~33-100ms at our frame rates); test_video_encoder asserts: 100 consecutive interval boundary changes produce 100 IDR frames within +/- 1 frame of the boundary |
 | T-20-OOM | Information disclosure (slab-pool OOM under sustained input overrun) | encoder input SPSC | mitigate | Drop-oldest semantics + observable getInputDropCount(); Plan 20-03 UAT acceptance fails if drop count != 0 at phase close (D-07); slab-pool size 4 frames is sufficient because consumer (encoder thread) runs at ≥ input frame rate in steady state |
 | T-20-SC | Tampering (supply chain) | libavcodec/libavutil/libswscale/libopenh264 | mitigate | Vendored under libs/ffmpeg/* by Phase 14.3-01; this plan does NOT install new packages, only links via existing cmake/ffmpeg.cmake INTERFACE target; supply-chain audit was discharged at 14.3-01 and is re-affirmed at Phase 23 packaging; no [ASSUMED]/[SUS]/[SLOP] packages introduced here |
-| T-20-FATAL | Denial of service (encoder fatal error → silent stop) | Openh264Encoder fatal-error path | mitigate | VideoEncoderListener::onEncoderFatalError() is invoked on the encoder thread; Plan 20-03's owner attaches a listener that logs via juce::Logger::writeToLog (message thread) AND triggers a reconfigure attempt (D-04 tear-down + rebuild) so the encoder self-heals |
+| T-20-FATAL | Denial of service (encoder fatal error → silent stop) | Openh264Encoder fatal-error path | mitigate | VideoEncoderListener::onEncoderFatalError() is invoked on the encoder thread; Plan 20-03's owner attaches a listener that logs via juce::Logger::writeToLog (message thread) AND triggers a reconfigure attempt (per the reconfigure path: encoder thread drains current instance, opens new, publishes new SPS/PPS — Subscription preserved per R4 H9) so the encoder self-heals |
 </threat_model>
 
 <tasks>
@@ -279,7 +294,7 @@ Input SPSC ring (DEFINE INSIDE Openh264Encoder.cpp; do NOT put in src/threading/
 </task>
 
 <task type="auto" tdd="true">
-  <name>Task 2: Implement Openh264Encoder + per-preset config + IDR-sync + drop-oldest backpressure + reconfigure + tests/test_video_encoder.cpp</name>
+  <name>Task 2: Implement Openh264Encoder + per-preset config + IDR-sync + drop-oldest backpressure + reconfigure (no subscription churn, R4 H9) + 7-step teardown ordering (R4 H9) + tests/test_video_encoder.cpp</name>
   <files>
     juce/video/encoder/Openh264Encoder.h,
     juce/video/encoder/Openh264Encoder.cpp,
@@ -290,8 +305,8 @@ Input SPSC ring (DEFINE INSIDE Openh264Encoder.cpp; do NOT put in src/threading/
     Implementation outline (Openh264Encoder.cpp body MUST follow this structure top-to-bottom):
 
     1. CTOR / DTOR
-       - ctor: zero-init all members; the libavcodec context (AVCodecContext*) is null until open(); the input slab-pool (4 slots × `std::vector<unsigned char>` sized to maxBgraBytes) is constructed empty here.
-       - dtor: if open, calls close() which: (a) signals encoder thread exit; (b) joins thread; (c) releases JamWideFrameDistributor Subscription (this triggers Phase 19 HIGH-2 in-flight wait); (d) frees AVCodecContext + AVFrame + AVPacket + SwsContext.
+       - ctor: zero-init all members; the libavcodec context (AVCodecContext*) is null until open(); the input slab-pool (4 slots × `std::vector<unsigned char>` sized to maxBgraBytes) is constructed empty here; `std::atomic<bool> m_closing{false}` declared.
+       - dtor: if open, calls close() which runs the documented 7-step teardown ordering below. After close() returns, all resources are freed and the encoder is safe to delete.
 
     2. open(cfg, distributor, audioIntervalSeq, publishSpsPps, publishEncodedNal, listener)
        - precondition asserts: open() can only be called when idle; if encoder thread is running, return false (caller bug; per D-13 Plan 20-03 only calls open() when broadcast toggles on).
@@ -299,54 +314,61 @@ Input SPSC ring (DEFINE INSIDE Openh264Encoder.cpp; do NOT put in src/threading/
        - allocate slab pool: 4 slots × std::vector<unsigned char>(cfg.width * cfg.height * 4); allocate AVFrame with width/height/format set + av_frame_get_buffer().
        - register JamWideFrameDistributor subscription: subscription_ = distributor->registerSubscriber(this); (Openh264Encoder implements JamWideFrameDistributor::Subscriber and stores subscription_ as a member).
        - publish first SPS/PPS: libavcodec writes SPS/PPS into AVCodecContext::extradata after avcodec_open2 if profile setup is correct; extract via codecContext_->extradata + codecContext_->extradata_size and invoke publishSpsPps_(extradata, extradata_size). If extradata is null (depends on openh264 build flags), defer to first-IDR path: capture the first emitted AV_PKT_FLAG_KEY packet's NAL stream, parse SPS (nal_unit_type 7) + PPS (nal_unit_type 8) by scanning [0x00 0x00 0x00 0x01] start codes, concatenate the SPS-NAL + PPS-NAL, and invoke publishSpsPps_ — record this with listener_->onSpsPpsPublished(len).
-       - start juce::Thread (or std::thread per D-Discretion encoder thread lifecycle); enter run loop.
+       - reset `m_closing` to false (in case of prior close-reopen cycle), then start juce::Thread (or std::thread per D-Discretion encoder thread lifecycle); enter run loop.
 
     3. run() loop on encoder thread
-       Loop while !threadShouldExit():
+       Loop while !threadShouldExit() && !m_closing.load(std::memory_order_acquire):
          a. Wait for next frame slot at tail: spin/sleep-yield if SPSC empty (use AbstractFifo-style or hand-rolled tail!=head check); minimum-latency variant: juce::WaitableEvent signaled by onFrame.
-         b. Convert BGRA → YUV420P via sws_scale into AVFrame buffers; release input slot.
-         c. Read m_audio_interval_seq via audioIntervalSeq_->load(relaxed); if changed vs lastObservedIntervalSeq_, set frame_->pict_type=AV_PICTURE_TYPE_I, frame_->key_frame=1, update lastObservedIntervalSeq_.
-         d. avcodec_send_frame(codecContext_, frame_); loop avcodec_receive_packet(codecContext_, pkt_); for each packet, invoke publishEncodedNal_(pkt_->data, pkt_->size) on the encoder thread; av_packet_unref(pkt_). Increment m_frame_output_count.
-         e. Reset frame_->pict_type=AV_PICTURE_TYPE_NONE for next frame.
-       On loop exit: avcodec flush (avcodec_send_frame(ctx, NULL); drain remaining packets).
+         b. If the slot is a RECONFIGURE sentinel (reconfigure path R4 H9): drain remaining real frames in the SPSC into the current openh264 instance (avcodec_send_frame + avcodec_receive_packet loop until all queued frames produce packets); then close the current libavcodec/swscale context (avcodec_free_context, sws_freeContext); allocate new libavcodec/swscale resources per the new VideoEncoderConfig; extract new SPS/PPS (extradata or first-IDR scan); invoke publishSpsPps_; listener_->onEncoderReconfigured(newCfg); continue the loop. **The JamWideFrameDistributor::Subscription is NOT touched during this path** — frames arriving on the camera-callback thread during the libavcodec instance swap continue to enqueue into the slab pool; they are processed by the new instance after reconfigure completes.
+         c. (Normal frame slot) Convert BGRA → YUV420P via sws_scale into AVFrame buffers; release input slot.
+         d. Read m_audio_interval_seq via audioIntervalSeq_->load(relaxed); if changed vs lastObservedIntervalSeq_, set frame_->pict_type=AV_PICTURE_TYPE_I, frame_->key_frame=1, update lastObservedIntervalSeq_.
+         e. avcodec_send_frame(codecContext_, frame_); loop avcodec_receive_packet(codecContext_, pkt_); for each packet, invoke publishEncodedNal_(pkt_->data, pkt_->size) on the encoder thread; av_packet_unref(pkt_). Increment m_frame_output_count.
+         f. Reset frame_->pict_type=AV_PICTURE_TYPE_NONE for next frame.
+       On loop exit (either threadShouldExit OR m_closing observed true): drain any remaining frames-in-flight to a no-op (read all SPSC slots without encoding them — they're being dropped because we're closing); avcodec flush (avcodec_send_frame(ctx, NULL); drain remaining packets — optional in close path since we're not publishing them); exit run().
 
     4. onFrame(const juce::Image& image)  — called on camera-callback thread (JUCE "any thread")
+       - Early-return if `m_closing.load(std::memory_order_acquire)` is true — this is a defensive short-circuit; the Subscription release in close() step 2 is the primary guarantee that onFrame stops being called.
        - Use juce::Image::BitmapData(image, juce::Image::BitmapData::readOnly) to get the raw pixel pointer; assume BGRA byte order per Phase 19 D-04 + Assumption A7 in 20-RESEARCH.md (verify in Plan 20-03 UAT against the spike's red-frame round-trip).
        - SPSC enqueue: load head + tail; if (head - tail) >= slabCount, drop-oldest: advance tail (drop the oldest unconsumed slot), increment m_encoder_input_drops, then proceed.
        - memcpy width*height*4 bytes from BitmapData::data into slabPool_[head % slabCount]; advance head (release-store).
        - Signal encoder thread (if using juce::WaitableEvent: event.signal()).
        - Total work: ~3 MB memcpy at High preset (worst-case); ~300 KB at Low; sub-millisecond at typical capture rates; no heap allocation in steady state (slab is pre-allocated at open()).
 
-    5. close()
-       - Signal thread exit (threadShouldExit() returns true OR a std::atomic<bool> running_ flag). Signal WaitableEvent so the thread wakes from its idle wait.
-       - thread_.stopThread(2000) or thread_.join() — wait for clean exit.
-       - subscription_ = Subscription{}; — destroying the active subscription triggers Phase 19 HIGH-2 wait-for-in-flight.
-       - Free libavcodec resources (av_packet_free, av_frame_free, sws_freeContext, avcodec_free_context). Clear slab pool.
-       - listener_->onEncoderClosed() if listener attached.
+    5. close() — **R4 H9 LOCKED 7-STEP ORDERING** (this is the canonical sequence; the threat table T-20-01 and this task's behavior block are aligned on it)
+       Step 1: m_closing.store(true, std::memory_order_release);  // gate onFrame defensively
+       Step 2: subscription_ = Subscription{};  // destroying the active Subscription triggers Phase 19 HIGH-2 wait-for-in-flight-onFrame; after this returns, no further onFrame callbacks will queue into the slab pool
+       Step 3: (implicit in step 2 — Phase 19 ~Subscription blocks until any callback currently mid-flight on the camera-callback thread completes)
+       Step 4: Signal encoder thread to wake-and-exit: event_.signal() (WaitableEvent) AND/OR set threadShouldExit() flag; the encoder thread's loop predicate `!threadShouldExit() && !m_closing` will fail on next iteration
+       Step 5: Encoder thread observes m_closing, drains any pending frames-in-flight in the SPSC to a no-op (loops through slots, advances tail without encoding), exits its run() loop
+       Step 6: thread_.stopThread(2000) or thread_.join();  // wait for encoder thread to terminate cleanly
+       Step 7: Free libavcodec resources (av_packet_free, av_frame_free, sws_freeContext, avcodec_free_context). Clear slab pool. Reset input SPSC head/tail. listener_->onEncoderClosed() if listener attached.
+       - This ordering guarantees: no new frames arrive after step 2 (Subscription release); in-flight frames complete before resource teardown (step 3 implicit in Subscription destructor); the encoder thread runs through its loop once more to drain pending slab-pool frames (step 5); then resources are freed last (step 7) so the slab pool is alive while onFrame may still be returning AND alive while the encoder thread drains.
 
-    6. reconfigure(const VideoEncoderConfig& cfg)
-       - close() (no Subscription release; reconfigure preserves the distributor binding).
-       - re-open libavcodec resources with new cfg; re-publish SPS/PPS (the open() path already does this).
-       - listener_->onEncoderReconfigured(cfg).
+    6. reconfigure(const VideoEncoderConfig& cfg) — **R4 H9: SUBSCRIPTION PRESERVED**
+       - DO NOT call close(). The JamWideFrameDistributor::Subscription remains active throughout reconfigure; onFrame continues to enqueue frames into the slab pool.
+       - Send a RECONFIGURE sentinel (carrying the new VideoEncoderConfig) into the input SPSC; the encoder thread picks it up in step 3.b of run() and performs the libavcodec/swscale swap inline on the encoder thread.
+       - This function returns immediately (or waits for an acknowledgment latch if the caller wants synchronous semantics — planner picks; the test sub-test 4 below validates the publish-callback-fired behavior, not synchronous return).
+       - listener_->onEncoderReconfigured(cfg) is invoked from the encoder thread after the swap completes.
 
     7. test_video_encoder.cpp (~250 LOC)
        Test scaffold copies the TEST()/PASS()/FAIL() macro pattern from tests/test_rawdata_send.cpp. Sub-tests:
          A. test_encoder_bringup_publishes_sps_pps — feed 1 synthetic frame (solid color, allocated via juce::Image-like POD or a raw BGRA buffer adapter; test_video_encoder can avoid the JUCE dep by faking a minimal `juce::Image`-shaped struct that BitmapData consumers don't need — or alternatively use a test-only `feedRawBgra(width, height, bytes)` helper exposed under JAMWIDE_BUILD_TESTS on Openh264Encoder); within 200ms publishSpsPps callback fires with len > 0.
          B. test_encoder_idr_on_interval_change — set audioIntervalSeq atomic; feed N frames; bump the atomic; feed M more frames; assert: exactly one of the M frames is an IDR (detect by inspecting the published NAL: first byte after start code 0x00000001 has nal_unit_type = (byte & 0x1f) == 5).
          C. test_encoder_drop_oldest_under_input_overrun — feed at 60 fps for 100 frames into an encoder configured for 10 fps with NO consumer drain (or drain is gated); assert getInputDropCount() > 0; assert getFrameOutputCount() <= 10 (consumer rate).
-         D. test_encoder_reconfigure_republishes_sps_pps — open() at preset 0 (Low); collect first SPS/PPS payload; call reconfigure(makeConfigForPreset(2)) (High); assert: publishSpsPps fires a SECOND time after reconfigure; the second payload may be byte-identical or different (openh264 SPS/PPS may not change across compatible profile/level configs — the test asserts the CALLBACK fires; byte-equality is not asserted).
+         D. test_encoder_reconfigure_republishes_sps_pps_without_subscription_churn (R4 H9 coverage) — open() at preset 0 (Low); record the Subscription pointer (or a stable identifier) and the first SPS/PPS payload; call reconfigure(makeConfigForPreset(2)) (High); assert: publishSpsPps fires a SECOND time after reconfigure; **the Subscription pointer/identifier is the same before and after reconfigure (R4 H9: reconfigure does NOT release the Subscription)**; the second SPS/PPS payload may be byte-identical or different (openh264 SPS/PPS may not change across compatible profile/level configs — the test asserts the CALLBACK fires AND the Subscription is unchanged).
+         E. test_encoder_close_ordering_no_uaf_no_lost_frames (R4 H9 coverage) — spawn a faked JamWideFrameDistributor that fires onFrame continuously at 60fps on a separate thread; call encoder.open(); let it run for 100ms; call encoder.close(); assert: (1) no use-after-free on the slab pool (verifiable via ASAN under the existing test build flags); (2) no frames lost between Subscription release (step 2 of close) and encoder thread join (step 6 of close) — verifiable by checking that getFrameOutputCount() + getInputDropCount() approximately equals the total frames fired by the faked distributor MINUS frames pending in the slab pool at the moment of Subscription release (these are drained to no-op in step 5 per the documented teardown); (3) close() returns successfully; (4) it is safe to destroy the encoder after close() returns.
 
        Use a minimal test harness that does NOT link against JamWideJuce — link against Openh264Encoder.cpp + VideoEncoder.h + VideoEncoderConfig.h sources directly, plus ffmpeg::lgpl via jamwide_use_ffmpeg(test_video_encoder). This matches Phase 19 MEDIUM-5's pure-C++ test discipline.
   </behavior>
   <action>
-    Port the libavcodec configure block verbatim from JamTaba FFMpegMuxer.cpp:237-277 with the Phase 20 additions documented in CONTEXT.md `<canonical_refs>` "JamTaba openh264 Configure Block". The encoder thread is a juce::Thread subclass (preferred over std::thread per JUCE consistency with NinjamRunThread + JamWideCameraDevice patterns) with run() implementing the steady-state loop above. For the IDR-sync write to frame_->pict_type, set the pict_type AFTER sws_scale completes (because sws_scale produces a fresh frame each call) and BEFORE avcodec_send_frame — match the CONTEXT.md "Forcing IDR" example exactly. For BGRA → YUV420P, use libswscale sws_getContext (SWS_BILINEAR for downscale; the spike uses SWS_BICUBIC at line 142 of the spike-results notes — planner picks bilinear for steady-state perf at our resolutions) + sws_scale per frame. For the SPS/PPS extraction path, default to `codecContext_->extradata` if non-null after `avcodec_open2`; otherwise fall back to first-IDR NAL-stream scan as described. Slab-pool size is 4 frames (CONTEXT.md Pitfall #3); slab byte-size is cfg.width*cfg.height*4 (BGRA worst-case at High = 3.6 MB; total slab pool worst-case ~14.4 MB which is acceptable for the broadcast-active path per D-13 lifecycle).
+    Port the libavcodec configure block verbatim from JamTaba FFMpegMuxer.cpp:237-277 with the Phase 20 additions documented in CONTEXT.md `<canonical_refs>` "JamTaba openh264 Configure Block". The encoder thread is a juce::Thread subclass (preferred over std::thread per JUCE consistency with NinjamRunThread + JamWideCameraDevice patterns) with run() implementing the steady-state loop above. **The 7-step close() teardown ordering is the canonical lifecycle sequence — implement it exactly as documented in behavior step 5 above; do not reorder.** The reconfigure path on the encoder thread must drain pending real frames into the current libavcodec instance BEFORE swapping (so frames in-flight at reconfigure time are processed, not lost); **must NOT release the Subscription** (frames continuing to arrive on the camera-callback thread are queued in the slab pool and processed by the new instance after the swap). For the IDR-sync write to frame_->pict_type, set the pict_type AFTER sws_scale completes (because sws_scale produces a fresh frame each call) and BEFORE avcodec_send_frame — match the CONTEXT.md "Forcing IDR" example exactly. For BGRA → YUV420P, use libswscale sws_getContext (SWS_BILINEAR for downscale; the spike uses SWS_BICUBIC at line 142 of the spike-results notes — planner picks bilinear for steady-state perf at our resolutions) + sws_scale per frame. For the SPS/PPS extraction path, default to `codecContext_->extradata` if non-null after `avcodec_open2`; otherwise fall back to first-IDR NAL-stream scan as described. Slab-pool size is 4 frames (CONTEXT.md Pitfall #3); slab byte-size is cfg.width*cfg.height*4 (BGRA worst-case at High = 3.6 MB; total slab pool worst-case ~14.4 MB which is acceptable for the broadcast-active path per D-13 lifecycle).
   </action>
   <verify>
     <automated>cd build-juce &amp;&amp; cmake --build . --target test_video_encoder JamWideJuce -- -j8 &amp;&amp; ctest -R video_encoder --output-on-failure 2>&amp;1 | tail -30</automated>
-    JamWideJuce target builds with Openh264Encoder included; test_video_encoder binary builds and executes; 4/4 sub-tests pass.
+    JamWideJuce target builds with Openh264Encoder included; test_video_encoder binary builds and executes; 5/5 sub-tests pass.
   </verify>
   <done>
-    Openh264Encoder.{h,cpp} compile and link inside JamWideJuce; tests/test_video_encoder.cpp's 4 sub-tests are green under `ctest -R video_encoder`; getInputDropCount() and getFrameOutputCount() return live counters; the encoder thread exits cleanly on close() and the Subscription is released BEFORE the libavcodec context is freed (verifiable in code by source-line ordering in close()). No heap allocation observed on the camera-callback thread's onFrame steady-state path (verify by inspection — slab pool is pre-allocated; memcpy is the only work). `ctest --output-on-failure` is fully green (regression check that the new encoder header + cpp + test target don't break unrelated tests).
+    Openh264Encoder.{h,cpp} compile and link inside JamWideJuce; tests/test_video_encoder.cpp's 5 sub-tests are green under `ctest -R video_encoder`; getInputDropCount() and getFrameOutputCount() return live counters; **encoder destructor runs in the documented R4 H9 7-step order (m_closing → Subscription release → encoder-thread signal → drain → join → free resources); reconfigure path does NOT destroy Subscription (verifiable by sub-test D); no race between frame delivery and encoder shutdown verifiable under TSan (sub-test E + ASAN gates)**. No heap allocation observed on the camera-callback thread's onFrame steady-state path (verify by inspection — slab pool is pre-allocated; memcpy is the only work). `ctest --output-on-failure` is fully green (regression check that the new encoder header + cpp + test target don't break unrelated tests).
   </done>
 </task>
 
@@ -358,12 +380,16 @@ Input SPSC ring (DEFINE INSIDE Openh264Encoder.cpp; do NOT put in src/threading/
 - `cd build-juce && ctest --output-on-failure` exits 0 (full-suite regression check; the substrate revision from 20-00 + the encoder addition here must coexist with all existing tests)
 - `grep -c "AV_PICTURE_TYPE_I" juce/video/encoder/Openh264Encoder.cpp` returns ≥ 1 (the IDR-force site exists)
 - `grep -c "registerSubscriber" juce/video/encoder/Openh264Encoder.cpp` returns ≥ 1 (the Phase 19 distributor binding exists)
+- `grep -c "m_closing" juce/video/encoder/Openh264Encoder.cpp` returns ≥ 3 (R4 H9 7-step teardown — set in close step 1, read in onFrame early-return, read in encoder-thread loop predicate)
+- `grep -nE "subscription_\\s*=\\s*Subscription\\{\\}" juce/video/encoder/Openh264Encoder.cpp` returns ≥ 1 (R4 H9 close step 2 — Subscription release before thread join)
+- `grep -nE "subscription_\\s*=\\s*Subscription\\{\\}" juce/video/encoder/Openh264Encoder.cpp` lines must precede the `thread_.stopThread\\|thread_.join` line numbers (R4 H9 step 2 before step 6 — verify by source inspection in the SUMMARY)
 - Encoder thread `getInputDropCount()` is zero on the bring-up test sub-test A (no overrun, no drops); explicitly non-zero on sub-test C (drop-oldest exercise)
-- TSan smoke (optional; Plan 20-03 owns the full populated UAT): `--tsan` build of `test_video_encoder` runs sub-tests A through D under TSan and emits zero data-race reports
+- TSan smoke (optional; Plan 20-03 owns the full populated UAT): `--tsan` build of `test_video_encoder` runs sub-tests A through E under TSan and emits zero data-race reports
 </verification>
 
 <success_criteria>
 - Plan 20-01 delivers the encoder backend per CONTEXT.md D-01 / D-02 / D-04 / D-05 / D-06 / D-07 / D-13 / D-15 / D-16.
+- **R4 H9 (encoder lifetime ordering) is closed**: single documented 7-step close() teardown ordering (m_closing → Subscription release → encoder-thread signal → drain → join → free resources) appears in both the threat table (T-20-01) and Task 2's behavior block (no contradiction); reconfigure path preserves the Subscription (no close-and-reopen); sub-tests D and E verify these properties.
 - Plan 20-02 has stable contracts to bind to: VideoEncoder.h pure-virtual surface, VideoEncoderConfig.h POD + preset helper, plus the publishSpsPps + publishEncodedNal callback signatures.
 - Per-preset bitrate ladder is exact: 100 / 300 / 800 kbps target (D-16); validated empirically in Plan 20-03 UAT against the spike's measured baseline.
 - One IDR per NINJAM interval is delivered with up to 1 frame of drift (D-15); test_encoder_idr_on_interval_change asserts this deterministically against the m_audio_interval_seq atomic.
@@ -371,5 +397,7 @@ Input SPSC ring (DEFINE INSIDE Openh264Encoder.cpp; do NOT put in src/threading/
 </success_criteria>
 
 <output>
-On completion, write `.planning/phases/20-h-264-encoder-send-pipeline/20-01-SUMMARY.md` per the get-shit-done summary template. Capture in the summary: (a) the exact libavcodec / libopenh264 versions visible at the link site (avcodec_version() output) so Plan 23 packaging can pin them; (b) the measured per-preset encode CPU + actual avg bitrate from the test_video_encoder bring-up run (target: Low preset ~98 kbps from the spike baseline ±10%); (c) any deviations from the JamTaba configure block (e.g. preset string choice if "veryfast" turned out to be too slow); (d) whether SPS/PPS came from extradata path or first-IDR-NAL-scan fallback path on the test host.
+On completion, write `.planning/phases/20-h-264-encoder-send-pipeline/20-01-SUMMARY.md` per the get-shit-done summary template. Capture in the summary: (a) the exact libavcodec / libopenh264 versions visible at the link site (avcodec_version() output) so Plan 23 packaging can pin them; (b) the measured per-preset encode CPU + actual avg bitrate from the test_video_encoder bring-up run (target: Low preset ~98 kbps from the spike baseline ±10%); (c) any deviations from the JamTaba configure block (e.g. preset string choice if "veryfast" turned out to be too slow); (d) whether SPS/PPS came from extradata path or first-IDR-NAL-scan fallback path on the test host; (e) **the actual line numbers in Openh264Encoder.cpp for each of the R4 H9 7-step close() teardown steps so subsequent reviewers can verify the documented ordering holds in the committed code**.
 </output>
+</content>
+</invoke>

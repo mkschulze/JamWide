@@ -4,7 +4,7 @@ milestone: v1.3
 milestone_name: Native Video
 status: executing
 stopped_at: Phase 20 CONTEXT.md + RESEARCH.md revised post-codex (substrate revision locked, ready for re-review or plan)
-last_updated: "2026-05-16T18:36:43.389Z"
+last_updated: "2026-05-16T19:20:37.391Z"
 last_activity: 2026-05-16 -- Phase 20 planning complete
 progress:
   total_phases: 6

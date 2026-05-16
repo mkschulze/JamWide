@@ -25,8 +25,10 @@ threat_refs:
   - T-20-03
   - T-20-SC
   - T-20-OBS-UAT
+  - T-20-TEARDOWN
 review_refs:
   - R3-MF4-queue-observability
+  - R4-M11-end-on-broadcast-off
 
 must_haves:
   truths:
@@ -39,8 +41,9 @@ must_haves:
     - "tests/uat/phase-20-broadcast-uat.sh implements the 5-minute 2-peer broadcast UAT at each of 3 presets (Low/Medium/High) against `video.ninjamzap.com:2049`; observable acceptance thresholds per R3 MF4: m_rawdata_sendq_high_water_mark < 32 items AND m_rawdata_cs_contention_count / m_rawdata_sendq_total_enqueues < 1%, both at every preset; m_encoder_input_drops == 0 at every preset (D-07); zero audio glitches subjectively (UAT script captures human-observer checklist); ninjamzap-server VideoCongestionThreshold counter readable from server logs if accessible (best-effort, not a hard gate since we don't operate the server)"
     - "TSan dual-scope verification per Phase 15.1 D-07 runs on the broadcast happy path: --tsan build of JamWide standalone + a 5-minute local broadcast against the public server (or a local ninjamzap-server-docker if the public server is too lossy under TSan); zero TSan-reported races on m_video_cs / m_video_spspps_cs / m_rawdata_cs / m_curwritefile_guid_seq counters"
     - "Audio-thread budget measurement: wrap on_new_interval's video block in mach_absolute_time() (macOS) / QueryPerformanceCounter (Windows) probes; sample worst-case duration over a 5-minute 2-peer populated broadcast at HD (High preset); target ≤ 200 µs worst-case per call (NinjamZap-literal budget per CONTEXT.md Deferred Ideas + Assumption A5); if exceeded by ≥3× → escalate as substrate-tuning subplan per CONTEXT.md (NOT a sync-architecture change per D-19 rationale + feedback_proven_over_pure)"
-    - "tests/test_processor_video_lifecycle.cpp validates the lifecycle wiring in pure-C++ without a NINJAM session: camera-open → encoder construction; broadcast-on → encoder.open() + client.SetVideoBroadcastActive(true) wired; broadcast-off → SetVideoBroadcastActive(false) before encoder.close(); camera-off → encoder destruction; nothing should crash, leak, or assert"
-    - "CHANGELOG.md gets a v1.3 Phase 20 entry per Phase 19 D-26 pattern: '## Unreleased — v1.3 alpha (Phase 20) — H.264 native video broadcast' with bullets covering encoder bring-up + Broadcast button + channel 1 registration + UAT acceptance thresholds + known limitations (cold-start option (b) marker-only first interval)"
+    - "tests/test_processor_video_lifecycle.cpp validates the lifecycle wiring in pure-C++ without a NINJAM session: camera-open → encoder construction; broadcast-on → encoder.open() + client.SetVideoBroadcastActive(true) wired; broadcast-off → SetVideoBroadcastActive(false) before encoder.close(); camera-off → encoder destruction; Disconnect-with-broadcast-active → END emitted via existing audio-channel-cleanup path; plugin-destruction → Disconnect-equivalent semantics; nothing should crash, leak, or assert"
+    - "Per R4 M11: END-on-broadcast-off has THREE documented teardown paths. (1) Normal broadcast-off: message thread calls SetVideoBroadcastActive(false); on_new_interval (audio thread) emits END at the next natural interval boundary — acceptable bounded latency of one interval (≤ ~8s at NINJAM defaults). (2) Disconnect teardown: when Disconnect() is called (run thread), the existing audio-channel-cleanup path also emits END for any open video interval — verified against ninjamzap-core/njclient.cpp Disconnect implementation; the END is queued through m_rawdata_sendq before m_netcon teardown so the receiver sees a clean end-of-stream. (3) Plugin destruction: if the processor destructs while broadcast is active, the destructor invokes Disconnect-equivalent semantics so the END is queued (best-effort — pending items in m_rawdata_sendq at destruction time are freed via WDL_PtrList::Empty(true) per Plan 20-00; if the destructor races with m_netcon teardown, the END may not reach the wire — accepted bounded loss). NO force-END from the message thread is added — the cost of forcing a synchronous END from the message thread would be a message-thread → audio-thread m_video_cs synchronization which the message thread MUST NOT block on per Phase 15.1 D-01"
+    - "CHANGELOG.md gets a v1.3 Phase 20 entry per Phase 19 D-26 pattern: '## Unreleased — v1.3 alpha (Phase 20) — H.264 native video broadcast' with bullets covering encoder bring-up + Broadcast button + channel 1 registration + UAT acceptance thresholds + known limitations (cold-start option (b) marker-only first interval; bounded END-latency at broadcast-off of one interval)"
   artifacts:
     - path: "juce/JamWideJuceProcessor.h"
       provides: "std::unique_ptr<jamwide::VideoEncoder> videoEncoder member; bool broadcastVideoEnabled state; setBroadcastVideo(bool) public API + getter; encoder lifecycle hooks driven from the existing camera-state callback in Phase 19"
@@ -56,7 +59,7 @@ must_haves:
       provides: "SetLocalChannelInfo(1, \"video\", ..., flags=0x10) + SetVideoChannel(1, H264) + NotifyServerOfChannelChange call wired into the existing connect-up block at lines 322-389 per D-18; placement: AFTER all existing audio SetLocalChannelInfo calls and Instatalk channel registration, BEFORE NotifyServerOfChannelChange; BOTH calls are required per D-18 (name/flags announcement + fourCC announcement)"
       contains: "SetVideoChannel"
     - path: "tests/test_processor_video_lifecycle.cpp"
-      provides: "Lifecycle wiring validation without NINJAM session"
+      provides: "Lifecycle wiring validation without NINJAM session; includes R4 M11 Disconnect-with-broadcast-active END-emit verification"
       min_lines: 100
     - path: "tests/uat/phase-20-broadcast-uat.sh"
       provides: "5-min 2-peer broadcast UAT harness; per-preset thresholds per R3 MF4; TSan dual-scope on the broadcast happy path; audio-thread budget probe"
@@ -88,16 +91,27 @@ must_haves:
       to: "Plan 20-03 UAT acceptance thresholds (R3 MF4)"
       via: "JAMWIDE_BUILD_TESTS-gated debug log channel emits the atomics every 30s during broadcast; UAT script parses the log + asserts the thresholds; contention ratio denominator is m_rawdata_sendq_total_enqueues owned by Plan 20-00"
       pattern: "GetRawDataSendQueueHighWaterMark|GetRawDataMutexContentionCount|GetRawDataSendQueueTotalEnqueueCount"
+    - from: "R4 M11 Disconnect teardown path"
+      to: "existing audio-channel-cleanup END emission inside NJClient::Disconnect (run thread)"
+      via: "the existing Disconnect path enumerates open intervals and queues END through m_rawdata_sendq before m_netcon teardown; Plan 20-03 verifies (via test_processor_video_lifecycle sub-test) that video intervals participate in this enumeration"
+      pattern: "Disconnect"
 ---
 
 <objective>
 Plan 20-03 wires Plan 20-01's `Openh264Encoder` and Plan 20-02's `NJClient` video state machine into the `JamWideJuceProcessor` + `ConnectionBar` UX shell, adds the connect-up channel registration in `NinjamRunThread` per D-18, exposes Plan 20-00's queue-observability atomics to the UAT harness, and runs the 5-minute 2-peer populated-server UAT at each of 3 presets against `video.ninjamzap.com:2049` per R3 must-fix item 4. The acceptance thresholds for queue observability (high-water < 32 items, contention < 1% of enqueues at each preset), `m_encoder_input_drops == 0`, TSan dual-scope clean, and audio-thread budget ≤ 200 µs worst-case under HD populated load are concrete and locked here (NOT vague "if needed" wording per R3 must-fix item 4).
 
+**END-on-broadcast-off teardown (R4 M11)**: this plan documents THREE END-emit paths and verifies them in test/UAT:
+1. **Normal broadcast-off**: message thread calls `SetVideoBroadcastActive(false)`; on_new_interval (audio thread) sees `m_video_active == false && m_video_interval_open == true` and emits END at the next natural interval boundary. Acceptable bounded latency = one interval (≤ ~8s at NINJAM defaults).
+2. **Disconnect teardown**: when `Disconnect()` is called (run thread), the existing audio-channel-cleanup path enumerates open intervals and emits END for the open video interval before tearing down `m_netcon`. NinjamZap-literal — verified in `ninjamzap-core/njclient.cpp` Disconnect implementation. `test_processor_video_lifecycle` adds a sub-test asserting END emit on Disconnect with broadcast-active.
+3. **Plugin destruction**: if the processor destructs while broadcast is active, the destructor triggers Disconnect-equivalent semantics so the END is queued (best-effort — pending items in `m_rawdata_sendq` at destruction time are freed via `WDL_PtrList::Empty(true)` per Plan 20-00; if the destructor races with `m_netcon` teardown, the END may not reach the wire — accepted bounded loss).
+
+**Explicit force-END from message thread is NOT added.** The cost would be a message-thread → audio-thread synchronization on `m_video_cs` which the message thread MUST NOT block on per Phase 15.1 D-01. The bounded teardown latency of one interval (normal broadcast-off) is accepted.
+
 Purpose: this is the user-visible end of Phase 20. The lifecycle ordering matters per `feedback_phase19_review_layers` — broadcast-off must call `SetVideoBroadcastActive(false)` BEFORE closing the encoder so the next `on_new_interval` emits END at deactivate while the encoder is still alive to receive any in-flight NAL publishes safely. Channel registration at connect-up (D-18) is unconditional regardless of broadcast state and requires BOTH `SetLocalChannelInfo(1, "video", ..., flags=0x10)` (announces the channel name + flags so receivers identify the video capability with proper metadata) AND `SetVideoChannel(1, MAKE_NJ_FOURCC('H','2','6','4'))` (announces the fourCC). The UAT discipline per `feedback_uat_scope_redflags` requires verifying the user-visible happy path end-to-end (2 peers connect, broadcast video at each preset, 5-minute session, audio glitch-free, drop counters zero, TSan clean) — not a stripped-down "verify only X, skip Y" cell.
 
 This plan has at least one checkpoint (the 5-minute UAT requires human-in-the-loop interaction with two JamWide instances + the live server), so `autonomous: false`.
 
-Output: A buildable JamWide standalone + AU/VST3 plugin where the user can: open camera (Phase 19 path), toggle Broadcast on (this plan's UX), see encoded video frames hit the NINJAM channel 1 wire (Plan 20-02's wire format), have a second peer's JamWide successfully accumulate the chunks (using Phase 14.3-03's receive-side dispatch; full per-peer decode and tile rendering land in Phase 21 + 22 — Phase 20 UAT verifies the SEND path is bit-for-bit NinjamZap-compatible by capturing wire traces). Full Phase 20 acceptance gate per CONTEXT.md `<specifics>` audio glitch test signature + R3 MF4 thresholds.
+Output: A buildable JamWide standalone + AU/VST3 plugin where the user can: open camera (Phase 19 path), toggle Broadcast on (this plan's UX), see encoded video frames hit the NINJAM channel 1 wire (Plan 20-02's wire format), have a second peer's JamWide successfully accumulate the chunks (using Phase 14.3-03's receive-side dispatch; full per-peer decode and tile rendering land in Phase 21 + 22 — Phase 20 UAT verifies the SEND path is bit-for-bit NinjamZap-compatible by capturing wire traces). Full Phase 20 acceptance gate per CONTEXT.md `<specifics>` audio glitch test signature + R3 MF4 thresholds. END-on-broadcast-off documented per R4 M11 with three teardown paths verified.
 </objective>
 
 <execution_context>
@@ -166,13 +180,13 @@ setBroadcastVideo(bool enabled) impl (DEFINE IN THIS PLAN):
       // while the encoder thread is still alive (publishEncodedNal calls between
       // SetVideoBroadcastActive(false) and videoEncoder->close() are gated by
       // QueueVideoFrame's `if (!m_video_active || !m_video_interval_open) return;`
-      // path inside m_video_cs — safe).
+      // path inside m_video_cs — safe). R4 M11: bounded latency of one interval
+      // (≤ ~8s at NINJAM defaults) is accepted; no force-END from message thread.
       client->SetVideoBroadcastActive(false);
-      // Drive at least one interval to let on_new_interval emit END (or accept that the
-      // END will go out on the next natural interval; planner picks based on whether
-      // a synchronous drive is feasible from the message thread — likely NO, just let
-      // it happen naturally).
-      videoEncoder->close();
+      // Let the audio thread emit END at the next natural interval — do NOT drive
+      // from the message thread (would require m_video_cs synchronization, forbidden
+      // per Phase 15.1 D-01).
+      videoEncoder->close();    // R4 H9 7-step teardown ordering (Plan 20-01)
       broadcastVideoEnabled.store(false, std::memory_order_release);
     }
   }
@@ -284,12 +298,14 @@ UAT harness shape (tests/uat/phase-20-broadcast-uat.sh — pseudo-spec):
 | JamWideJuceProcessor → nativeCamera_->state | Phase 19 callback drives encoder construction/destruction |
 | videoEncoder thread → NJClient (via Plan 20-02 callbacks) | publishSpsPps and publishEncodedNal callbacks captured at open(); processor lifetime outlives encoder per Phase 19 ownership pattern |
 | 5-minute UAT runner host → live ninjamzap-server `video.ninjamzap.com:2049` | community-operated server; no SLA; UAT acceptance allows for transient network issues but not for sync correctness regressions |
+| message thread (SetVideoBroadcastActive(false)) → run thread (NJClient::Disconnect cleanup) → audio thread (next on_new_interval emits END) | three documented teardown paths per R4 M11; bounded END-latency at broadcast-off accepted |
 
 ## STRIDE Threat Register
 
 | Threat ID | Category | Component | Disposition | Mitigation Plan |
 |-----------|----------|-----------|-------------|-----------------|
 | T-20-03 | Tampering (UAF in lifecycle ordering — encoder closes before SetVideoBroadcastActive(false) lands) | setBroadcastVideo(false) | mitigate | Ordering rule in setBroadcastVideo: call client.SetVideoBroadcastActive(false) FIRST (next on_new_interval emits END at deactivate while the encoder is still alive); then close encoder; publishEncodedNal callbacks between these two calls are gated by QueueVideoFrame's active+open check inside m_video_cs (Plan 20-02). test_processor_video_lifecycle stresses this ordering in a tight loop |
+| T-20-TEARDOWN | Information disclosure (END NOT emitted on broadcast-off if user disconnects or closes plugin before next interval) | END-on-broadcast-off path | mitigate | R4 M11: THREE documented teardown paths. (1) Normal broadcast-off → audio thread emits END at next interval (≤ ~8s bounded latency). (2) Disconnect teardown → existing audio-channel-cleanup path emits END for open video intervals before m_netcon teardown; verified against ninjamzap-core Disconnect impl AND tested in test_processor_video_lifecycle sub-test 6 (R4 M11). (3) Plugin destruction → destructor invokes Disconnect-equivalent semantics; best-effort END (pending items in m_rawdata_sendq are freed via WDL_PtrList::Empty(true), so the END is queued but may not reach the wire if m_netcon is already torn down — accepted bounded loss). NO force-END from message thread (would violate Phase 15.1 D-01 message-thread-must-not-block-on-audio-mutex invariant) |
 | T-20-OBS-UAT | Information disclosure (silent regressions in queue/contention under populated load) | UAT acceptance thresholds | mitigate | R3 MF4 concretization: high-water-mark < 32 items, contention < 1% of enqueues at every preset; m_encoder_input_drops == 0; thresholds enforced by tests/uat/phase-20-broadcast-uat.sh and recorded in tests/uat/phase-20-broadcast-uat-report.md; exceed → substrate-tuning subplan, NOT a sync-arch change; total-enqueue counter (denominator) owned by Plan 20-00 unconditionally |
 | T-20-AUDIO-RT | Real-time safety (audio-thread budget under populated HD broadcast) | on_new_interval video block | mitigate | Per-call budget probe (mach_absolute_time / QueryPerformanceCounter wrap) added under JAMWIDE_BUILD_TESTS; samples captured during UAT step 8; worst-case threshold ≤ 200 µs (Assumption A5 + CONTEXT.md Deferred Ideas) |
 | T-20-TSAN | Tampering (data races invisible without TSan dual-scope) | NJClient + Openh264Encoder + JamWideFrameDistributor | mitigate | UAT step 7 runs --tsan build broadcast 5-min at Medium preset; zero TSan-reported races required; tests/test_video_state_machine + test_curwritefile_guid_seqlock are TSan-clean per Plan 20-02 acceptance — this UAT extends coverage to the live broadcast path including JamWideFrameDistributor onFrame + Openh264Encoder thread + NJClient on_new_interval |
@@ -300,7 +316,7 @@ UAT harness shape (tests/uat/phase-20-broadcast-uat.sh — pseudo-spec):
 <tasks>
 
 <task type="auto" tdd="true">
-  <name>Task 1: Processor + Editor + ConnectionBar wiring — Broadcast toggle, encoder lifecycle, NinjamRunThread connect-up (SetLocalChannelInfo + SetVideoChannel per D-18), audio-thread budget probe (lifecycle ordering per T-20-03)</name>
+  <name>Task 1: Processor + Editor + ConnectionBar wiring — Broadcast toggle, encoder lifecycle, NinjamRunThread connect-up (SetLocalChannelInfo + SetVideoChannel per D-18), audio-thread budget probe (lifecycle ordering per T-20-03; R4 M11 teardown documentation)</name>
   <files>
     juce/JamWideJuceProcessor.h,
     juce/JamWideJuceProcessor.cpp,
@@ -312,6 +328,8 @@ UAT harness shape (tests/uat/phase-20-broadcast-uat.sh — pseudo-spec):
   </files>
   <behavior>
     A) JamWideJuceProcessor — add `std::unique_ptr<jamwide::VideoEncoder> videoEncoder;` (initialized to `std::make_unique<jamwide::Openh264Encoder>()` when the camera transitions to Capturing — piggyback on the existing Phase 19 camera-state callback; reset to nullptr when camera Idle/Failed). Add `std::atomic<bool> broadcastVideoEnabled{false};`. Add `setBroadcastVideo(bool)` and `isBroadcastingVideo()` per `<interfaces>`. Implement VideoEncoderListener overrides — log via juce::Logger::writeToLog; onEncoderFatalError schedules a reconfigure via juce::MessageManager::callAsync. Add `int getCurrentCameraPreset() const` helper that reads from the ValueTree's `<camera>` subtree per Phase 19 D-25 (or from nativeCamera_ if it exposes the field directly).
+
+      The processor destructor MUST invoke Disconnect-equivalent semantics if broadcast is active at destruction time (R4 M11 path 3): if `broadcastVideoEnabled.load() == true`, call `setBroadcastVideo(false)` (which calls `client->SetVideoBroadcastActive(false)` and closes the encoder); rely on the underlying NJClient destructor sequence to enumerate open video intervals and queue END through `m_rawdata_sendq` before `m_netcon` teardown. This is best-effort: if `m_netcon` is already torn down by the time the END reaches the drain loop, the END won't reach the wire — accepted bounded loss per R4 M11 path 3.
 
     B) ConnectionBar — extend the existing CameraButton popup (the PopupMenu in mouseDown at line 25-50) to add a "Start Broadcast" / "Stop Broadcast" item; menu result 100 → fires onBroadcastToggleRequested callback. Add `cameraIsBroadcasting_` member + setter; the menu item's label flips on the setter. Live-track the broadcast state so the popup label is always consistent. The Broadcast item is gated by `broadcastEnabledInState` = (cameraIsActive_ && client connected); when greyed out, the popup item is disabled-but-visible (existing patterns in the menu for Stop Camera at line 37).
 
@@ -334,21 +352,34 @@ UAT harness shape (tests/uat/phase-20-broadcast-uat.sh — pseudo-spec):
        NOTE: `steady_clock::now()` is an audio-thread call — std::chrono is generally heap-free but the macOS implementation uses clock_gettime which is a vDSO-resident user-space call (~50ns); explicitly accept this under JAMWIDE_BUILD_TESTS-only build per the existing realtime-audio-reviewer convention (the probe is OFF in production builds). Decorate with a `#ifdef JAMWIDE_BUILD_TESTS` guard.
 
     F) The queue total-enqueue counter (`m_rawdata_sendq_total_enqueues` + accessor `GetRawDataSendQueueTotalEnqueueCount()`) is owned by Plan 20-00 unconditionally — Plan 20-03 only READS it from the UAT harness. Do NOT add it here. The UAT's contention ratio is `contention_count / total_enqueues` computed from Plan 20-00's atomics: `client->GetRawDataMutexContentionCount() / client->GetRawDataSendQueueTotalEnqueueCount()`.
+
+    G) R4 M11 teardown documentation — at the head of setBroadcastVideo(false) in JamWideJuceProcessor.cpp, add a source-code comment documenting the three teardown paths:
+        // R4 M11: END-on-broadcast-off teardown paths:
+        //   (1) Normal broadcast-off (this function): SetVideoBroadcastActive(false) → audio thread
+        //       emits END at next natural on_new_interval (bounded ≤ ~8s NINJAM default).
+        //   (2) Disconnect teardown: NJClient::Disconnect (run thread) enumerates open intervals
+        //       and queues END through m_rawdata_sendq before m_netcon teardown — verified in
+        //       ninjamzap-core/njclient.cpp Disconnect impl + test_processor_video_lifecycle
+        //       sub-test (R4 M11).
+        //   (3) Plugin destruction: JamWideJuceProcessor::~JamWideJuceProcessor invokes
+        //       setBroadcastVideo(false) if broadcast active; best-effort END via Disconnect path.
+        // NO force-END from message thread — would require m_video_cs synchronization which the
+        // message thread must NOT block on per Phase 15.1 D-01.
   </behavior>
   <action>
-    Implement parts A-F. Mirror the existing JUCE patterns: Phase 19's Subscription RAII (HIGH-2) is the model for any frame-distributor binding; the existing ConnectionBar PopupMenu pattern from lines 25-50 is the model for the Broadcast UI; the existing connect-up SetLocalChannelInfo block in NinjamRunThread is the model for the new SetLocalChannelInfo(1, "video", ..., flags=0x10) + SetVideoChannel(1, H264) placement (D-18 requires BOTH calls). For the lifecycle-ordering rule (T-20-03 mitigation), include an inline source-code comment at the setBroadcastVideo(false) site explicitly citing T-20-03 + feedback_phase19_review_layers so future reviewers see the reason.
+    Implement parts A-G. Mirror the existing JUCE patterns: Phase 19's Subscription RAII (HIGH-2) is the model for any frame-distributor binding; the existing ConnectionBar PopupMenu pattern from lines 25-50 is the model for the Broadcast UI; the existing connect-up SetLocalChannelInfo block in NinjamRunThread is the model for the new SetLocalChannelInfo(1, "video", ..., flags=0x10) + SetVideoChannel(1, H264) placement (D-18 requires BOTH calls). For the lifecycle-ordering rule (T-20-03 mitigation), include an inline source-code comment at the setBroadcastVideo(false) site explicitly citing T-20-03 + feedback_phase19_review_layers so future reviewers see the reason. For R4 M11 path 2 (Disconnect teardown), inspect the existing NJClient::Disconnect implementation (run thread) and confirm the audio-channel-cleanup loop enumerates `m_locchannels` AND (post Plan 20-02) checks `m_video_interval_open` to emit END for the open video interval before `m_netcon` teardown — if the existing Disconnect path does NOT enumerate video intervals, ADD an explicit `m_video_cs.Enter() / if(m_video_interval_open) RawDataSendWrite(m_video_guid, NULL, 0, true); m_video_interval_open=false; m_video_cs.Leave()` block to NJClient::Disconnect BEFORE the `m_netcon` teardown line. Plan 20-02 left m_video_interval_open as a state member and the END-at-deactivate logic is already in on_new_interval, but Disconnect is a different code path that needs explicit treatment.
   </action>
   <verify>
     <automated>cd build-juce &amp;&amp; cmake --build . --target JamWideJuce_Standalone JamWideJuce_AU JamWideJuce_VST3 -- -j8 2>&amp;1 | tail -20</automated>
     All three plugin/standalone targets build clean with the new Broadcast UX + lifecycle wiring.
   </verify>
   <done>
-    Processor / Editor / ConnectionBar / NinjamRunThread / NJClient changes compile. The audio-thread budget probe is wired under JAMWIDE_BUILD_TESTS. BOTH SetLocalChannelInfo(1, "video", ..., flags=0x10) AND SetVideoChannel(1, H264) are in the NinjamRunThread connect-up block, in that order, between Instatalk and NotifyServerOfChannelChange (per D-18). Total-enqueue counter + accessor are owned by Plan 20-00 (not added here); Plan 20-03 reads them from the UAT harness.
+    Processor / Editor / ConnectionBar / NinjamRunThread / NJClient changes compile. The audio-thread budget probe is wired under JAMWIDE_BUILD_TESTS. BOTH SetLocalChannelInfo(1, "video", ..., flags=0x10) AND SetVideoChannel(1, H264) are in the NinjamRunThread connect-up block, in that order, between Instatalk and NotifyServerOfChannelChange (per D-18). Total-enqueue counter + accessor are owned by Plan 20-00 (not added here); Plan 20-03 reads them from the UAT harness. **R4 M11 three teardown paths are documented in source-code comments at setBroadcastVideo(false) AND verified by code path in NJClient::Disconnect (path 2) AND in the processor destructor (path 3).**
   </done>
 </task>
 
 <task type="auto" tdd="true">
-  <name>Task 2: tests/test_processor_video_lifecycle.cpp — encoder + NJClient lifecycle wiring validation without NINJAM session</name>
+  <name>Task 2: tests/test_processor_video_lifecycle.cpp — encoder + NJClient lifecycle wiring validation without NINJAM session (includes R4 M11 Disconnect-with-broadcast-active END-emit verification)</name>
   <files>
     tests/test_processor_video_lifecycle.cpp,
     CMakeLists.txt
@@ -361,18 +392,28 @@ UAT harness shape (tests/uat/phase-20-broadcast-uat.sh — pseudo-spec):
     3. test_lifecycle_setBroadcastVideo_false_deactivates_before_close — with broadcast on, call setBroadcastVideo(false); assert: SetVideoBroadcastActive(false) was called BEFORE videoEncoder->close() — instrument via a JAMWIDE_BUILD_TESTS test hook that records the call order in an std::atomic<int> sequence counter (each event bumps and records its index; test reads back the indices and asserts order). This is the T-20-03 mitigation enforcement test.
     4. test_lifecycle_camera_idle_destroys_encoder — drive nativeCamera_ to Idle; assert videoEncoder == nullptr.
     5. test_lifecycle_rapid_toggle_no_crash — bounce setBroadcastVideo true/false 100 times in 1 second; assert no crash, no assert, no race; videoEncoder->getInputDropCount() may grow but encoder doesn't leak (verify by checking encoder thread terminated cleanly at the end).
+    6. **test_lifecycle_disconnect_emits_end_with_broadcast_active (R4 M11 path 2 coverage)** —
+       - Set up the processor + NJClient with active broadcast (camera Capturing, setBroadcastVideo(true) succeeded, drive one on_new_interval so m_video_interval_open == true and BEGIN+marker(+SPS-PPS) are queued).
+       - Drain the queue partially or fully so we can observe the next items cleanly.
+       - Call NJClient::Disconnect (run thread; in the test, this can be invoked directly since we're driving without a real connection — OR via a JAMWIDE_BUILD_TESTS test hook that simulates the disconnect path).
+       - Drain m_rawdata_sendq via DrainRawDataSendQueueForTest; assert: the queue contains a final WRITE(m_video_guid, NULL, 0, isEnd=true) — the END emitted by Disconnect's video-interval-cleanup path; verify it appears BEFORE any post-disconnect items (or BEFORE the queue is empty if Disconnect drains).
+       - This is the R4 M11 path 2 verification: video intervals participate in the Disconnect cleanup enumeration.
+    7. **test_lifecycle_destructor_with_broadcast_active_no_crash (R4 M11 path 3 coverage)** —
+       - Construct a processor + NJClient with active broadcast (same setup as sub-test 6); drive one on_new_interval to open a video interval.
+       - Destroy the processor (let the unique_ptr destructor run, OR explicit `delete`).
+       - Assert: no crash, no leak (ASAN clean), no assert; the destructor's Disconnect-equivalent path runs to completion. We do NOT assert the END reached any external wire (no m_netcon in the test); we only assert the destructor sequence is clean.
 
     Test linking: same shape as Phase 19's pure-C++ test discipline — link against the relevant source files DIRECTLY (Openh264Encoder.cpp + NJClient via njclient lib + JamWideJuceProcessor.cpp). JUCE plugin host integration is NOT exercised at this layer; the UAT harness in Task 4 is where the actual DAW/standalone broadcasts happen.
   </behavior>
   <action>
-    Implement the 5 sub-tests + the CMake wiring. The test-only accessors needed (`GetVideoActiveForTest`, lifecycle sequence-recording hook) should be added under existing `#ifdef JAMWIDE_BUILD_TESTS` blocks in NJClient and JamWideJuceProcessor.
+    Implement the 7 sub-tests + the CMake wiring. The test-only accessors needed (`GetVideoActiveForTest`, lifecycle sequence-recording hook) should be added under existing `#ifdef JAMWIDE_BUILD_TESTS` blocks in NJClient and JamWideJuceProcessor. For sub-test 6, the Disconnect simulation may need a JAMWIDE_BUILD_TESTS-only public method `NJClient::DisconnectForTest()` that invokes the same cleanup sequence as the production Disconnect path (without requiring an actual m_netcon teardown). For sub-test 7, the destructor path uses the unique_ptr destructor naturally — no special hook needed; ASAN+leak-detection in the existing test build is the gate.
   </action>
   <verify>
     <automated>cd build-juce &amp;&amp; cmake --build . --target test_processor_video_lifecycle -- -j8 &amp;&amp; ctest -R processor_video_lifecycle --output-on-failure 2>&amp;1 | tail -30</automated>
-    test_processor_video_lifecycle builds + executes; 5/5 sub-tests green.
+    test_processor_video_lifecycle builds + executes; 7/7 sub-tests green.
   </verify>
   <done>
-    test_processor_video_lifecycle.cpp passes 5/5 sub-tests, including the T-20-03 lifecycle-ordering test that records call-order indices. Full suite green.
+    test_processor_video_lifecycle.cpp passes 7/7 sub-tests, including the T-20-03 lifecycle-ordering test (sub-test 3), the R4 M11 path 2 Disconnect-END test (sub-test 6), and the R4 M11 path 3 destructor-cleanup test (sub-test 7). Full suite green.
   </done>
 </task>
 
@@ -386,7 +427,10 @@ UAT harness shape (tests/uat/phase-20-broadcast-uat.sh — pseudo-spec):
   <action>
     Write `tests/uat/phase-20-broadcast-uat.sh` per the `<interfaces>` shape above. The shell script is the orchestrating harness: it builds the standalone with JAMWIDE_BUILD_TESTS=ON, opens two JamWide standalone instances (or guides the operator with on-screen prompts since lldb-attach to 2 separate macOS GUI apps may be brittle), and runs the 5-minute broadcast at each preset. The acceptance thresholds (high-water < 32, contention < 1%, drops == 0, audio-thread budget ≤ 200 µs worst-case) are encoded as `if`-checks in the script with explicit failure messages citing the R3 MF4 spec.
 
-    Also write `tests/uat/phase-20-broadcast-uat-procedure.md` — a human-runnable procedure document detailing each step + screenshot placement + expected UI states + recovery procedure if the public server is down (fallback to local ninjamzap-server-docker on `localhost:2049`).
+    Also write `tests/uat/phase-20-broadcast-uat-procedure.md` — a human-runnable procedure document detailing each step + screenshot placement + expected UI states + recovery procedure if the public server is down (fallback to local ninjamzap-server-docker on `localhost:2049`). Include a dedicated section "R4 M11 END-on-broadcast-off teardown verification" that walks through:
+      (a) Normal broadcast-off: toggle Broadcast off, watch the wire (tcpdump or NinjamZap mobile receive) for the END NAL within one interval (~3-8s); record observed latency.
+      (b) Disconnect teardown: with broadcast active, click Disconnect on the JamWide standalone; observe the END on the wire BEFORE the connection terminates.
+      (c) Plugin destruction: with broadcast active, quit the JamWide standalone (Cmd+Q on macOS); observe (or accept the best-effort nature of) the END emission.
 
     CMakeLists.txt: ensure the shell script is marked executable (`chmod +x` post-configure step or installed in a way that preserves the executable bit). Add a custom target `phase20-uat` that runs the script for convenience: `add_custom_target(phase20-uat COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/uat/phase-20-broadcast-uat.sh ...)`.
   </action>
@@ -395,21 +439,21 @@ UAT harness shape (tests/uat/phase-20-broadcast-uat.sh — pseudo-spec):
     Shell-script syntax check passes (no run; the actual UAT is the next checkpoint task); procedure markdown file exists.
   </verify>
   <done>
-    Shell harness + procedure markdown both exist. Bash syntax check passes. Custom CMake target `phase20-uat` exists.
+    Shell harness + procedure markdown both exist. Bash syntax check passes. Custom CMake target `phase20-uat` exists. Procedure markdown documents the R4 M11 three teardown paths for manual verification during UAT.
   </done>
 </task>
 
 <task type="checkpoint:human-verify" gate="blocking">
-  <name>Task 4: 5-minute populated-server UAT against video.ninjamzap.com:2049 — manual checkpoint (R3 MF4 + feedback_uat_scope_redflags + Phase 20 acceptance gate)</name>
+  <name>Task 4: 5-minute populated-server UAT against video.ninjamzap.com:2049 — manual checkpoint (R3 MF4 + R4 M11 teardown verification + feedback_uat_scope_redflags + Phase 20 acceptance gate)</name>
   <what-built>
-    Phase 20 send-side video broadcast: encoder + NJClient state machine + channel registration + Broadcast button + queue/contention observability. Plans 20-00 / 20-01 / 20-02 / 20-03 Tasks 1-3 are complete; tests are green; the standalone + plugin targets build clean. This checkpoint exercises the user-visible happy path end-to-end on a populated server.
+    Phase 20 send-side video broadcast: encoder + NJClient state machine + channel registration + Broadcast button + queue/contention observability. Plans 20-00 / 20-01 / 20-02 / 20-03 Tasks 1-3 are complete; tests are green; the standalone + plugin targets build clean. This checkpoint exercises the user-visible happy path end-to-end on a populated server AND validates the R4 M11 three teardown paths.
   </what-built>
   <how-to-verify>
     Required environment: macOS or Windows host with JamWide standalone built from this branch; an internet connection that can reach `video.ninjamzap.com:2049`; ideally a second JamWide host (a different machine OR a NinjamZap mobile peer) for the 2-peer test.
 
     Run `bash tests/uat/phase-20-broadcast-uat.sh` and follow the procedure in `tests/uat/phase-20-broadcast-uat-procedure.md`.
 
-    Specific checks (R3 MF4 + Phase 20 success criteria):
+    Specific checks (R3 MF4 + R4 M11 + Phase 20 success criteria):
 
     1. Connect instance A to `video.ninjamzap.com:2049`; verify NINJAM auth succeeds and channel 1 is registered with BOTH name "video" and fourCC H264 (verifiable via NinjamRunThread log lines or `lldb` on the GetLocalChannelInfo + video-channel accessors per D-18); audio is broadcasting normally (existing Phase 14 audio path is unaffected).
 
@@ -427,13 +471,18 @@ UAT harness shape (tests/uat/phase-20-broadcast-uat.sh — pseudo-spec):
 
     5. Subjective audio-glitch check during the 5-min Low-preset run: operator listens for audible audio dropouts in both instance A's local monitoring AND any peer audio if a second JamWide instance is connected. Note any glitches in the report.
 
-    6. Repeat steps 2-5 at preset=Medium (right-click Camera → Medium → Start Broadcast).
+    6. **R4 M11 teardown verification**: After the 5-min Low-preset run completes (still broadcasting), exercise each of the three teardown paths in sequence:
+       (a) **Normal broadcast-off** — Right-click Camera → "Stop Broadcast"; capture tcpdump or NinjamZap mobile receive log; observe the END NAL (flags=1, length=0 payload on channel 1) within one NINJAM interval (~3-8s); record observed latency in the report.
+       (b) **Disconnect teardown** — Re-enable Broadcast at preset=Low; let it run for 30s; click Disconnect on the JamWide standalone; capture the wire; observe the END NAL BEFORE the connection terminates; record in the report.
+       (c) **Plugin destruction** — Re-connect + re-enable Broadcast; let it run for 30s; quit the JamWide standalone (Cmd+Q on macOS); observe the wire (best-effort — may or may not see the END depending on m_netcon teardown timing). Record whether observed in the report; do NOT fail the UAT if path 3 misses the END (per R4 M11 path 3 is best-effort).
 
-    7. Repeat steps 2-5 at preset=High (right-click Camera → High → Start Broadcast).
+    7. Repeat steps 2-5 at preset=Medium (right-click Camera → Medium → Start Broadcast).
 
-    8. TSan dual-scope: rebuild standalone as `--tsan` (per Phase 15.1 D-07 — `./scripts/build.sh --tsan`); re-run the 5-min broadcast at preset=Medium against `video.ninjamzap.com:2049`; assert: zero TSan-reported races (terminal output should be free of `WARNING: ThreadSanitizer: data race`).
+    8. Repeat steps 2-5 at preset=High (right-click Camera → High → Start Broadcast).
 
-    9. Capture the final UAT report at `tests/uat/phase-20-broadcast-uat-report.md` — one row per preset, columns: high-water-mark, contention ratio, drops, audio-thread budget worst-case, audio-glitch subjective note, TSan status (only at Medium).
+    9. TSan dual-scope: rebuild standalone as `--tsan` (per Phase 15.1 D-07 — `./scripts/build.sh --tsan`); re-run the 5-min broadcast at preset=Medium against `video.ninjamzap.com:2049`; assert: zero TSan-reported races (terminal output should be free of `WARNING: ThreadSanitizer: data race`).
+
+    10. Capture the final UAT report at `tests/uat/phase-20-broadcast-uat-report.md` — one row per preset, columns: high-water-mark, contention ratio, drops, audio-thread budget worst-case, audio-glitch subjective note, TSan status (only at Medium); plus a dedicated "R4 M11 teardown" section with per-path observations.
 
     Pass criteria (must ALL hold for Phase 20 to close):
     - All 3 presets: high-water < 32, contention < 1%, drops == 0, audio-thread budget ≤ 200 µs worst-case.
@@ -441,8 +490,11 @@ UAT harness shape (tests/uat/phase-20-broadcast-uat.sh — pseudo-spec):
     - Subjective audio: no glitches at any preset.
     - Channel registration: instance A surfaces channel 1 with BOTH name "video" (via SetLocalChannelInfo) AND fourCC H264 (via SetVideoChannel) within 1s of connection.
     - Wire-format check (best-effort via tcpdump or NinjamZap mobile receive): first chunk of each interval is 24 bytes matching the marker spec.
+    - **R4 M11 path 1 (normal broadcast-off): END observed on wire within one interval.**
+    - **R4 M11 path 2 (Disconnect teardown): END observed on wire before connection terminates.**
+    - **R4 M11 path 3 (plugin destruction): best-effort; documented in report but not a hard fail-condition.**
   </how-to-verify>
-  <resume-signal>Type "approved — all gates pass" with the path to `tests/uat/phase-20-broadcast-uat-report.md`, OR describe issues (e.g., "high-water hit 47 items at preset=High, contention 0.3%, no glitches — investigate substrate sizing").</resume-signal>
+  <resume-signal>Type "approved — all gates pass" with the path to `tests/uat/phase-20-broadcast-uat-report.md`, OR describe issues (e.g., "high-water hit 47 items at preset=High, contention 0.3%, no glitches — investigate substrate sizing"; or "R4 M11 path 2 did NOT emit END before disconnect — investigate NJClient::Disconnect video-interval cleanup").</resume-signal>
 </task>
 
 <task type="auto">
@@ -457,8 +509,9 @@ UAT harness shape (tests/uat/phase-20-broadcast-uat.sh — pseudo-spec):
     - "Add Broadcast toggle on the Camera button popup menu (Phase 19 UX extension)."
     - "Add unconditional video-channel registration at NINJAM connect-up — receivers see 'user has video capability' with channel name 'video' (SetLocalChannelInfo + flags=0x10) and fourCC H264 (SetVideoChannel) from connection time onward; payload only flows after Broadcast is enabled."
     - "Revise Phase 14.3-02's RawData send substrate to NinjamZap-literal `WDL_PtrList<RawDataQueueItem> + WDL_Mutex` (Plan 20-00) — multi-producer-correct under HYBRID emission model (audio thread + encoder thread)."
-    - "Add per-channel atomic seqlock on `Local_Channel::m_curwritefile.guid` for deterministic audio-thread 16-byte GUID read at marker construction (Plan 20-02 Must-fix 1 closure)."
-    - "Known limitations (v1.3 beta): cold-start may produce a marker-only first interval if encoder warm-up exceeds the broadcast-on→first-interval window (subsequent intervals carry SPS/PPS); 'Auto' adaptive-bitrate preset deferred to v1.4+; VideoToolbox/MediaFoundation backends architected via the abstract interface but deferred to a follow-up phase."
+    - "Add per-channel atomic seqlock on `Local_Channel` (atomic two-uint64_t halves for the 16-byte GUID payload) for deterministic, TSan-clean audio-thread read of the canonical audio_ch0_guid at marker construction (Plan 20-02 Must-fix 1 + R4 H8 closure)."
+    - "End-on-broadcast-off teardown documented across three paths (R4 M11): normal broadcast-off → END at next interval (~8s bounded); Disconnect → END via audio-channel-cleanup before m_netcon teardown; plugin destruction → best-effort END via Disconnect-equivalent semantics."
+    - "Known limitations (v1.3 beta): cold-start may produce a marker-only first interval if encoder warm-up exceeds the broadcast-on→first-interval window (subsequent intervals carry SPS/PPS after publish); 'Auto' adaptive-bitrate preset deferred to v1.4+; VideoToolbox/MediaFoundation backends architected via the abstract interface but deferred to a follow-up phase."
     - "UAT acceptance gates (5-min 2-peer broadcast at `video.ninjamzap.com:2049` per preset): `m_rawdata_sendq_high_water_mark < 32`, `contention_ratio < 1%`, `m_encoder_input_drops == 0`, audio-thread budget ≤ 200 µs worst-case, TSan dual-scope clean."
   </action>
   <verify>
@@ -466,7 +519,7 @@ UAT harness shape (tests/uat/phase-20-broadcast-uat.sh — pseudo-spec):
     CHANGELOG.md has a Phase 20 entry.
   </verify>
   <done>
-    CHANGELOG.md updated. Phase 20 entry exists with all bullets per the Phase 19 D-26 pattern.
+    CHANGELOG.md updated. Phase 20 entry exists with all bullets per the Phase 19 D-26 pattern, including the R4 M11 teardown documentation.
   </done>
 </task>
 
@@ -481,8 +534,9 @@ UAT harness shape (tests/uat/phase-20-broadcast-uat.sh — pseudo-spec):
 - `grep -cE "SetLocalChannelInfo\\s*\\(\\s*1\\s*,\\s*\"video\"" juce/NinjamRunThread.cpp` returns ≥ 1 (channel registration name/flags announcement at connect-up exists per D-18)
 - `grep -c "setBroadcastVideo" juce/JamWideJuceProcessor.cpp` returns ≥ 2 (definition + at least one internal callsite)
 - `grep -c "onBroadcastToggleRequested" juce/ui/ConnectionBar.cpp` returns ≥ 1 (popup menu wires the broadcast toggle)
+- `grep -c "R4 M11" juce/JamWideJuceProcessor.cpp` returns ≥ 1 (teardown-paths comment exists at setBroadcastVideo(false) site)
 - `grep -c "Phase 20" CHANGELOG.md` returns ≥ 1
-- Task 4 manual UAT report (`tests/uat/phase-20-broadcast-uat-report.md`) exists and records pass-status for all 3 presets + TSan + audio-glitch + wire-format check
+- Task 4 manual UAT report (`tests/uat/phase-20-broadcast-uat-report.md`) exists and records pass-status for all 3 presets + TSan + audio-glitch + wire-format check + R4 M11 three teardown paths
 </verification>
 
 <success_criteria>
@@ -490,12 +544,13 @@ UAT harness shape (tests/uat/phase-20-broadcast-uat.sh — pseudo-spec):
 - R3 must-fix item 4 (queue observability concretization) is closed: high-water-mark + contention counter + total-enqueue counter exist (all owned by Plan 20-00 unconditionally); UAT acceptance thresholds (<32 items, <1% contention, 0 drops) are encoded in the script + procedure doc + report.
 - T-20-03 lifecycle ordering (SetVideoBroadcastActive(false) BEFORE encoder.close()) is enforced in code + asserted in test_processor_video_lifecycle.
 - T-20-CONN-RACE (Pitfall 6) is mitigated by placing BOTH SetLocalChannelInfo(1, "video", ..., flags=0x10) AND SetVideoChannel(1, H264) inside the existing post-AUTH branch in NinjamRunThread connect-up per D-18.
+- **R4 M11 (END-on-broadcast-off) is closed**: three teardown paths documented in code comments at setBroadcastVideo(false); verified in test_processor_video_lifecycle sub-tests 6 (Disconnect-path END emit) and 7 (destructor cleanup); UAT step 6 manually validates all three paths against the wire.
 - TSan dual-scope per Phase 15.1 D-07 is part of Plan 20-03 UAT acceptance per CONTEXT.md `<specifics>` audio-glitch test signature.
-- The Phase 20 ROADMAP success criteria are all met: (1) user sees video broadcast at spike baseline ~98 kbps; (2) bit-for-bit NinjamZap-compatible wire format on channel 1 with both name "video" and fourCC H264 announced at connect-up per D-18; (3) 5-min populated broadcast no audio glitches no Send race; (4) toggle camera off → clean END.
+- The Phase 20 ROADMAP success criteria are all met: (1) user sees video broadcast at spike baseline ~98 kbps; (2) bit-for-bit NinjamZap-compatible wire format on channel 1 with both name "video" and fourCC H264 announced at connect-up per D-18; (3) 5-min populated broadcast no audio glitches no Send race; (4) toggle camera off → clean END (R4 M11 path 1 normal broadcast-off).
 </success_criteria>
 
 <output>
-On completion (including Task 4 manual UAT checkpoint approval), write `.planning/phases/20-h-264-encoder-send-pipeline/20-03-SUMMARY.md` per the get-shit-done summary template. Capture in the summary: (a) the final per-preset UAT numbers (high-water, contention ratio, drops, audio-thread budget worst-case); (b) whether the TSan dual-scope run produced any reports (and how they were dispositioned if so); (c) any subjective audio glitches observed and their suspected cause; (d) whether the public server `video.ninjamzap.com:2049` was reachable for the full run, or whether the local-docker fallback was needed; (e) the actual line numbers where SetLocalChannelInfo(1, "video", ..., flags=0x10) AND SetVideoChannel(1, H264) landed in NinjamRunThread.cpp (so Phase 24's per-DAW UAT documentation can cite them); (f) any deferred Phase 20 follow-up tasks that need a quick-task or v1.4 escalation.
+On completion (including Task 4 manual UAT checkpoint approval), write `.planning/phases/20-h-264-encoder-send-pipeline/20-03-SUMMARY.md` per the get-shit-done summary template. Capture in the summary: (a) the final per-preset UAT numbers (high-water, contention ratio, drops, audio-thread budget worst-case); (b) whether the TSan dual-scope run produced any reports (and how they were dispositioned if so); (c) any subjective audio glitches observed and their suspected cause; (d) whether the public server `video.ninjamzap.com:2049` was reachable for the full run, or whether the local-docker fallback was needed; (e) the actual line numbers where SetLocalChannelInfo(1, "video", ..., flags=0x10) AND SetVideoChannel(1, H264) landed in NinjamRunThread.cpp (so Phase 24's per-DAW UAT documentation can cite them); (f) **R4 M11 teardown observations: path 1 (normal broadcast-off) END latency in seconds; path 2 (Disconnect) END observed yes/no; path 3 (plugin destruction) END observed yes/no — accepted best-effort either way**; (g) any deferred Phase 20 follow-up tasks that need a quick-task or v1.4 escalation.
 </output>
 </content>
 </invoke>

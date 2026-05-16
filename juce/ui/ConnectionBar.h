@@ -11,6 +11,11 @@ class ConnectionBar : public juce::Component
 {
 public:
     explicit ConnectionBar(JamWideJuceProcessor& processor);
+    // Out-of-line destructor — unique_ptr<CameraButton> needs the complete
+    // CameraButton type (defined in ConnectionBar.cpp) to instantiate its
+    // deleter. Declared here so the compiler synthesises the dtor body in
+    // the .cpp where the full type is visible.
+    ~ConnectionBar() override;
 
     void resized() override;
     void paint(juce::Graphics& g) override;
@@ -33,7 +38,21 @@ public:
     std::function<void()> onVideoClicked;
     std::function<void()> onDebugSnapshotClicked;
 
+    // Phase 19-02 — native camera UI callbacks (MEDIUM-1 decision tree wiring).
+    // Left-click → onCameraClicked. Right-click → quality submenu + Stop Camera
+    // item dispatching to onCameraQualitySelected / onCameraStopRequested.
+    std::function<void()> onCameraClicked;
+    std::function<void(int)> onCameraQualitySelected;
+    std::function<void()> onCameraStopRequested;
+
     void setVideoActive(bool active);
+
+    // Phase 19-02 — camera button state (capturing → green; setCameraLabel swaps
+    // the text on Unavailable to "Recheck permission"). setCameraQualityPreset
+    // updates the right-click menu's checkmark state.
+    void setCameraActive(bool active);
+    void setCameraLabel(const juce::String& label);
+    void setCameraQualityPreset(int preset);
 
     void setRoutingModeHighlight(int mode);  // Updates Route button text color
     void updateSyncState(int state);
@@ -70,6 +89,20 @@ private:
 
     // Video button (D-01: in ConnectionBar, D-02: toggle with color states)
     juce::TextButton videoButton;
+
+    // Phase 19-02 — native Camera button (D-11: NEVER disabled by Connect state;
+    // independent of NJClient connection). Sits immediately left of videoButton.
+    // Backed by a file-local subclass (defined in .cpp) so we can intercept
+    // right-click for the quality + Stop Camera popup menu.
+    class CameraButton;
+    std::unique_ptr<CameraButton> cameraButton;
+
+    // Right-click menu's checkmark state mirrors processor-stored preset.
+    // Updated via setCameraQualityPreset(int) from the editor.
+    int currentCameraQualityPreset_{1};
+    // Tracks whether the right-click "Stop Camera" item should be enabled
+    // (only true while state==Capturing per MEDIUM-1 decision tree).
+    bool cameraIsActive_{false};
 
     // Debug snapshot button — writes current /rcmstats data + extra context
     // to a timestamped log file under userApplicationDataDirectory()/JamWide/Logs/.

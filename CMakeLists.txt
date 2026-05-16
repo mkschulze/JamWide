@@ -688,12 +688,23 @@ if(JAMWIDE_BUILD_TESTS)
     target_link_libraries(test_camera_cause_mapping PRIVATE juce::juce_core juce::juce_gui_basics)
     add_test(NAME camera_cause_mapping COMMAND test_camera_cause_mapping)
 
-    add_executable(test_plugin_state_v3_v4 tests/test_plugin_state_v3_v4.cpp)
+    # 19-02 Task 3: test_plugin_state_v3_v4 must link juce_gui_basics because
+    # NativeCameraPrivacyDialog.h pulls in MessageBoxOptions for the showAsync
+    # path. The dialog's isAckResult helper is a pure constexpr-style noexcept
+    # function with no dialog instantiation in the test, so linking
+    # juce_gui_basics here doesn't add any UI dependency at runtime.
+    add_executable(test_plugin_state_v3_v4
+        tests/test_plugin_state_v3_v4.cpp
+        juce/video/native/NativeCameraPrivacyDialog.cpp)
     target_compile_definitions(test_plugin_state_v3_v4 PRIVATE JAMWIDE_BUILD_TESTS=1)
     target_include_directories(test_plugin_state_v3_v4 PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(test_plugin_state_v3_v4 PRIVATE juce::juce_core juce::juce_data_structures)
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/juce)
+    target_link_libraries(test_plugin_state_v3_v4 PRIVATE
+        juce::juce_core
+        juce::juce_data_structures
+        juce::juce_gui_basics)
     add_test(NAME plugin_state_v3_v4 COMMAND test_plugin_state_v3_v4)
 
 endif()

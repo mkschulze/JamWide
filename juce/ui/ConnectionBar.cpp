@@ -16,6 +16,46 @@
      (static_cast<unsigned int>(c) << 16) | (static_cast<unsigned int>(d) << 24))
 #endif
 
+// Phase 19-02 Task 1 — file-local subclass of juce::TextButton that intercepts
+// right-clicks to show the camera quality + Stop Camera popup. Live-tracks
+// the parent ConnectionBar so the menu can read currentCameraQualityPreset_
+// (checkmark state) and cameraIsActive_ (Stop Camera enabled-state).
+class ConnectionBar::CameraButton : public juce::TextButton {
+public:
+    explicit CameraButton(ConnectionBar& p) : parent(p) {}
+
+    void mouseDown(const juce::MouseEvent& e) override {
+        if (e.mods.isPopupMenu()) {
+            juce::PopupMenu menu;
+            menu.addSectionHeader("Quality");
+            const int current = parent.currentCameraQualityPreset_;
+            menu.addItem(1, "Low (320x240, 10fps)",     true, current == 0);
+            menu.addItem(2, "Medium (640x480, 15fps)",  true, current == 1);
+            menu.addItem(3, "High (1280x720, 30fps)",   true, current == 2);
+            menu.addSeparator();
+            const bool stopEnabled = parent.cameraIsActive_;
+            menu.addItem(10, "Stop Camera", stopEnabled, /*ticked*/ false);
+
+            menu.showMenuAsync(
+                juce::PopupMenu::Options{}.withTargetComponent(this),
+                [this](int result) {
+                    if (result >= 1 && result <= 3) {
+                        if (parent.onCameraQualitySelected)
+                            parent.onCameraQualitySelected(result - 1);
+                    } else if (result == 10) {
+                        if (parent.onCameraStopRequested)
+                            parent.onCameraStopRequested();
+                    }
+                });
+            return;
+        }
+        juce::TextButton::mouseDown(e);
+    }
+
+private:
+    ConnectionBar& parent;
+};
+
 static const char* kLogoSvg = R"SVG(
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <defs>
@@ -216,6 +256,23 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
     };
     addAndMakeVisible(videoButton);
 
+    // Phase 19-02 — Camera button. Sits left of Video; D-11 says it is
+    // independent of Connect state so we do NOT disable it. Left-click
+    // dispatches to the editor's decision tree (MEDIUM-1); right-click
+    // is handled by CameraButton::mouseDown above.
+    cameraButton = std::make_unique<CameraButton>(*this);
+    cameraButton->setButtonText("Camera");
+    cameraButton->setColour(juce::TextButton::buttonColourId,
+        juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
+    cameraButton->setColour(juce::TextButton::textColourOffId,
+        juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    cameraButton->setTooltip("Toggle camera preview (v1.3 beta)");
+    // D-11: Camera button is NEVER disabled based on connect state.
+    cameraButton->onClick = [this]() {
+        if (onCameraClicked) onCameraClicked();
+    };
+    addAndMakeVisible(*cameraButton);
+
     // Debug snapshot button (small, unobtrusive — to the right of Video)
     debugButton.setButtonText("DBG");
     debugButton.setColour(juce::TextButton::buttonColourId,
@@ -228,6 +285,8 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
     };
     addAndMakeVisible(debugButton);
 }
+
+ConnectionBar::~ConnectionBar() = default;
 
 void ConnectionBar::resized()
 {
@@ -299,6 +358,13 @@ void ConnectionBar::resized()
     // was calibrated against a different font and clipped on Windows.
     videoButton.setBounds(rightX - 54, y, 54, h);
     rightX -= 54 + gap;
+    // Phase 19-02 — Camera button sits LEFT of Video. 60px so the
+    // "Recheck permission" label (CameraState::Unavailable) fits without
+    // truncation in JUCE drawFittedText at 15pt.
+    if (cameraButton) {
+        cameraButton->setBounds(rightX - 130, y, 130, h);
+        rightX -= 130 + gap;
+    }
     debugButton.setBounds(rightX - 36, y, 36, h);
     rightX -= 36 + gap;
     fitButton.setBounds(rightX - 36, y, 36, h);
@@ -649,4 +715,33 @@ void ConnectionBar::setVideoActive(bool active)
     else
         videoButton.setColour(juce::TextButton::textColourOffId,
             juce::Colour(JamWideLookAndFeel::kTextSecondary));
+}
+
+// Phase 19-02 — camera button state setters wired from the editor's
+// FallbackListener::onCameraStateChanged.
+
+void ConnectionBar::setCameraActive(bool active)
+{
+    cameraIsActive_ = active;   // gates the right-click Stop Camera menu item
+    if (!cameraButton) return;
+    if (active) {
+        cameraButton->setColour(juce::TextButton::textColourOffId,
+            juce::Colour(JamWideLookAndFeel::kAccentConnect));  // green while Capturing
+    } else {
+        cameraButton->setColour(juce::TextButton::textColourOffId,
+            juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    }
+    cameraButton->repaint();
+}
+
+void ConnectionBar::setCameraLabel(const juce::String& label)
+{
+    if (!cameraButton) return;
+    cameraButton->setButtonText(label);
+    cameraButton->repaint();
+}
+
+void ConnectionBar::setCameraQualityPreset(int preset)
+{
+    currentCameraQualityPreset_ = preset;
 }

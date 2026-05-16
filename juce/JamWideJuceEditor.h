@@ -10,8 +10,16 @@
 #include "ui/ServerBrowserOverlay.h"
 #include "ui/LicenseDialog.h"
 #include "video/VideoPrivacyDialog.h"
+#include "video/native/JamWideCameraDevice.h"
+#include "video/native/CameraFallbackCause.h"
+
+namespace jamwide {
+    class CameraPreviewWindow;
+    class NativeCameraPrivacyDialog;
+}
 
 class JamWideJuceEditor : public juce::AudioProcessorEditor,
+                           public jamwide::JamWideCameraDevice::FallbackListener,
                            private juce::Timer
 {
 public:
@@ -22,7 +30,22 @@ public:
     void resized() override;
     void mouseDown(const juce::MouseEvent& e) override;
 
+    // Phase 19-02 — FallbackListener overrides (registered with the
+    // JamWideCameraDevice on the processor; the device outlives the editor).
+    void onCameraFallback(jamwide::CameraFallbackCause cause) override;
+    void onCameraStateChanged(jamwide::CameraState newState) override;
+
 private:
+    // HIGH-5 first-launch flow — switches on the current auth status and
+    // either toggles directly or runs request-access → privacy-modal → toggle.
+    // Stubbed in Task 1 (delegates straight to toggle()); Task 3 fills in
+    // the NotDetermined → request → on-grant → showPrivacyOrToggle path.
+    void handleCameraIdleClick();
+    // Helper shared between the Authorized and NotApplicable branches.
+    void showPrivacyOrToggle(jamwide::JamWideCameraDevice* cam);
+    // Task 2 hook — drives previewWindow_ visibility from onCameraStateChanged.
+    // Task 1 ships a stub; Task 2 fills in the Capturing→show / Idle→hide path.
+    void drivePreviewWindowVisibility(jamwide::CameraState newState);
     void timerCallback() override;
     void drainEvents();
     void pollStatus();
@@ -50,6 +73,12 @@ private:
     ServerBrowserOverlay serverBrowser;
     LicenseDialog licenseDialog;
     VideoPrivacyDialog videoPrivacyDialog;
+
+    // Phase 19-02 — native-camera UI surface. The popout window is constructed
+    // in the editor constructor and torn down by the editor destructor; the
+    // privacy dialog is lazily constructed on first need (~24 bytes idle).
+    std::unique_ptr<jamwide::CameraPreviewWindow> previewWindow_;
+    std::unique_ptr<jamwide::NativeCameraPrivacyDialog> privacyDialog_;
 
     // Custom arrow button — TextButton truncates to "..." at 16px width
     struct ChatToggleButton : public juce::Component

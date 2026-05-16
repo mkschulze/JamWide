@@ -60,6 +60,12 @@ JamWideJuceProcessor::JamWideJuceProcessor()
     // Video companion (created after NJClient, same ownership pattern as OscServer)
     videoCompanion = std::make_unique<jamwide::VideoCompanion>(*this);
 
+    // Phase 19-01: native camera capture (D-10 — constructed in Idle).
+    // frameDistributor MUST outlive nativeCamera_ (camera publishes into it).
+    frameDistributor = std::make_unique<jamwide::JamWideFrameDistributor>();
+    nativeCamera     = std::make_unique<jamwide::JamWideCameraDevice>(
+        *frameDistributor, /*listener*/ nullptr);
+
     // MIDI mapper (created after NJClient and OscServer, same ownership pattern)
     midiMapper = std::make_unique<MidiMapper>(*this);
 }
@@ -69,6 +75,15 @@ JamWideJuceProcessor::~JamWideJuceProcessor()
     // Order matters: midiMapper stops timer, videoCompanion stops WS server,
     // oscServer stops before runThread, runThread stops before client.
     midiMapper.reset();
+
+    // Phase 19-01 (HIGH-3): bump camera generation BEFORE destruction so any
+    // in-flight async closures (TCC completion / openDeviceAsync result /
+    // watchdog timer / onErrorOccurred / retry-worker reopen) detect the bump
+    // and return early without touching `*this`.
+    if (nativeCamera) nativeCamera->shutdown();
+    nativeCamera.reset();
+    frameDistributor.reset();
+
     videoCompanion.reset();
     oscServer.reset();
     runThread.reset();

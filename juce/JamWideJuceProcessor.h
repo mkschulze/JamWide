@@ -14,6 +14,8 @@
 #include "core/njclient.h"  // For RemoteUserInfo
 #include "osc/OscServer.h"
 #include "video/VideoCompanion.h"
+#include "video/native/JamWideFrameDistributor.h"
+#include "video/native/JamWideCameraDevice.h"
 #include "midi/MidiMapper.h"
 #include "midi/MidiLearnManager.h"
 
@@ -117,6 +119,16 @@ public:
 
     // Video companion (owned by processor, UI accesses via reference)
     std::unique_ptr<jamwide::VideoCompanion> videoCompanion;
+
+    // Phase 19-01: native camera capture + frame fan-out (owned by processor).
+    // frameDistributor MUST outlive nativeCamera_ — the camera publishes into
+    // the distributor on the camera-callback thread. Subscribers (preview tile
+    // in 19-02, encoder in Phase 20) attach via frameDistributor->registerSubscriber.
+    std::unique_ptr<jamwide::JamWideFrameDistributor> frameDistributor;
+    std::unique_ptr<jamwide::JamWideCameraDevice> nativeCamera;
+
+    jamwide::JamWideCameraDevice* getNativeCamera() { return nativeCamera.get(); }
+    jamwide::JamWideFrameDistributor* getFrameDistributor() { return frameDistributor.get(); }
 
     juce::AudioProcessorValueTreeState apvts;
     jamwide::SpscRing<jamwide::UiCommand, 256> cmd_queue;

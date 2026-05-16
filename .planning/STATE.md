@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Native Video
 status: executing
-stopped_at: Phase 20 CONTEXT.md + RESEARCH.md revised post-codex (substrate revision locked, ready for re-review or plan)
-last_updated: "2026-05-16T20:02:18.392Z"
-last_activity: 2026-05-16 -- Phase 20 execution started
+stopped_at: Phase 20 Plan 20-03 autonomous portion complete; AWAITING HUMAN UAT — 5-min populated-server broadcast at video.ninjamzap.com:2049 (see .planning/phases/20-h-264-encoder-send-pipeline/HUMAN-UAT.md)
+last_updated: "2026-05-16T21:35:00.000Z"
+last_activity: 2026-05-16 -- Phase 20 Plans 20-00/20-01/20-02 complete + merged; Plan 20-03 autonomous tasks (1/2/3/5) complete + merged, Task 4 (5-min UAT) HUMAN-PENDING
 progress:
   total_phases: 6
   completed_phases: 1
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 
 ## Current Position
 
-Phase: 20 (h-264-encoder-send-pipeline) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 20
-Last activity: 2026-05-16 -- Phase 20 execution started
+Phase: 20 (h-264-encoder-send-pipeline) — UAT-PENDING
+Plan: 4 of 4 — Plan 20-03 Task 4 (5-min populated-server UAT) AWAITING HUMAN
+Status: Phase 20 unit-tests green (6/6); Standalone built; UAT harness + procedure shipped; waiting on human to run `bash tests/uat/phase-20-broadcast-uat.sh --build` then follow `tests/uat/phase-20-broadcast-uat-procedure.md` against video.ninjamzap.com:2049
+Last activity: 2026-05-16 -- Plan 20-03 autonomous portion landed; UAT pointer at .planning/phases/20-h-264-encoder-send-pipeline/HUMAN-UAT.md
 Milestone scope (v1.3 = macOS + Windows testable beta on upstream ninjamzap-server, `video.ninjamzap.com:2049` documented as the recommended public instance — JamWide's existing NINJAM server browser UI is untouched):
 
 - Phase 19 — Camera Capture & Permission UX (3 plans) — CAM-01, CAM-02, CAM-03, PKG-04 (entitlements). Cross-platform via JUCE `juce_CameraDevice_{mac,windows}.h`; REAPER fallback is macOS-only (SPARTA #82).

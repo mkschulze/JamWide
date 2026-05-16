@@ -232,6 +232,18 @@ if(JAMWIDE_BUILD_JUCE)
         target_sources(JamWideJuce PRIVATE juce/video/native/CameraAuthorization_windows.cpp)
     endif()
 
+    # Phase 20-01 Task 1: VideoEncoder interface headers (Wave-1 contracts).
+    # Header-only at Task 1 — no library dependencies; Plan 20-02 will bind to
+    # these surfaces and the Openh264Encoder.cpp implementation added in
+    # Task 2 will link the ffmpeg::lgpl target via jamwide_use_ffmpeg().
+    # These three headers are reserved seams that compile without any cpp
+    # consumer in the target.
+    target_sources(JamWideJuce PRIVATE
+        juce/video/encoder/VideoEncoder.h
+        juce/video/encoder/VideoEncoderConfig.h
+        juce/video/encoder/VideoEncoderListener.h
+    )
+
     target_compile_definitions(JamWideJuce PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0

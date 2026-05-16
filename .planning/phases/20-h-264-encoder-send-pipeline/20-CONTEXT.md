@@ -150,7 +150,7 @@ Webcam frames captured by Phase 19's `JamWideFrameDistributor` are H.264-encoded
 
 ### Reusable Assets
 
-- **`NJClient::RawDataSendBegin/Write` substrate** (Phase 14.3-02, REVISED by Plan 20-00) — Phase 20's primary consumer. Plan 20-00 replaces the SPSC + overflow counter + Pattern C guard with NinjamZap-literal `WDL_PtrList<RawDataQueueItem>` + `WDL_Mutex m_rawdata_cs`. Multi-producer-safe by virtue of the mutex. Run-thread drain swaps the list out under the mutex, processes outside.
+- **`NJClient::RawDataSendBegin/Write` substrate** (Phase 14.3-02, REVISED by Plan 20-00) — Phase 20's primary consumer. Plan 20-00 replaces the SPSC + overflow counter + Pattern C guard with NinjamZap-literal `WDL_PtrList<RawDataQueueItem>` + `WDL_Mutex m_rawdata_cs`. Multi-producer-safe by virtue of the mutex. Run-thread drain is NinjamZap-literal pop-one-unlock-Send-relock matching `ninjamzap-core/njclient.cpp:1987-2039`; per-item ownership transfers from the WDL_PtrList to the drain loop (`Get(0)` → `Delete(0)` → process outside the lock → `delete item`).
 - **`JamWideFrameDistributor`** (Phase 19) — Frame source. `VideoEncoder` registers as a subscriber via SPSC and receives BGRA `juce::Image` frames at the configured capture rate. Subscription RAII (Phase 19 HIGH-2) handles encoder lifetime.
 - **`cmake/ffmpeg.cmake` IMPORTED INTERFACE** (Phase 14.3-01) — Phase 20 links `libavcodec` + `libavutil` + `libswscale` + `libopenh264` via the existing target.
 - **`juce::Thread` patterns in codebase** (e.g., `NinjamRunThread`) — encoder thread implementation reference.

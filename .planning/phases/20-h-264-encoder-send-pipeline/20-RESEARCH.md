@@ -39,6 +39,7 @@ The D-10 scenario filename reconciliation table (`02_video_one_interval_early.cp
 
 ---
 
+<!-- STALE — DO NOT PLAN FROM THIS SECTION; see CRITICAL UPDATE at top, CONTEXT.md is authoritative -->
 ## Summary
 
 Phase 20 is a port-from-reference exercise, not a green-field design. The wire format is locked, the substrate is shipped (Phase 14.3-02 `m_rawdata_sendq` SPSC + run-thread drain), the frame source contract is shipped (Phase 19 `JamWideFrameDistributor::Subscription`), and the reference implementation is sitting verbatim at `/Users/cell/dev/ninjamzap-core/core/ninjamclient/libninjamcore/njclient.cpp:2047-2123, 3041-3082`. The job is to translate NinjamZap's pattern into JamWide's Phase-15.1-compliant idioms (atomics + SPSC primitives instead of `WDL_Mutex`) while keeping a documented escape hatch (Path B = NinjamZap-literal `WDL_Mutex`) reachable in ≤30 LOC of localized edit if the atomic path fails sync correctness gates.
@@ -76,6 +77,7 @@ Plus contingency Plan **20-04 (conditional, only if 20-03 UAT trips the Path B t
 
 ## User Constraints (from CONTEXT.md)
 
+<!-- STALE — DO NOT PLAN FROM THIS SECTION; see CRITICAL UPDATE at top, CONTEXT.md is authoritative -->
 ### Locked Decisions
 
 **Encoder Backend Strategy:**
@@ -358,6 +360,7 @@ tests/test_video_send_state.cpp # Unit: drive on_new_interval with mock state;
                                 # END/BEGIN ordering.
 ```
 
+<!-- STALE — DO NOT PLAN FROM THIS SECTION; see CRITICAL UPDATE at top, CONTEXT.md is authoritative -->
 ### Pattern 1: Audio-Thread Lock-Free SPS/PPS Read
 
 **What:** Audio thread (`on_new_interval`) reads the cached SPS/PPS as one atomic load + one memcpy into a stack-allocated chunk buffer, no mutex.
@@ -410,6 +413,7 @@ void NJClient::on_new_interval() {
 }
 ```
 
+<!-- STALE — DO NOT PLAN FROM THIS SECTION; see CRITICAL UPDATE at top, CONTEXT.md is authoritative -->
 ### Pattern 1b: Path B Carve-out (NinjamZap-literal)
 
 **What:** Replace the two `std::atomic` primitives with `WDL_Mutex` taken on the audio thread, byte-for-byte mirroring NinjamZap.
@@ -484,6 +488,7 @@ void Openh264Encoder::onPacketReady(const uint8_t* nalBytes, int nalLen, bool is
 }
 ```
 
+<!-- STALE — DO NOT PLAN FROM THIS SECTION; see CRITICAL UPDATE at top, CONTEXT.md is authoritative -->
 ### Pattern 3: SPS/PPS Atomic Pointer Swap with Deferred Delete
 
 **What:** Encoder allocates a new `SpsPpsBuffer{data, len}` immutable struct, `atomic_exchange`s the published pointer, pushes the old pointer onto the existing Phase 15.1-05 deferred-delete SPSC.
@@ -594,6 +599,7 @@ void Openh264Encoder::publishNewSpsPps(const uint8_t* nalBytes, size_t totalLen)
 
 **Warning signs:** Activity Monitor shows high `mach_vm_*` syscalls during HD broadcast. Audio glitches that correlate with encoder frame cadence.
 
+<!-- STALE — DO NOT PLAN FROM THIS SECTION; see CRITICAL UPDATE at top, CONTEXT.md is authoritative -->
 ### Pitfall 4: Path B trigger detection ambiguity
 
 **What goes wrong:** Plan 20-03 UAT trips on a sync correctness failure. The team starts trying Path A fixes (memory ordering, fence insertion, mirror field additions). Without a clear iteration cap, the team burns weeks of cycles on Path A patches before falling back to Path B — exactly what `feedback_proven_over_pure` warns against.
@@ -757,6 +763,7 @@ void Openh264Encoder::maybeForceIdr() {
 
 For the openh264 direct-API path (if we ever bypass libavcodec), the same effect is achieved by `ISVCEncoder::ForceIntraFrame(true)` immediately before the encode call. [CITED: cisco/openh264 wiki ISVCEncoder section]
 
+<!-- STALE — DO NOT PLAN FROM THIS SECTION; this drain block IS modified by Plan 20-00 per D-19. See CONTEXT.md `<integration_points>` for the correct pattern. -->
 ### JamWide Phase 14.3-02 Drain Block (existing — reference only, not modified)
 
 ```cpp

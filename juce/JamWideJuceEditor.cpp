@@ -238,6 +238,25 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
         connectionBar.setCameraQualityPreset(cam->getQualityPreset());
     }
 
+    // Phase 19-02 Task 2 — construct the camera popout window. Initial bounds
+    // come from the processor (restored from the persisted v4 ValueTree by
+    // Task 3's setStateInformation; defaults to (100,100,320,240) on first
+    // launch). The window starts hidden; onCameraStateChanged(Capturing)
+    // makes it visible via drivePreviewWindowVisibility.
+    if (auto* dist = processorRef.getFrameDistributor()) {
+        previewWindow_ = std::make_unique<jamwide::CameraPreviewWindow>(
+            *dist, &lookAndFeel, processorRef.getCameraPopoutBounds());
+
+        previewWindow_->onCloseRequested = [this]() {
+            // D-09 — close hides; capture stays on. No editor-side action.
+            juce::ignoreUnused(this);
+        };
+        previewWindow_->onBoundsChanged = [this](juce::Rectangle<int> r) {
+            // D-25 — persist popout bounds so they survive plugin reload.
+            processorRef.setCameraPopoutBounds(r);
+        };
+    }
+
     // Restore state if already connected (editor recreated while session active).
     // HasUserInfoChanged() is destructive — the flag was consumed before the old
     // editor was destroyed, so no UserInfoChangedEvent will fire. We must

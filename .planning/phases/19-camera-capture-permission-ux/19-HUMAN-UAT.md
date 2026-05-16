@@ -197,11 +197,17 @@ deferred_environments:
     cluster by ~145 px at the old default). Build 320; user confirmed pass on retest.
 
 - truth: "Recheck-permission button in CameraStatusDialog provides visible feedback when status is still denied"
-  status: open
+  status: resolved
   reason: "D-14 duplicate-suppression in CameraStatusDialog::show (juce/video/native/CameraStatusDialog.cpp:174) silently dismisses the re-show when cause==lastShownCause_; Recheck for an unchanged-denied state fires onResult(Dismiss) with no visible UI change, making the button appear broken."
   severity: minor
   test: 3
   artifacts: ["juce/video/native/CameraStatusDialog.cpp", "juce/video/native/CameraStatusDialog.h", "juce/JamWideJuceEditor.cpp"]
-  missing:
-    - "Visible 'still denied' feedback when Recheck finds unchanged-denied status — e.g., brief toast 'Still denied; please grant in System Settings first', subtle button-state animation, or a System chat-message log entry"
-    - "Optionally: reset lastShownCause_ after RecheckPermission action so a still-denied recheck re-shows the dialog (re-evaluate against D-14 anti-spam intent before changing)"
+  resolution: |
+    Fixed in commit 9679e7b. JamWideJuceEditor::onCameraFallback now calls
+    cameraStatusDialog_.reset() before cam->recheckPermission() in the
+    Action::RecheckPermission handler. On the still-denied path the next
+    show() finds lastShownCause_ == None, so the equality check fails and
+    the dialog re-displays — implicitly confirming "still denied" to the
+    user. On the now-authorized path nothing changes (no fallback emitted,
+    no show() called). Build 321; re-test by clicking Recheck while denied
+    and confirming the dialog re-appears.

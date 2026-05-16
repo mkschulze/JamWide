@@ -95,6 +95,38 @@ class DecodeState;
 class BufferQueue;
 class DecodeMediaBuffer;
 
+// Plan 20-02 Task 2: per-channel atomic two-uint64_t halves seqlock helpers
+// for the canonical audio_ch0_guid (R3 MF1 + R4 H8 — TSan-clean by C++ memory
+// model). The 16-byte GUID payload lives in two `std::atomic<uint64_t>`
+// halves (m_curwritefile_guid_lo for bytes 0..7, m_curwritefile_guid_hi for
+// bytes 8..15) framed by a `std::atomic<uint64_t>` parity counter
+// (m_curwritefile_guid_seq). Even parity = stable; odd parity = writer is
+// mid-update.
+//
+// readGuidSeqlock attempts 4 reads against the seqlock; on each attempt it
+// acquire-loads the seq counter, checks parity, relaxed-loads lo + hi into
+// stack temporaries, acquire-fences, and relaxed-loads the seq counter again.
+// If the two seq values match (and were even), the bytes in out16 are a
+// consistent snapshot. After 4 failed attempts, out16 is zero-filled and the
+// function returns false — receivers treat zero-GUID as the NinjamZap
+// NONE-match path.
+//
+// writeGuidSeqlock release-bumps the seq counter (odd parity → writer mid-
+// update), relaxed-stores lo + hi (extracted from in16 via memcpy onto local
+// temporaries — safe: temporaries are not shared), then release-bumps the
+// seq counter again (even parity → writer done). Audio-thread reads of the
+// non-atomic legacy m_curwritefile.guid[16] byte array are FORBIDDEN by the
+// audit-allowlist envelope (R4 H8): the audio thread reads ONLY through
+// readGuidSeqlock.
+//
+// Declared at file scope so they can be invoked from
+//   - audio thread: NJClient::on_new_interval marker construction
+//   - run thread:   src/core/njclient.cpp:2606 m_curwritefile.guid write site
+// without taking Local_Channel as a template parameter — Local_Channel is
+// defined inline in njclient.cpp (line ~813), not in the header.
+bool readGuidSeqlock(Local_Channel& lc, unsigned char out16[16]) noexcept;
+void writeGuidSeqlock(Local_Channel& lc, const unsigned char in16[16]) noexcept;
+
 // 15.1-06 CR-02: maximum local channel count. Promoted from a #define at the
 // bottom of this header so LocalChannelMirror[MAX_LOCAL_CHANNELS] declared on
 // NJClient (below) sees the constant. Original #define preserved at the
@@ -609,6 +641,49 @@ public:
   void *ChatMessage_User;
 
   // -------------------------------------------------------------------------
+  // Phase 20-02: H.264 send-side video state machine. NinjamZap-literal per
+  // CONTEXT.md D-08 / D-09 / D-11 / D-13 / D-18 / D-20 + R4 H8 (atomic two-
+  // uint64_t halves seqlock for the canonical audio_ch0_guid read).
+  //
+  // Threading model (one mutex held across the whole on_new_interval video
+  // block — D-08 NinjamZap-literal):
+  //   - audio thread (NJClient::on_new_interval) acquires m_video_cs, emits
+  //     END/BEGIN/marker/SPS-PPS/END-at-deactivate, releases.
+  //   - encoder thread (Plan 20-01 Openh264Encoder publishEncodedNal callback)
+  //     calls NJClient::QueueVideoFrame which acquires m_video_cs, validates
+  //     m_video_active && m_video_interval_open, calls RawDataSendWrite with
+  //     [4B BE length][NAL] (COD-02), releases m_video_cs.
+  //   - message thread calls NJClient::SetVideoBroadcastActive(bool) to
+  //     toggle m_video_active under m_video_cs.
+  //   - run thread calls NJClient::SetVideoChannel(chidx, fourcc) once at
+  //     connect-up to register the video channel.
+  //
+  // SPS/PPS storage is protected by a NESTED m_video_spspps_cs taken inside
+  // the m_video_cs critical section (D-03). The audio_ch0_guid 16 bytes in
+  // the marker is sourced via readGuidSeqlock against Local_Channel atomic
+  // two-uint64_t halves — TSan-clean by C++ memory model (R4 H8).
+  // -------------------------------------------------------------------------
+  void SetVideoChannel(int chidx, unsigned int fourcc);     // run-thread; connect-up
+  void SetVideoBroadcastActive(bool active);                // message-thread; Broadcast button
+  void QueueVideoFrame(const void* data, int len);          // encoder-thread; publishEncodedNal callback
+  void SetVideoSPSPPS(const void* data, int len);           // encoder-thread; publishSpsPps callback
+
+  // Plan 20-01 encoder reads this atomic counter relaxed to detect interval
+  // boundaries (D-15). Audio thread bumps with release before the rest of
+  // the video block runs, so the encoder's per-frame `eForceIntraFrame`
+  // flag tracks audio-thread interval cadence with at most 1 frame of drift.
+  std::atomic<uint64_t>* getAudioIntervalSeqPtr() noexcept { return &m_audio_interval_seq; }
+  uint64_t GetAudioIntervalSeq() const noexcept {
+    return m_audio_interval_seq.load(std::memory_order_relaxed);
+  }
+  // Plan 20-01 publishes encoder input-drop counter via this pointer; Plan
+  // 20-03 reads at UAT close (analogue of m_block_queue_drops gate).
+  std::atomic<uint64_t>* getEncoderInputDropsPtr() noexcept { return &m_encoder_input_drops_mirror; }
+  uint64_t GetEncoderInputDropCount() const noexcept {
+    return m_encoder_input_drops_mirror.load(std::memory_order_relaxed);
+  }
+
+  // -------------------------------------------------------------------------
   // Phase 14.3-02 + Phase 20-00 (D-19): codec-agnostic transport scaffolding
   // (RawData send-side).
   //
@@ -721,6 +796,31 @@ public:
                                                int audio_data_len, int flags);
   int GetRawDataDownloadCount() const { return m_rawdata_downloads.GetSize(); }
   int GetMDownloadsCount()      const { return m_downloads.GetSize(); }
+
+  // Plan 20-02 Task 3: drive the audio-thread on_new_interval block from the
+  // test main thread without spinning up a real AudioProc loop. This is the
+  // same gating idiom used by DrainRawDataSendQueueForTest above.
+  void RunOneIntervalForTest();
+
+  // Plan 20-02 Task 2: opaque handle around a freshly-constructed
+  // Local_Channel so tests can exercise the per-channel seqlock helpers
+  // (R3 MF1 + R4 H8 atomic two-uint64_t halves) without exposing
+  // Local_Channel's full definition in the public header. The handle is
+  // an opaque type — the test uses a raw pointer; call
+  // DestroyTestLocalChannelHandle to release it. (Using unique_ptr here
+  // would need the full definition in scope of every test's destructor.)
+  struct TestLocalChannelHandle;
+  static TestLocalChannelHandle* CreateTestLocalChannelHandle();
+  static void DestroyTestLocalChannelHandle(TestLocalChannelHandle* h);
+  static void TestWriteGuidSeqlock(TestLocalChannelHandle& h,
+                                   const unsigned char in16[16]);
+  static bool TestReadGuidSeqlock(TestLocalChannelHandle& h,
+                                  unsigned char out16[16]);
+  // Force the seqlock counter to odd parity (writer-mid-update simulation)
+  // for the retry-cap-fallback test path. After this call, every reader
+  // attempt will spin to the retry cap and return false + zero-fill.
+  static void TestForceOddParityForTest(TestLocalChannelHandle& h);
+  static void TestRestoreEvenParityForTest(TestLocalChannelHandle& h);
 #endif
 
   // -- Phase 14.2: Instamode latency measurement (VID-13) --
@@ -1045,6 +1145,33 @@ protected:
   std::atomic<uint64_t> m_rawdata_sendq_high_water_mark{0};
   std::atomic<uint64_t> m_rawdata_cs_contention_count{0};
   std::atomic<uint64_t> m_rawdata_sendq_total_enqueues{0};
+
+  // -------------------------------------------------------------------------
+  // Phase 20-02: H.264 send-side video state members. NinjamZap-literal per
+  // CONTEXT.md D-08 + D-11 + D-13. Initialized in NJClient() ctor. All access
+  // to m_video_active / m_video_interval_open / m_video_guid / m_video_chidx /
+  // m_video_fourcc / m_sync_interval_cnt is under m_video_cs (audio thread
+  // holds it across the entire on_new_interval video block per D-08; encoder
+  // thread takes it inside QueueVideoFrame; message thread takes it inside
+  // SetVideoBroadcastActive; run thread takes it inside SetVideoChannel).
+  // m_video_spspps is under m_video_spspps_cs (nested inside m_video_cs in
+  // on_new_interval; held alone in SetVideoSPSPPS per D-03).
+  // -------------------------------------------------------------------------
+  WDL_Mutex             m_video_cs;
+  WDL_Mutex             m_video_spspps_cs;
+  bool                  m_video_active{false};
+  bool                  m_video_interval_open{false};
+  unsigned char         m_video_guid[16]{};
+  int                   m_video_chidx{1};
+  unsigned int          m_video_fourcc{0};   // initialized in NJClient() ctor to MAKE_NJ_FOURCC('H','2','6','4')
+  WDL_HeapBuf           m_video_spspps;
+  int                   m_sync_interval_cnt{0};
+  // D-15: Plan 20-01 encoder thread reads this relaxed; audio thread bumps
+  // release at top of every on_new_interval. Lock-free, no mutex.
+  std::atomic<uint64_t> m_audio_interval_seq{0};
+  // Plan 20-01 publishes encoder input drops here via getEncoderInputDropsPtr.
+  // Plan 20-03 UAT asserts this == 0 at populated-load close.
+  std::atomic<uint64_t> m_encoder_input_drops_mirror{0};
 
   // Diagnostic counters for the 2026-05-02 RemoteUserMirror orphan-fields fix.
   // Bumped at PeerChannelInfoUpdate publish (run thread) and apply (audio

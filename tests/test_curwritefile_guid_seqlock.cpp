@@ -28,9 +28,11 @@
     JAMWIDE_BUILD_TESTS-gated in njclient.h.
 */
 
+#include <array>
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -40,6 +42,21 @@
 
 #include "core/njclient.h"
 #include "wdl/heapbuf.h"
+
+// RAII wrapper around the opaque test handle (unique_ptr cannot delete an
+// incomplete type; pass a custom deleter that calls the public destructor).
+namespace {
+struct TestHandleDeleter {
+    void operator()(NJClient::TestLocalChannelHandle* h) const {
+        NJClient::DestroyTestLocalChannelHandle(h);
+    }
+};
+using TestHandlePtr = std::unique_ptr<NJClient::TestLocalChannelHandle,
+                                      TestHandleDeleter>;
+inline TestHandlePtr makeTestHandle() {
+    return TestHandlePtr(NJClient::CreateTestLocalChannelHandle());
+}
+} // namespace
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -65,8 +82,7 @@ static int tests_passed = 0;
 // ----- Test D: single-thread non-contended sanity ------------------------
 static void test_seqlock_single_thread_sanity() {
     TEST("write 16 bytes, read 16 bytes, byte-for-byte identical (single thread)");
-    auto lc = std::unique_ptr<NJClient::TestLocalChannelHandle>(
-        NJClient::CreateTestLocalChannelHandle());
+    auto lc = makeTestHandle();
     if (!lc) { FAIL("CreateTestLocalChannelHandle returned null"); return; }
 
     unsigned char in[16];
@@ -83,8 +99,7 @@ static void test_seqlock_single_thread_sanity() {
 // ----- Test A: writer/reader concurrency stress --------------------------
 static void test_seqlock_concurrency_stress() {
     TEST("writer at 100Hz, reader at 1kHz, 2-sec window: zero torn reads");
-    auto lc = std::unique_ptr<NJClient::TestLocalChannelHandle>(
-        NJClient::CreateTestLocalChannelHandle());
+    auto lc = makeTestHandle();
     if (!lc) { FAIL("CreateTestLocalChannelHandle returned null"); return; }
 
     // Capture the set of published values so the reader can verify
@@ -183,8 +198,7 @@ static void test_seqlock_concurrency_stress() {
 // ----- Test B: retry-cap fallback --------------------------------------
 static void test_seqlock_retry_cap_fallback() {
     TEST("writer holds odd-parity > retry cap → reader returns false + zero out");
-    auto lc = std::unique_ptr<NJClient::TestLocalChannelHandle>(
-        NJClient::CreateTestLocalChannelHandle());
+    auto lc = makeTestHandle();
     if (!lc) { FAIL("CreateTestLocalChannelHandle returned null"); return; }
 
     // Publish a known value first.
@@ -224,8 +238,7 @@ static void test_seqlock_tsan_design() {
     // Sanity: drive a brief concurrency loop under whichever build flags;
     // the atomic-halves design produces no race regardless. If TSan is on
     // it asserts no race; if not, it just runs to completion.
-    auto lc = std::unique_ptr<NJClient::TestLocalChannelHandle>(
-        NJClient::CreateTestLocalChannelHandle());
+    auto lc = makeTestHandle();
     if (!lc) { FAIL("CreateTestLocalChannelHandle returned null"); return; }
 
     std::atomic<bool> stop{false};

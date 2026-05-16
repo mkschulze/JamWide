@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Native Video
 status: executing
-stopped_at: Phase 20 Plan 20-03 autonomous portion complete; AWAITING HUMAN UAT — 5-min populated-server broadcast at video.ninjamzap.com:2049 (see .planning/phases/20-h-264-encoder-send-pipeline/HUMAN-UAT.md)
-last_updated: "2026-05-16T21:35:00.000Z"
-last_activity: 2026-05-16 -- Phase 20 Plans 20-00/20-01/20-02 complete + merged; Plan 20-03 autonomous tasks (1/2/3/5) complete + merged, Task 4 (5-min UAT) HUMAN-PENDING
+stopped_at: Phase 20 Plan 20-03 Task 4 UAT FAILED — chidx=1 collision (audio Ch2 vs. video H264) prevents web-viewer decoding. Root cause: JamWide sets `SetLocalChannelInfo(1, "video", flags=0x10)` but does not implement the NinjamZap canonical `flags & 0x10` skip in its own `on_new_interval()` + `process_samples()` audio pipeline (per upstream VIDEO_SYNC.md §7), so the Local_Channel audio encoder for chidx=1 keeps producing OGGv chunks in parallel with the H264 video stream. Public-anon-server 2-channel cap is a separate but related finding (Ch3/Ch4/Instatalk silently truncated). Diagnosis in .planning/debug/phase-20-anon-channel-cap.md. Remediation outline in .planning/debug/phase-20-anon-channel-cap-remediation-plan.md (proposed Plan 20-04 — Task 0 = canonical skip = ~10-line hot-fix; Tasks 1-8 = auth-reply-aware layout selector for full robustness).
+last_updated: "2026-05-17T00:55:00.000Z"
+last_activity: 2026-05-17 -- Plan 20-03 Task 4 UAT FAIL diagnosed via wire capture + ninjamzap-server source audit; finding affects v1.3 SRV-01 + BETA-01/05/06 scope, not just Phase 20
 progress:
   total_phases: 6
   completed_phases: 1
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 
 ## Current Position
 
-Phase: 20 (h-264-encoder-send-pipeline) — UAT-PENDING
-Plan: 4 of 4 — Plan 20-03 Task 4 (5-min populated-server UAT) AWAITING HUMAN
-Status: Phase 20 unit-tests green (6/6); Standalone built; UAT harness + procedure shipped; waiting on human to run `bash tests/uat/phase-20-broadcast-uat.sh --build` then follow `tests/uat/phase-20-broadcast-uat-procedure.md` against video.ninjamzap.com:2049
-Last activity: 2026-05-16 -- Plan 20-03 autonomous portion landed; UAT pointer at .planning/phases/20-h-264-encoder-send-pipeline/HUMAN-UAT.md
+Phase: 20 (h-264-encoder-send-pipeline) — Plan 20-03 Task 4 UAT FAIL
+Plan: 4 of 4 — Plan 20-03 Tasks 1/2/3/5 PASS, Task 4 (5-min populated-server UAT) **FAIL**
+Status: Wire-capture diagnosis complete. Public-anon-server `MaxChannels 32 2` config caps anonymous peers at 2 channels; JamWide registers 5 (Ch1-4 + Instatalk) → server silently truncates to 2 records; Plan 20-03 overlays video on chidx=1 which collides with audio Ch2 → web viewer cannot decode interleaved OGGv+H264 → black tile. Phase 20 unit-tests still green (6/6) — the bug is in the integration with NinjamRunThread's channel-registration block, not in the per-plan code itself. Next: review the remediation outline (.planning/debug/phase-20-anon-channel-cap-remediation-plan.md — proposed Plan 20-04) and decide whether to slot it as a Phase 20 follow-up or roll into Phase 24 BETA hardening.
+Last activity: 2026-05-17 -- Plan 20-03 Task 4 UAT FAIL diagnosed; debug + remediation docs landed under .planning/debug/
 Milestone scope (v1.3 = macOS + Windows testable beta on upstream ninjamzap-server, `video.ninjamzap.com:2049` documented as the recommended public instance — JamWide's existing NINJAM server browser UI is untouched):
 
 - Phase 19 — Camera Capture & Permission UX (3 plans) — CAM-01, CAM-02, CAM-03, PKG-04 (entitlements). Cross-platform via JUCE `juce_CameraDevice_{mac,windows}.h`; REAPER fallback is macOS-only (SPARTA #82).

@@ -87,7 +87,8 @@ public:
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-    static constexpr int currentStateVersion = 3;
+    // v4: added camera flat properties (Phase 19-02; D-24, D-25).
+    static constexpr int currentStateVersion = 4;
     static constexpr int kTotalOutChannels = 34;  // 17 stereo buses
     static constexpr int kNumOutputBuses = 17;
     static constexpr int kMetronomeBus = 16;      // Last bus (channels 32-33)

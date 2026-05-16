@@ -782,22 +782,88 @@ void JamWideJuceEditor::onCameraFallback(jamwide::CameraFallbackCause cause)
     // 19-03 Task 1 wires CameraStatusDialog here.
 }
 
-// HIGH-5 first-launch sequence — full body is filled in Task 3. For Task 1
-// (so the UI is functional end-to-end on the already-acked path) we delegate
-// straight to toggle(). Task 3 replaces this with the auth-status switch +
-// privacy modal.
+// HIGH-5 first-launch sequence — switches on the CURRENT auth status and
+// runs the correct request-access → privacy-modal → toggle path. The prior
+// design only checked "is Authorized" at click time and missed the real
+// first-launch case (NotDetermined → request → grant → modal). This version
+// dispatches per-status so the modal fires on the actual first-launch path.
+//
+// The flow per-status:
+//   Authorized      → showPrivacyOrToggle (modal if !privacyAck, else toggle)
+//   NotDetermined   → requestCameraAuthorization → on-grant: showPrivacyOrToggle;
+//                                                  on-deny:  toggle (→ Unavailable)
+//   Denied/Restricted → toggle (state machine routes to Unavailable; 19-03
+//                       surfaces CameraStatusDialog via FallbackListener)
+//   NotApplicable (Windows) → showPrivacyOrToggle (no TCC on Windows desktop;
+//                              still gate on privacyAck for the D-22 modal)
 void JamWideJuceEditor::handleCameraIdleClick()
 {
-    // Task 3 replaces this stub with the queryCameraAuthorization() switch.
-    if (auto* cam = processorRef.getNativeCamera())
-        cam->toggle();
+    auto* cam = processorRef.getNativeCamera();
+    if (! cam) return;
+
+    const auto status = jamwide::queryCameraAuthorization();
+    switch (status) {
+        case jamwide::CameraAuthStatus::Authorized: {
+            showPrivacyOrToggle(cam);
+            return;
+        }
+        case jamwide::CameraAuthStatus::NotDetermined: {
+            // OS prompt path. Apple's contract: completion handler fires on
+            // an unspecified thread, so we marshal to the message thread
+            // before touching `this` or the camera.
+            jamwide::requestCameraAuthorization(
+                [this](jamwide::CameraAuthStatus result) {
+                    juce::MessageManager::callAsync(
+                        [this, result]() {
+                            auto* cam2 = processorRef.getNativeCamera();
+                            if (! cam2) return;
+                            if (result == jamwide::CameraAuthStatus::Authorized) {
+                                showPrivacyOrToggle(cam2);
+                            } else {
+                                // Denied / Restricted — let the state machine
+                                // route to Unavailable. 19-03 surfaces the
+                                // CameraStatusDialog via FallbackListener.
+                                cam2->toggle();
+                            }
+                        });
+                });
+            return;
+        }
+        case jamwide::CameraAuthStatus::Denied:
+        case jamwide::CameraAuthStatus::Restricted: {
+            cam->toggle();   // → Unavailable; 19-03 surfaces the dialog
+            return;
+        }
+        case jamwide::CameraAuthStatus::NotApplicable: {
+            // Windows — no TCC pre-check. Still gate on privacyAck so the
+            // first-launch D-22 modal fires here too.
+            showPrivacyOrToggle(cam);
+            return;
+        }
+    }
 }
 
-// Helper shared by the Authorized + NotApplicable branches in Task 3.
-// Stubbed here so Task 1 compiles before Task 3 fills it in.
 void JamWideJuceEditor::showPrivacyOrToggle(jamwide::JamWideCameraDevice* cam)
 {
-    if (cam) cam->toggle();
+    if (! cam) return;
+
+    if (! processorRef.getCameraPrivacyAck()) {
+        if (! privacyDialog_) {
+            privacyDialog_ = std::make_unique<jamwide::NativeCameraPrivacyDialog>();
+        }
+        privacyDialog_->show(
+            [this, cam](bool acknowledged) {
+                if (acknowledged) {
+                    processorRef.setCameraPrivacyAck(true);
+                    // proceed to openDeviceAsync via the state machine
+                    cam->toggle();
+                }
+                // else: user cancelled; camera stays Idle. No state change.
+            });
+    } else {
+        // Ack already given on a prior session — proceed directly.
+        cam->toggle();
+    }
 }
 
 // Task 2 hook — see header. Task 1 ships an empty stub; Task 2 replaces it

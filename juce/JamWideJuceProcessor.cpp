@@ -710,6 +710,19 @@ void JamWideJuceProcessor::getStateInformation(juce::MemoryBlock& destData)
     state.setProperty("midiOutputDeviceId",
                       midiMapper ? midiMapper->getOutputDeviceId() : juce::String(), nullptr);
 
+    // Phase 19-02 — camera flat properties (state version 4; D-24, D-25).
+    // Approach A per RESEARCH §8: 7 sibling properties at the top level
+    // (NOT a nested child node) for symmetry with the existing oscEnabled /
+    // chatSidebarVisible / etc. shape.
+    auto popoutBounds = getCameraPopoutBounds();
+    state.setProperty("cameraPopoutX",       popoutBounds.getX(), nullptr);
+    state.setProperty("cameraPopoutY",       popoutBounds.getY(), nullptr);
+    state.setProperty("cameraPopoutWidth",   popoutBounds.getWidth(), nullptr);
+    state.setProperty("cameraPopoutHeight",  popoutBounds.getHeight(), nullptr);
+    state.setProperty("cameraQualityPreset", cameraQualityPreset_.load(std::memory_order_relaxed), nullptr);
+    state.setProperty("cameraPrivacyAck",    cameraPrivacyAck_.load(std::memory_order_relaxed), nullptr);
+    state.setProperty("cameraSelectedDevice", getCameraSelectedDevice(), nullptr);
+
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -813,6 +826,32 @@ void JamWideJuceProcessor::setStateInformation(const void* data, int sizeInBytes
         midiMapper->openMidiInput(midiInputDeviceId);
     if (midiMapper && midiOutputDeviceId.isNotEmpty())
         midiMapper->openMidiOutput(midiOutputDeviceId);
+
+    // STEP 5: Phase 19-02 — camera flat properties (state version 4).
+    // T-19-03 mitigation: every field is read via tree.getProperty(key,
+    // default) and aggressively clamped. v3 state (no camera fields) gets
+    // D-25 defaults; malicious v4 state with out-of-range values is
+    // sanitised before being applied to the runtime camera/popout state.
+    {
+        const int popX = juce::jlimit(-10000, 10000, (int) tree.getProperty("cameraPopoutX", 100));
+        const int popY = juce::jlimit(-10000, 10000, (int) tree.getProperty("cameraPopoutY", 100));
+        const int popW = juce::jlimit(240, 2560, (int) tree.getProperty("cameraPopoutWidth", 320));
+        const int popH = juce::jlimit(180, 1920, (int) tree.getProperty("cameraPopoutHeight", 240));
+        setCameraPopoutBounds(juce::Rectangle<int>(popX, popY, popW, popH));
+
+        const int qp = juce::jlimit(0, 2, (int) tree.getProperty("cameraQualityPreset", 1));
+        setCameraQualityPreset(qp);
+        if (nativeCamera) nativeCamera->setQualityPreset(qp);
+
+        setCameraPrivacyAck((bool) tree.getProperty("cameraPrivacyAck", false));
+
+        juce::String sel = tree.getProperty("cameraSelectedDevice", "").toString();
+        // 256-char cap defends against a maliciously-long string injected
+        // into the XML by an attacker who can write to the host's project
+        // file. Most real device names are <40 chars.
+        if (sel.length() > 256) sel = sel.substring(0, 256);
+        setCameraSelectedDevice(sel);
+    }
 }
 
 //==============================================================================

@@ -451,7 +451,7 @@ v1.3 execution order: 19 -> 20 -> 21 -> 22 -> 23 -> 24 (strict dependency chain 
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |
 | 18. Testing Infrastructure | v1.2 | 0/0 | Not started | - |
 | 19. Camera Capture & Permission UX | v1.3 | 3/3 | Complete   | 2026-05-16 |
-| 20. H.264 Encoder & Send Pipeline | v1.3 | 1/4 | In Progress|  |
+| 20. H.264 Encoder & Send Pipeline | v1.3 | 2/4 | In Progress|  |
 | 21. H.264 Decoder & Receive Pipeline | v1.3 | 0/3 | Not started | - |
 | 22. Native Video UI (Grid + Popouts) | v1.3 | 0/2 | Not started | - |
 | 23. macOS Universal + Windows Build & Codesign | v1.3 | 0/3 | Not started | - |

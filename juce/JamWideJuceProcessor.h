@@ -130,6 +130,31 @@ public:
     jamwide::JamWideCameraDevice* getNativeCamera() { return nativeCamera.get(); }
     jamwide::JamWideFrameDistributor* getFrameDistributor() { return frameDistributor.get(); }
 
+    // Phase 19-02 — persisted camera fields (D-24, D-25). Backed by atomics
+    // for the lock-free read paths (UI thread reads + state save block) and
+    // a small mutex for the popout bounds + selected device which are
+    // composite values. The state schema bumps to v4 in Task 3.
+    juce::Rectangle<int> getCameraPopoutBounds() const;
+    void setCameraPopoutBounds(juce::Rectangle<int> bounds);
+
+    int  getCameraQualityPreset() const noexcept {
+        return cameraQualityPreset_.load(std::memory_order_relaxed);
+    }
+    void setCameraQualityPreset(int preset) noexcept {
+        cameraQualityPreset_.store(juce::jlimit(0, 2, preset),
+                                   std::memory_order_relaxed);
+    }
+
+    bool getCameraPrivacyAck() const noexcept {
+        return cameraPrivacyAck_.load(std::memory_order_relaxed);
+    }
+    void setCameraPrivacyAck(bool ack) noexcept {
+        cameraPrivacyAck_.store(ack, std::memory_order_relaxed);
+    }
+
+    juce::String getCameraSelectedDevice() const;
+    void setCameraSelectedDevice(const juce::String& name);
+
     juce::AudioProcessorValueTreeState apvts;
     jamwide::SpscRing<jamwide::UiCommand, 256> cmd_queue;
 
@@ -232,6 +257,17 @@ public:
 
     // Atomic snapshot for high-frequency UI reads (beat, VU, BPM/BPI)
     UiAtomicSnapshot uiSnapshot;
+
+    // Phase 19-02 — backing storage for the persisted camera fields. These are
+    // public-section members so the unit-test in tests/test_plugin_state_v3_v4
+    // can replicate the read logic; in production they are accessed only via
+    // the get/set wrappers above.
+    std::atomic<int>  cameraQualityPreset_{1};
+    std::atomic<bool> cameraPrivacyAck_{false};
+    juce::String cameraSelectedDevice_;
+    mutable std::mutex cameraSelectedDeviceMu_;
+    juce::Rectangle<int> cameraPopoutBounds_{100, 100, 320, 240};
+    mutable std::mutex cameraPopoutMu_;
 
 private:
     std::unique_ptr<NJClient> client;

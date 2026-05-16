@@ -4,9 +4,27 @@
 #include "threading/ui_command.h"
 #include "video/BrowserDetect.h"
 #include "video/VideoCompanion.h"
+#include "video/native/CameraAuthorization.h"
+#include "video/native/CameraPreviewWindow.h"
+#include "video/native/NativeCameraPrivacyDialog.h"
 
 #include <chrono>
 #include <variant>
+
+// Phase 19-02 — file-scope helper for log messages. The state machine doesn't
+// expose a public string-conversion helper today; keeping this inline avoids
+// touching JamWideCameraDevice.cpp from this plan.
+static juce::String stateToString(jamwide::CameraState s) {
+    switch (s) {
+        case jamwide::CameraState::Idle:        return "Idle";
+        case jamwide::CameraState::Opening:     return "Opening";
+        case jamwide::CameraState::Capturing:   return "Capturing";
+        case jamwide::CameraState::Failed:      return "Failed";
+        case jamwide::CameraState::Retrying:    return "Retrying";
+        case jamwide::CameraState::Unavailable: return "Unavailable";
+    }
+    return "Unknown";
+}
 
 JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
     : AudioProcessorEditor(p),
@@ -160,6 +178,66 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
         chatPanel.addMessage(msg);
     };
 
+    // Phase 19-02 — Camera button wiring (MEDIUM-1 decision tree).
+    connectionBar.onCameraClicked = [this]() {
+        auto* cam = processorRef.getNativeCamera();
+        if (! cam) return;
+        const auto state = cam->getState();
+
+        switch (state) {
+            case jamwide::CameraState::Capturing: {
+                // Popout open → toggle stops capture; popout hidden → re-show.
+                if (previewWindow_ && ! previewWindow_->isVisible()) {
+                    previewWindow_->setVisible(true);
+                } else {
+                    cam->toggle();
+                }
+                return;
+            }
+            case jamwide::CameraState::Idle: {
+                // HIGH-5 first-launch sequence (Task 3 Edit 5 fills the body).
+                handleCameraIdleClick();
+                return;
+            }
+            case jamwide::CameraState::Unavailable: {
+                cam->recheckPermission();   // D-12
+                return;
+            }
+            case jamwide::CameraState::Opening:
+            case jamwide::CameraState::Retrying:
+            case jamwide::CameraState::Failed:
+                juce::Logger::writeToLog(
+                    "[JamWideEditor] Camera click ignored (state="
+                    + stateToString(state) + ")");
+                return;
+        }
+    };
+
+    // Right-click "Stop Camera" — unconditional toggle while Capturing.
+    connectionBar.onCameraStopRequested = [this]() {
+        if (auto* cam = processorRef.getNativeCamera()) {
+            if (cam->getState() == jamwide::CameraState::Capturing)
+                cam->toggle();
+        }
+    };
+
+    // Quality preset selection (right-click menu). Persist + reflect in menu.
+    connectionBar.onCameraQualitySelected = [this](int preset) {
+        if (auto* cam = processorRef.getNativeCamera()) {
+            cam->setQualityPreset(preset);
+            processorRef.setCameraQualityPreset(preset);
+            connectionBar.setCameraQualityPreset(preset);
+        }
+    };
+
+    // Register the editor as the FallbackListener (processor outlives editor;
+    // the destructor unregisters before the editor goes away).
+    if (auto* cam = processorRef.getNativeCamera()) {
+        cam->setFallbackListener(this);
+        // Reflect the current preset in the right-click menu's checkmark.
+        connectionBar.setCameraQualityPreset(cam->getQualityPreset());
+    }
+
     // Restore state if already connected (editor recreated while session active).
     // HasUserInfoChanged() is destructive — the flag was consumed before the old
     // editor was destroyed, so no UserInfoChangedEvent will fire. We must
@@ -207,6 +285,14 @@ JamWideJuceEditor::~JamWideJuceEditor()
 {
     removeMouseListener(this);
     stopTimer();
+    // Phase 19-02 — unregister as FallbackListener BEFORE the editor goes
+    // away. The processor (and its JamWideCameraDevice) outlives the editor,
+    // so leaving a dangling listener pointer would crash on the next state
+    // change. Task 2 also tears down previewWindow_ here (handled by
+    // unique_ptr destruction); no explicit reset needed.
+    if (auto* cam = processorRef.getNativeCamera()) {
+        cam->setFallbackListener(nullptr);
+    }
     setLookAndFeel(nullptr);
 }
 
@@ -632,4 +718,83 @@ void JamWideJuceEditor::applyScale(float factor)
     // setTransform scales rendering; JUCE communicates physical size to host.
     // Do NOT also call setSize with scaled dims -- that causes double scaling.
     setTransform(juce::AffineTransform::scale(factor));
+}
+
+// ─── Phase 19-02 — FallbackListener implementation ──────────────────────────
+//
+// onCameraStateChanged drives the Camera button's text + active-state colour
+// AND the popout window's visibility. Task 1 lands the button-state portion;
+// Task 2 extends this with the previewWindow_ visibility branch.
+//
+// onCameraFallback is intentionally a stub in this plan — 19-03 Task 1 wires
+// CameraStatusDialog here to show the fallback copy when permission is denied
+// or the device is unavailable.
+
+void JamWideJuceEditor::onCameraStateChanged(jamwide::CameraState newState)
+{
+    switch (newState) {
+        case jamwide::CameraState::Unavailable:
+            connectionBar.setCameraLabel("Recheck permission");
+            connectionBar.setCameraActive(false);
+            break;
+        case jamwide::CameraState::Capturing:
+            connectionBar.setCameraLabel("Camera");
+            connectionBar.setCameraActive(true);
+            break;
+        case jamwide::CameraState::Idle:
+            connectionBar.setCameraLabel("Camera");
+            connectionBar.setCameraActive(false);
+            break;
+        default:
+            // Opening / Retrying / Failed: keep current label until a stable
+            // state is reached. Avoids label-thrash during retry storms.
+            break;
+    }
+
+    // Task 2 extends this method with the previewWindow_ visibility branch
+    // (D-09 orthogonality: only Idle / Capturing / Unavailable touch the
+    // window; Opening / Retrying / Failed leave visibility as-is).
+    drivePreviewWindowVisibility(newState);
+}
+
+void JamWideJuceEditor::onCameraFallback(jamwide::CameraFallbackCause cause)
+{
+    juce::ignoreUnused(cause);
+    // 19-03 Task 1 wires CameraStatusDialog here.
+}
+
+// HIGH-5 first-launch sequence — full body is filled in Task 3. For Task 1
+// (so the UI is functional end-to-end on the already-acked path) we delegate
+// straight to toggle(). Task 3 replaces this with the auth-status switch +
+// privacy modal.
+void JamWideJuceEditor::handleCameraIdleClick()
+{
+    // Task 3 replaces this stub with the queryCameraAuthorization() switch.
+    if (auto* cam = processorRef.getNativeCamera())
+        cam->toggle();
+}
+
+// Helper shared by the Authorized + NotApplicable branches in Task 3.
+// Stubbed here so Task 1 compiles before Task 3 fills it in.
+void JamWideJuceEditor::showPrivacyOrToggle(jamwide::JamWideCameraDevice* cam)
+{
+    if (cam) cam->toggle();
+}
+
+// Task 2 hook — see header. Task 1 ships an empty stub; Task 2 replaces it
+// with the Capturing→setVisible(true) / Idle/Unavailable→setVisible(false)
+// branch. Kept as a separate method so the FallbackListener path doesn't
+// need to know about the popout's lifecycle in Task 1.
+void JamWideJuceEditor::drivePreviewWindowVisibility(jamwide::CameraState newState)
+{
+    if (! previewWindow_) return;
+    if (newState == jamwide::CameraState::Capturing) {
+        if (auto* cam = processorRef.getNativeCamera())
+            previewWindow_->setDeviceName(cam->getDeviceName());
+        previewWindow_->setVisible(true);
+    } else if (newState == jamwide::CameraState::Idle
+            || newState == jamwide::CameraState::Unavailable) {
+        previewWindow_->setVisible(false);
+    }
+    // Opening / Retrying / Failed: leave visibility as-is (D-09).
 }

@@ -619,6 +619,34 @@ juce::AudioProcessorEditor* JamWideJuceProcessor::createEditor()
 
 bool JamWideJuceProcessor::hasEditor() const { return true; }
 
+// Phase 19-02 — camera persisted-field accessors. Atomics handle the scalar
+// fields; the mutex pair guards the composite popout bounds + selected device
+// string so save/load can read a coherent snapshot.
+
+juce::Rectangle<int> JamWideJuceProcessor::getCameraPopoutBounds() const
+{
+    std::lock_guard<std::mutex> lk(cameraPopoutMu_);
+    return cameraPopoutBounds_;
+}
+
+void JamWideJuceProcessor::setCameraPopoutBounds(juce::Rectangle<int> bounds)
+{
+    std::lock_guard<std::mutex> lk(cameraPopoutMu_);
+    cameraPopoutBounds_ = bounds;
+}
+
+juce::String JamWideJuceProcessor::getCameraSelectedDevice() const
+{
+    std::lock_guard<std::mutex> lk(cameraSelectedDeviceMu_);
+    return cameraSelectedDevice_;
+}
+
+void JamWideJuceProcessor::setCameraSelectedDevice(const juce::String& name)
+{
+    std::lock_guard<std::mutex> lk(cameraSelectedDeviceMu_);
+    cameraSelectedDevice_ = name;
+}
+
 //==============================================================================
 const juce::String JamWideJuceProcessor::getName() const { return "JamWide JUCE"; }
 bool JamWideJuceProcessor::acceptsMidi() const { return true; }

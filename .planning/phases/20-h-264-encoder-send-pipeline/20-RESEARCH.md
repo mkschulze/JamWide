@@ -5,21 +5,37 @@
 **Domain:** H.264 video encoding (openh264 via libavcodec) + NinjamZap-wire-compatible send-path state machine + cross-thread RT-safe coordination
 **Confidence:** HIGH
 
-## CRITICAL UPDATE (2026-05-16 post-codex review)
+## CRITICAL UPDATE (2026-05-16 — TWO ROUNDS OF codex pre-plan review)
 
-**The "Substrate (Phase 14.3-02) is shipped and any-thread-producer-safe" claim throughout this document is INCORRECT.** Codex pre-plan review verified that `m_rawdata_sendq` is `jamwide::SpscRing<RawDataItem, 64>` with strict single-producer contract — multi-producer use is undefined behaviour. This invalidates the Path A architecture as originally framed.
+**Two rounds of cross-AI review (REVIEWS.md commits `bce53bb` and `049e47a`) drove the architecture from "Phase 15.1-pure with broken substrate" → "NinjamZap-literal with explicit Phase 15.1 carve-outs."** This document's body below pre-dates both rounds and should be read with the following corrections in mind — **CONTEXT.md is the authoritative architecture-of-record; this RESEARCH.md is preserved for traceability of the research process only.**
 
-**Resolution (CONTEXT.md D-19, Plan 20-00):** Replace the SPSC substrate with NinjamZap-literal `WDL_PtrList<RawDataQueueItem> + WDL_Mutex m_rawdata_cs`. Path A/B framing is retired — Phase 20 starts at NinjamZap-literal mutex semantics from day 1.
+### Round 1 finding: substrate mismatch
 
-**Decomposition updated from 3 plans + 1 contingency → 4 plans (no contingency):**
-- **20-00 (NEW): Substrate revision** — replace SPSC with NinjamZap-literal mutex queue; add `m_video_cs` + `m_video_spspps_cs`; write `realtime-audio-reviewer` audit-allowlist entries for the three carve-out sites; update `tests/test_rawdata_send.cpp`. ~150-200 LOC.
-- **20-01: VideoEncoder interface + Openh264Encoder impl** (unchanged from original 20-01).
-- **20-02: NJClient video send-path state machine** (revised: uses mutex primitives per D-08/D-11; no atomic-pointer-swap for SPS/PPS per revised D-03; adds `LocalChannelMirror.curwritefile_guid` per D-20).
-- **20-03: Wiring + UAT + audio-thread budget measurement** (revised: budget is sanity check, not Path B trigger; the trigger no longer exists).
+The "Phase 14.3-02 substrate is shipped and any-thread-producer-safe" claim throughout this document is INCORRECT. `m_rawdata_sendq` is `SpscRing<RawDataItem, 64>` with strict single-producer contract — multi-producer use is undefined behaviour. **Resolution (CONTEXT.md D-19, Plan 20-00):** Replace the SPSC substrate with NinjamZap-literal `WDL_PtrList<RawDataQueueItem> + WDL_Mutex m_rawdata_cs`. Drain pattern is NinjamZap-literal pop-one-unlock-Send-relock (matches `ninjamzap-core/njclient.cpp:1987-2039`).
 
-**Open questions retired:** Q3 (`realtime-audio-reviewer` allow-list format) becomes a Plan 20-00 deliverable; Q4 still applies but is decoupled from the substrate question; the "Path A correctness" confidence-MEDIUM line at the bottom of this file is moot. Sections of this document below that reference Path A/B should be read with this revision in mind — the *intent* of those sections (correctness, RT-safety, NinjamZap fidelity) is preserved, but the *primitives* are now uniformly NinjamZap-literal mutex.
+### Round 2 finding: Path A/B framing was an unstable intermediate
 
-The original D-10 scenario filename reconciliation (3 confirmed + 2 ghost filenames) becomes a CONTEXT.md correction in revised D-10. The reconciliation table later in this document (`02_video_one_interval_early.cpp` / `03_late_join.cpp` / `13_sps_pps_mid_stream.cpp` / `20_drop_resync_recovery.cpp` / `22_audio_then_video.cpp` / `25_no_initial_spspps.cpp` plus stress `18_extreme_short_intervals.cpp` / `26_send_buffer_pressure.cpp`) is the canonical list.
+Round 1's "Path A primary (atomics) + Path B fallback (mutex)" framing has been retired. Phase 20 starts at strict NinjamZap-literal mutex semantics from day 1. Concrete corrections:
+
+- **D-08 / wire-ordering:** Audio thread holds `m_video_cs` across the ENTIRE `on_new_interval` video block (END + BEGIN + marker + SPS/PPS + END-at-deactivate). Encoder's `QueueVideoFrame` waits on the same mutex — wire order (END→BEGIN→marker→SPS-PPS→frames) naturally enforced.
+- **D-11 / encoder-side reads:** Encoder thread `QueueVideoFrame` acquires `m_video_cs` before reading `m_video_active`/`m_video_guid`/`m_video_interval_open` and calling `RawDataSendWrite`. NinjamZap-literal — encoder never reads `m_video_guid` naked.
+- **D-09 / audit allowlist envelope:** `realtime-audio-reviewer` allowlist expanded from 3 sites to the full audio-thread exception envelope: 3 mutex acquisitions + `WDL_RNG_bytes` + `new WDL_HeapBuf` / `WDL_HeapBuf::Resize` + canonical `Local_Channel*` read for marker GUID. Plan 20-00 also strips residual `writeLog` calls in `RawDataSendBegin/Write` (codex Round 2 cited njclient.cpp:3015/3048/3063) — NinjamZap source does not have those.
+- **D-20 / Pitfall #1:** **The earlier proposal to add `LocalChannelMirror.curwritefile_guid[16]` is RETIRED** (codex Round 2 H5: the write site is run-thread, not audio-thread; mirror publication would itself violate Phase 15.1-06). Strict NinjamZap-literal solution: relax Phase 15.1-06 HIGH-2 for one field, one read site. Audio thread reads `m_locchans[0]->m_curwritefile.guid` directly during marker construction (under `m_video_cs`). NinjamZap pattern verbatim.
+- **D-19 / drain semantics:** Pop-one-unlock-Send-relock (NinjamZap-literal) rather than swap-list-out (the earlier draft's deviation).
+- **Open question on M5 (queue OOM):** unbounded queue is acceptable for v1.3 beta given expected populated-server scale; Plan 20-03 adds high-water depth observability + a UAT acceptance threshold.
+
+### Decomposition (current — 4 plans, no contingency)
+
+- **20-00:** Substrate revision (SPSC → mutex), audit allowlist entries, writeLog strip, test rewrite. ~200-250 LOC.
+- **20-01:** VideoEncoder interface + Openh264Encoder impl + encoder thread + per-preset config. (Unchanged from original.)
+- **20-02:** NJClient video send-path state machine (NinjamZap-literal); m_video_cs whole-block critical section; D-20 carve-out; SetVideoChannel/QueueVideoFrame/SetVideoSPSPPS API mirroring NinjamZap; channel registration at connect-up.
+- **20-03:** JamWideJuceProcessor wiring + Broadcast button + 5-min populated-server UAT (incl. queue high-water observation + audio-thread budget measurement + BEGIN/marker/SPS/frame wire-order verification).
+
+### Stale sections in this document
+
+Sections below referencing Path A/B / atomic primitives / SPSC capacity / atomic-pointer-swap SPS/PPS / deferred-delete for SpsPpsBuffer / 3-plan-plus-contingency framing are STALE. The intent (NinjamZap fidelity, correctness gates) is preserved in revised CONTEXT.md. Plan authors should read CONTEXT.md as the source of truth.
+
+The D-10 scenario filename reconciliation table (`02_video_one_interval_early.cpp` / `03_late_join.cpp` / `13_sps_pps_mid_stream.cpp` / `20_drop_resync_recovery.cpp` / `22_audio_then_video.cpp` / `25_no_initial_spspps.cpp` plus stress `18_extreme_short_intervals.cpp` / `26_send_buffer_pressure.cpp`) is the canonical list — incorporated into CONTEXT.md D-10.
 
 ---
 

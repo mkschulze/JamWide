@@ -293,7 +293,7 @@ Plans:
 
 **Source of truth:** `.planning/quick/260515-0pc-investigate-jamtaba-video-implementation/260515-0pc-deferred-items.md` (Items C, D, E, F.1–F.4, G, B partial (macOS arm64+x86_64 universal + Windows x86_64; Linux deferred), reduced I, J = option (c) doc-only; H/K deferred to post-beta).
 
-- [ ] **Phase 19: Camera Capture & Permission UX** -- JUCE CameraDevice integration in standalone + DAW-hosted plugin, camera entitlement, local preview, per-DAW permission-denial fallback dialog
+- [x] **Phase 19: Camera Capture & Permission UX** -- JUCE CameraDevice integration in standalone + DAW-hosted plugin, camera entitlement, local preview, per-DAW permission-denial fallback dialog (completed 2026-05-16)
 - [ ] **Phase 20: H.264 Encoder & Send Pipeline** -- Port JamTaba's FFMpegMuxer to JamWide via openh264 + libavcodec, wire through RawDataSendBegin/Write substrate, implement NinjamZap sender state machine (24-byte interval marker, SPS/PPS chunk, 4-byte BE length prefix per frame, `Net_Connection::Send` thread-safety mitigation)
 - [ ] **Phase 21: H.264 Decoder & Receive Pipeline** -- Port JamTaba's FFMpegDemuxer to JamWide, implement NinjamZap's 4-stage receive pipeline (`accumulating → next → pending → playing`) with per-stream WRITE-time accumulation, marker parse, and GUID-pairing decision tree (DS/PREV/no-match with `kHoldCapDrop=4`)
 - [ ] **Phase 22: Native Video UI (Grid + Popouts)** -- Per-user `juce::Image` display tile, grid layout in main view, `juce::DocumentWindow` popout per user, hide/show toggle, grid + popouts active simultaneously
@@ -432,7 +432,7 @@ v1.3 execution order: 19 -> 20 -> 21 -> 22 -> 23 -> 24 (strict dependency chain 
 | 16. Opus Codec Integration | v1.2 | 0/0 | Not started | - |
 | 17. Network Resilience | v1.2 | 0/0 | Not started | - |
 | 18. Testing Infrastructure | v1.2 | 0/0 | Not started | - |
-| 19. Camera Capture & Permission UX | v1.3 | 2/3 | In Progress|  |
+| 19. Camera Capture & Permission UX | v1.3 | 3/3 | Complete   | 2026-05-16 |
 | 20. H.264 Encoder & Send Pipeline | v1.3 | 0/3 | Not started | - |
 | 21. H.264 Decoder & Receive Pipeline | v1.3 | 0/3 | Not started | - |
 | 22. Native Video UI (Grid + Popouts) | v1.3 | 0/2 | Not started | - |

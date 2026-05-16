@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Native Video
 status: planning
-stopped_at: Phase 19 planned (3 plans / 10 tasks / 3 waves) — ready for execute
-last_updated: "2026-05-16T01:30:00.000Z"
-last_activity: "2026-05-16 — Phase 19 planning complete: research (commit 47d8317), validation strategy (commit 76d656a), 3 plans (commit 227bac0), revision 1 fixing 2 blockers + 4 warnings from plan-checker (commit 0a88d42). plan-checker VERIFICATION PASSED on iteration 2. Waves: 19-01 (capture pipeline, Wave 1) → 19-02 (UI + persistence, Wave 2) → 19-03 (fallback dialog + UAT + verify entitlement, Wave 3, serial after 19-02 due to shared JamWideJuceEditor.cpp edits). All 30 locked decisions (D-01..D-30) honored. All 5 STRIDE threats (T-19-01..05) mapped. All 8 Wave 0 gaps scaffolded."
+stopped_at: Phase 19 planned + reviewed + re-planned (3 plans / 11 tasks / 3 waves) — ready for execute
+last_updated: "2026-05-16T02:30:00.000Z"
+last_activity: "2026-05-16 — Phase 19 planning complete after cross-AI review cycle. Research (commit 47d8317), validation strategy (76d656a), 3 plans (227bac0), revision 1 fixing 2 plan-checker blockers + 4 warnings (0a88d42), cross-AI review by codex/gpt-5.5 returning NEEDS_REVISION with 7 HIGH + 6 MEDIUM + 1 LOW findings (3fb83b0), revision 2 in --reviews mode addressing every finding concretely (74c9c01). plan-checker VERIFICATION PASSED on revision 2. Waves unchanged: 19-01 (Wave 1, 5 tasks, capture pipeline + Subscription RAII + generation tokens + frame-stall watchdog + pure CameraStateMachine) → 19-02 (Wave 2, 3 tasks, UI + AsyncUpdater preview tile + first-launch privacy modal + state schema v3→v4) → 19-03 (Wave 3, 3 tasks, cause-aware fallback dialog with Action-enum mapping + entitlement verify script + 10-cell UAT checklist + CHANGELOG). All 30 locked decisions (D-01..D-30) honored. 7 STRIDE threats (T-19-01..05 + T-19-SC + T-19-PT) mapped. 10 Wave 0 gaps scaffolded (originals 8 + test_frame_distributor_lifetime + test_camera_frame_stall)."
 progress:
   total_phases: 6
   completed_phases: 0
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 
 ## Current Position
 
-Phase: Phase 19 — Camera Capture & Permission UX (Planned, awaiting execution)
-Plan: 3 plans ready — `19-01-PLAN-capture-pipeline.md`, `19-02-PLAN-ui-and-persistence.md`, `19-03-PLAN-fallback-and-verification.md`. Next: `/gsd-execute-phase 19`.
-Status: Plans verified (plan-checker VERIFICATION PASSED on revision 1)
-Last activity: 2026-05-16 — Phase 19 plan-phase workflow complete. Research (1166 lines, HIGH confidence, 2 surprise risks E+F surfaced and addressed), validation strategy (8 Wave 0 gaps enumerated), 3 plans authored by gsd-planner, revision 1 fixed 2 blockers + 4 warnings, plan-checker re-verification PASSED.
+Phase: Phase 19 — Camera Capture & Permission UX (Planned + Reviewed, awaiting execution)
+Plan: 3 plans ready (revision 2) — `19-01-PLAN-capture-pipeline.md` (5 tasks), `19-02-PLAN-ui-and-persistence.md` (3 tasks), `19-03-PLAN-fallback-and-verification.md` (3 tasks). Next: `/gsd-execute-phase 19`.
+Status: Plans verified after cross-AI review (plan-checker VERIFICATION PASSED on revision 2)
+Last activity: 2026-05-16 — Phase 19 plan-phase + review + replan cycle complete. Research (1166 lines, HIGH confidence, 2 surprise risks E+F surfaced and addressed), validation strategy (8 Wave 0 gaps enumerated), 3 plans authored, revision 1 fixed 2 plan-checker blockers + 4 warnings, cross-AI review by codex returned NEEDS_REVISION with 7 HIGH + 6 MEDIUM + 1 LOW findings, revision 2 in --reviews mode addressed every finding concretely (Subscription RAII for UAF, generation tokens for async callbacks, AsyncUpdater for preview tile, privacy-modal sequencing fix for first-launch path, frame-stall watchdog for mid-session revoke, Action-enum for dialog button mapping), plan-checker VERIFICATION PASSED on revision 2.
 Milestone scope (v1.3 = macOS + Windows testable beta on upstream ninjamzap-server, `video.ninjamzap.com:2049` documented as the recommended public instance — JamWide's existing NINJAM server browser UI is untouched):
 
 - Phase 19 — Camera Capture & Permission UX (3 plans) — CAM-01, CAM-02, CAM-03, PKG-04 (entitlements). Cross-platform via JUCE `juce_CameraDevice_{mac,windows}.h`; REAPER fallback is macOS-only (SPARTA #82).
@@ -164,11 +164,12 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-05-16T01:30:00.000Z
-Stopped at: Phase 19 planned and verified — `/gsd-execute-phase 19` is the next move
+Last session: 2026-05-16T02:30:00.000Z
+Stopped at: Phase 19 planned, reviewed, re-planned, and re-verified — `/gsd-execute-phase 19` is the next move
 Resume files:
-  - `.planning/phases/19-camera-capture-permission-ux/19-01-PLAN-capture-pipeline.md` (Wave 1)
-  - `.planning/phases/19-camera-capture-permission-ux/19-02-PLAN-ui-and-persistence.md` (Wave 2)
-  - `.planning/phases/19-camera-capture-permission-ux/19-03-PLAN-fallback-and-verification.md` (Wave 3 — serial after 19-02)
-Phase 19 planning summary: research (commit 47d8317) → validation (76d656a) → 3 plans (227bac0) → revision 1 (0a88d42) → plan-checker PASSED. 30 locked decisions, 5 STRIDE threats, 8 Wave 0 gaps, 5 ROADMAP success criteria all covered. 2 surprise risks closed: Risk E (`JUCE_USE_CAMERA=1` not on main plugin — fixed as first task of 19-01) and Risk F (TCC reads host bundle ID — mitigated via cause-aware fallback dialog, no engineering fix possible). Risk C (JUCE seat licence / GPLv2+ upgrade clause) carried as a verify step in 19-03 Task 2.
+  - `.planning/phases/19-camera-capture-permission-ux/19-01-PLAN-capture-pipeline.md` (Wave 1, 5 tasks)
+  - `.planning/phases/19-camera-capture-permission-ux/19-02-PLAN-ui-and-persistence.md` (Wave 2, 3 tasks)
+  - `.planning/phases/19-camera-capture-permission-ux/19-03-PLAN-fallback-and-verification.md` (Wave 3, 3 tasks — serial after 19-02)
+  - `.planning/phases/19-camera-capture-permission-ux/19-REVIEWS.md` (codex review, all findings addressed in revision 2)
+Phase 19 planning summary: research (47d8317) → validation (76d656a) → 3 plans (227bac0) → revision 1 [plan-checker blockers] (0a88d42) → STATE.md (aedb46d) → codex review NEEDS_REVISION (3fb83b0) → revision 2 [reviews mode] (74c9c01) → plan-checker re-verification PASSED. 30 locked decisions, 7 STRIDE threats (5 original + T-19-SC license-supply-chain + T-19-PT preview-tile UAF), 10 Wave 0 gaps (8 original + test_frame_distributor_lifetime + test_camera_frame_stall), 5 ROADMAP success criteria all covered. Surprise risks closed in research: Risk E (JUCE_USE_CAMERA on plugin target — first task of 19-01) and Risk F (TCC reads host bundle ID — cause-aware fallback dialog). Risk C (JUCE GPLv2+ upgrade clause for juce_video AGPLv3 compatibility) gated as 19-01 Task 1 Step 0 preflight (moved from 19-03 per MEDIUM-4). Key architectural patterns introduced in revision 2: Subscription RAII for FrameDistributor (HIGH-2), atomic generation tokens for 5 async-callback sites (HIGH-3), juce::AsyncUpdater for preview-tile repaints (HIGH-4), privacy-modal AFTER auth grant (HIGH-5), continuous frame-stall watchdog for mid-session revoke detection (HIGH-6), Action-enum + actionFor() helper for JUCE button-index mapping (HIGH-7), pure-C++ CameraStateMachine class (MEDIUM-3).
 Prior session (Phase 15.1-07b — keep for cross-phase context): 15.1-07b COMPLETE (commits dbdaf98, edb2769) — broadcast restored end-to-end. All 7 audio-thread BufferQueue::AddBlock sites replaced with SPSC try_push. Resume file (v1.2): `.planning/phases/15.1-rt-safety-hardening/15.1-07b-SUMMARY.md`.

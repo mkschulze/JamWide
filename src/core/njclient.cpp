@@ -3674,6 +3674,16 @@ void NJClient::process_samples(float **inbuf, int innch, float **outbuf, int out
     auto& lcm = m_locchan_mirror[ch];
     if (!lcm.active) continue;
 
+    // Plan 20 Task 0 (canonical NinjamZap pattern per upstream
+    // ninjamzap-core/docs/VIDEO_SYNC.md §7): "Channel is flagged video-only
+    // (flags & 0x10) so the client's audio pipeline skips it in both
+    // on_new_interval() and process_samples()." This prevents a stale audio
+    // Local_Channel from encoding OGGv on the same chidx as a Phase 20 video
+    // upload, which would collide wire-side and break web-viewer decoding.
+    // The video upload itself is driven by NJClient::QueueVideoFrame on the
+    // encoder thread (Plan 20-02), not from this audio-thread loop.
+    if (lcm.flags & 0x10) continue;
+
     // Same gating as the legacy code: lc->channel_idx >= m_max_localch &&
     // !(lc->flags & 2). channel_idx == ch (mirror is indexed by channel).
     if (!justmonitor && ch >= m_max_localch && !(lcm.flags & 2)) continue;
@@ -5170,6 +5180,14 @@ void NJClient::on_new_interval()
   {
     auto& lcm = m_locchan_mirror[ch];
     if (!lcm.active) continue;
+
+    // Plan 20 Task 0 (canonical NinjamZap pattern per upstream
+    // ninjamzap-core/docs/VIDEO_SYNC.md §7): skip video-flagged channels
+    // in the audio pipeline. The Phase 20 video block below (m_video_cs
+    // scope) is where the video interval END/BEGIN/marker/SPS-PPS sequence
+    // is emitted — it does NOT use the audio-channel mirror state.
+    if (lcm.flags & 0x10) continue;
+
     if (ch >= m_max_localch && !(lcm.flags & 2)) continue;
     // Regular (non-LL, non-session) channel: reconcile the audio-thread-cached
     // bcast_active flag against the run-thread-supplied bcast each interval,

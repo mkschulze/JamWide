@@ -183,6 +183,27 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
     connectionBar.onCameraClicked = [this]() {
         auto* cam = processorRef.getNativeCamera();
         if (! cam) return;
+
+        // Phase 19-03 Task 2 (D-27) — VDO.Ninja coexistence soft warning.
+        // Fires at MOST ONCE per editor lifetime (atomic exchange guarantees
+        // even with parallel timer callbacks the toast is shown once). The
+        // toast is INFORMATIONAL — we fall through to the state-switch so
+        // the camera toggle proceeds in parallel (D-27 "User can ignore and
+        // proceed").
+        if (processorRef.videoCompanion
+            && processorRef.videoCompanion->isActive()
+            && ! coexistenceToastShown_.exchange(true)) {
+            auto opts = juce::MessageBoxOptions{}
+                .withIconType(juce::MessageBoxIconType::NoIcon)
+                .withTitle("Multiple video stacks active")
+                .withMessage("VDO.Ninja video is also active. Bandwidth and "
+                             "CPU may be high - consider stopping one for "
+                             "better quality.")
+                .withButton("OK");
+            juce::AlertWindow::showAsync(opts, [](int){});
+            // Fall through — D-27 says the toast does NOT block the toggle.
+        }
+
         const auto state = cam->getState();
 
         switch (state) {

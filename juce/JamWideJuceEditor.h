@@ -89,7 +89,7 @@ private:
     // lifetime guard so we never spam the user. Atomic for paranoid safety
     // (the lambda capturing `this` runs on the message thread, but atomic
     // exchange is the canonical idiom for "fire-at-most-once" flags).
-    std::atomic<bool> vdoNinjaCoexistenceToastShown_{false};
+    std::atomic<bool> coexistenceToastShown_{false};
 
     // Custom arrow button — TextButton truncates to "..." at 16px width
     struct ChatToggleButton : public juce::Component

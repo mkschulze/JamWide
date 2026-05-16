@@ -5,6 +5,12 @@ All notable changes to JamWide will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Phase 19 - Native Camera Capture (v1.3 beta)**: New "Camera" button in ConnectionBar opens a floating preview popout with the local webcam. Quality preset (Low/Medium/High) via right-click menu, with an explicit "Stop Camera" item. Cross-platform: macOS (arm64+x86_64) + Windows x86_64. macOS adds the `com.apple.security.device.camera` entitlement; plugin Info.plist gains `NSCameraUsageDescription`. Cause-aware fallback dialog handles all denial modes including the SPARTA #82 macOS DAW-host-lacks-entitlement case (REAPER, Live, Bitwig) with softened copy that does not blame the host. Plugin state schema bumped v3 → v4 to persist popout bounds + quality preset + privacy ack. Coexists with the existing VDO.Ninja video stack during the parallel v1.3 beta — a non-blocking soft warning toast fires the first time both stacks run simultaneously.
+
 ## 1.1 Beta Series
 
 The 1.1 line is a complete JUCE rewrite (1.0 was CLAP/ImGui). Per-beta release notes for `1.1-beta.1` through `1.1-beta.20` are on the [GitHub Releases page](https://github.com/mkschulze/JamWide/releases) and are not duplicated here. Entries are tracked below starting with `1.1-beta.20.1`.

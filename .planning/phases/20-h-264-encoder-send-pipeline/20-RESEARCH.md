@@ -1,8 +1,27 @@
 # Phase 20: H.264 Encoder & Send Pipeline — Research
 
 **Researched:** 2026-05-16
+**Revised:** 2026-05-16 (post-`/gsd-review` codex finding — substrate revision)
 **Domain:** H.264 video encoding (openh264 via libavcodec) + NinjamZap-wire-compatible send-path state machine + cross-thread RT-safe coordination
 **Confidence:** HIGH
+
+## CRITICAL UPDATE (2026-05-16 post-codex review)
+
+**The "Substrate (Phase 14.3-02) is shipped and any-thread-producer-safe" claim throughout this document is INCORRECT.** Codex pre-plan review verified that `m_rawdata_sendq` is `jamwide::SpscRing<RawDataItem, 64>` with strict single-producer contract — multi-producer use is undefined behaviour. This invalidates the Path A architecture as originally framed.
+
+**Resolution (CONTEXT.md D-19, Plan 20-00):** Replace the SPSC substrate with NinjamZap-literal `WDL_PtrList<RawDataQueueItem> + WDL_Mutex m_rawdata_cs`. Path A/B framing is retired — Phase 20 starts at NinjamZap-literal mutex semantics from day 1.
+
+**Decomposition updated from 3 plans + 1 contingency → 4 plans (no contingency):**
+- **20-00 (NEW): Substrate revision** — replace SPSC with NinjamZap-literal mutex queue; add `m_video_cs` + `m_video_spspps_cs`; write `realtime-audio-reviewer` audit-allowlist entries for the three carve-out sites; update `tests/test_rawdata_send.cpp`. ~150-200 LOC.
+- **20-01: VideoEncoder interface + Openh264Encoder impl** (unchanged from original 20-01).
+- **20-02: NJClient video send-path state machine** (revised: uses mutex primitives per D-08/D-11; no atomic-pointer-swap for SPS/PPS per revised D-03; adds `LocalChannelMirror.curwritefile_guid` per D-20).
+- **20-03: Wiring + UAT + audio-thread budget measurement** (revised: budget is sanity check, not Path B trigger; the trigger no longer exists).
+
+**Open questions retired:** Q3 (`realtime-audio-reviewer` allow-list format) becomes a Plan 20-00 deliverable; Q4 still applies but is decoupled from the substrate question; the "Path A correctness" confidence-MEDIUM line at the bottom of this file is moot. Sections of this document below that reference Path A/B should be read with this revision in mind — the *intent* of those sections (correctness, RT-safety, NinjamZap fidelity) is preserved, but the *primitives* are now uniformly NinjamZap-literal mutex.
+
+The original D-10 scenario filename reconciliation (3 confirmed + 2 ghost filenames) becomes a CONTEXT.md correction in revised D-10. The reconciliation table later in this document (`02_video_one_interval_early.cpp` / `03_late_join.cpp` / `13_sps_pps_mid_stream.cpp` / `20_drop_resync_recovery.cpp` / `22_audio_then_video.cpp` / `25_no_initial_spspps.cpp` plus stress `18_extreme_short_intervals.cpp` / `26_send_buffer_pressure.cpp`) is the canonical list.
+
+---
 
 ## Summary
 

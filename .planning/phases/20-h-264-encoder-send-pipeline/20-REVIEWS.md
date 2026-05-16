@@ -1,14 +1,16 @@
 ---
 phase: 20
 reviewers: [codex]
-rounds: 3
+rounds: 4
 reviewed_at_round_1: 2026-05-16T16:30:00Z
 reviewed_at_round_2: 2026-05-16T17:00:00Z
 reviewed_at_round_3: 2026-05-16T17:34:00Z
-plans_reviewed: []
-artifacts_reviewed: [20-CONTEXT.md, 20-RESEARCH.md]
-review_stage: pre-plan
+reviewed_at_round_4: 2026-05-16T20:15:00Z
+plans_reviewed: [20-00-PLAN-substrate-revision.md, 20-01-PLAN-video-encoder.md, 20-02-PLAN-video-state-machine.md, 20-03-PLAN-processor-wiring-and-uat.md]
+artifacts_reviewed: [20-CONTEXT.md, 20-RESEARCH.md, 4× PLAN.md]
+review_stage: post-plan
 review_model_round_3: gpt-5.5
+review_model_round_4: gpt-5.5
 notes: |
   Round 1 (commit bce53bb): Pre-plan review of original 18-decision CONTEXT.md + 991-line RESEARCH.md.
   Found 4 HIGH (3 closed by revision, 1 still open) + 3 MEDIUM.
@@ -17,11 +19,17 @@ notes: |
   Path A/B framing dropped, RESEARCH.md gained CRITICAL UPDATE block). Confirmed H1/H4 closed,
   flagged H2 partial + H3 open, surfaced 3 NEW HIGH findings (H5/H6/H7).
 
-  Round 3 (this round, commit TBD): Re-review after strict NinjamZap-literal R2 revision
+  Round 3 (commit dc4d8aa): Re-review after strict NinjamZap-literal R2 revision
   (commit a417238: whole-block m_video_cs, Phase 15.1-06 carve-out for marker GUID instead of
   LocalChannelMirror extension, expanded audit envelope). Confirms 4/5 open HIGHs CLOSED;
   H5 PARTIALLY-CLOSED (mirror bug fixed but raw 16B read race remains). Surfaces 4 NEW MEDIUM
   findings. Verdict: PROCEED-WITH-CAUTION with 5 must-fix items.
+
+  Round 4 (this round, commit TBD): Post-plan review of 4 PLAN.md files (bd3f477).
+  Confirms MF2/MF4/MF5 SATISFIED, MF1 PARTIAL (seqlock conceptually right but C++ memory-model
+  UB), MF3 SATISFIED-WITH-WORDING-RISK. Surfaces 2 NEW HIGH findings (seqlock payload race +
+  encoder lifetime ordering contradiction) + 4 MEDIUM + 1 LOW. Verdict: REVISE with 6 targeted
+  plan edits before execution.
 ---
 
 # Cross-AI Plan Review — Phase 20
@@ -170,3 +178,115 @@ Proceed to **plan-phase** with the 5 must-fix items above incorporated either as
 - Item 5 (RESEARCH.md staleness) can be addressed with `STALE — DO NOT PLAN FROM THIS SECTION` markers in the stale body sections, or by archiving them.
 
 If the planner reads CONTEXT.md as authoritative and treats RESEARCH.md as trace-only (per the CRITICAL UPDATE block), the phase is ready for `/gsd:plan-phase 20 --reviews`.
+
+---
+
+## Round 4 — PLAN.md review (4 plans, post-plan-checker iteration 2) (codex, gpt-5.5, 2026-05-16T20:15)
+
+### Summary
+
+Verdict: **REVISE**. The plans are unusually concrete and mostly executable, but Round 4 exposes two architecture-level gaps an executor could implement exactly as written and still ship a broken or racy system: the `m_curwritefile.guid` seqlock is not C++/TSan-safe as specified, and `Openh264Encoder` lifetime/subscription ordering is internally contradictory. I would not execute until those are patched in the plans.
+
+### R3 Must-Fix Fidelity
+
+| MF | Status | Evidence | Gap |
+|---|---:|---|---|
+| **MF1 GUID determinism** | **PARTIAL** | 20-02 Task 2 mandates `m_curwritefile_guid_seq`, read retry cap, writer wrapping at `njclient.cpp:2606`, tests. | The specified plain `memcpy` reader/writer on `guid[16]` is still a C++ data race and likely TSan-positive. Seqlock logic is conceptually right, but storage/access is not. |
+| **MF2 drain semantics** | **SATISFIED** | 20-00 Task 1 and Task 3(C): pop-one-unlock-Send-relock; removes swap-list-out text. | Good. Acceptance is grep-backed and source-backed. |
+| **MF3 cold-start SPS/PPS** | **SATISFIED WITH WORDING RISK** | 20-02 Task 1/3: marker-only first interval, SPS/PPS only if `GetSize() > 0`; test covers no initial SPS/PPS. | "After at most 1 marker-only interval" is too strong if encoder init/reconfigure/fatal path delays SPS/PPS. Reword to "after SPS/PPS is published, next and subsequent intervals include it." |
+| **MF4 queue observability** | **SATISFIED** | 20-00 owns high-water, contention, total-enqueues; 20-03 owns UAT thresholds `<32`, `<1%`, drops `0`. | `TryEnter` fallback is allowed to omit contention counting, which would undermine MF4. Make contention metric mandatory or explicitly revise the threshold if unavailable. |
+| **MF5 stale markers** | **SATISFIED** | 20-00 Task 3(D): 7 exact STALE markers + stronger drain warning. | Good. |
+
+### Executor-Risk Audit
+
+#### HIGH H8: 20-02 Task 2 seqlock can pass plan review but fail TSan/C++ correctness
+
+Scenario: executor implements exactly `fetch_add(release)`, plain `memcpy`, acquire loads. The reader and writer concurrently access non-atomic `guid[16]`, so TSan reports a race and the C++ memory model gives undefined behavior. Fix the plan to use race-free storage: e.g. publish GUID as two `std::atomic<uint64_t>` words with acquire/release loads/stores, or protect writer and reader with an actual mutex, or add sanctioned TSan annotations plus a clear acceptance that this remains non-standard seqlock code. Given MF1 demanded determinism, atomic two-word publication is the cleanest.
+
+#### HIGH H9: 20-01 encoder subscription/thread lifetime ordering is contradictory
+
+The threat table says subscription release before encoder thread join; Task 2 says join thread, then release subscription, then free resources. If the distributor can still call `onFrame` after the encoder thread is stopped, frames can enqueue into a closing object. Targeted edit: define one ordering and test it. Recommended: mark closing, release `JamWideFrameDistributor::Subscription` and wait for in-flight `onFrame`, wake/stop/join encoder thread, then free slabs/ffmpeg resources. Reconfigure should not call a generic `close()` that destroys the subscription unless it re-subscribes cleanly.
+
+#### MEDIUM M11: 20-03 broadcast-off ordering may never emit END promptly
+
+Plan says `SetVideoBroadcastActive(false)` then `encoder.close()`, and "next natural interval" emits END. If user disconnects or closes plugin before the next interval, the END may never go out. Either accept/document that disconnect teardown is the close signal, or add a safe run-thread/audio-thread mechanism to force/end the interval. Do not "drive one interval" from the message thread.
+
+#### MEDIUM M12: 20-00 writeLog removal is underspecified for shared RawData paths
+
+The plan removes three `writeLog` calls globally from `RawDataSendBegin/Write`. If non-video callers relied on those logs for diagnostics, behavior changes silently. Add an explicit audit step: list all callers of `RawDataSendBegin/Write`, confirm no required diagnostics are lost, or replace with non-audio-path-only logging outside the shared hot path.
+
+#### MEDIUM M13: 20-00 allowlist file:line entries cannot be exact before 20-02 lands
+
+20-00 says file:line entries, but 20-02 creates the final sites later. The plan should require 20-02 or 20-03 to refresh exact line numbers and fail audit if allowlist entries still say "TBD".
+
+#### LOW L1: `<read_first>` is plan-level, not per-task
+
+Sufficient for experienced executors because context blocks are rich and interfaces are embedded. Risk remains for Task 20-01/20-03 where actual code shape may differ from assumed line numbers. Add per-task "verify current signatures before editing" where overloads and callback names are uncertain.
+
+### Architectural Soundness
+
+**Seqlock: not sound as specified.** The even/odd protocol and retry semantics are recognizable, but memory ordering and byte storage are wrong for C++ race detection. A release `fetch_add` before `memcpy` does not make the following non-atomic byte writes safe to race with a reader `memcpy`. The final release plus reader acquire can publish writes, but only if the data itself is not concurrently raced in a UB-producing way. Use atomic storage for the GUID payload or a mutex.
+
+**Cold-start SPS/PPS: architecturally acceptable** if Phase 21 truly ports `25_no_initial_spspps.cpp` behavior. The plan aligns with NinjamZap's conditional SPS/PPS emit. The acceptance wording should not promise "at most 1" marker-only interval unless encoder warm-up is proven bounded relative to NINJAM interval length and fatal/reconfigure paths are excluded.
+
+### Substrate Revision Risk (Plan 20-00)
+
+20-00's SPSC→mutex revision is mostly safe and well-covered. The 8 tests cover multi-producer stress, drain interleave, per-producer FIFO, destructor cleanup, and marker/SPS/frame ordering. One gap: cross-producer global ordering is only guaranteed where `m_video_cs` serializes producers; the raw queue itself does not promise semantic ordering across independent producers. The tests should state that explicitly so future callers do not infer global ordering from `m_rawdata_cs`.
+
+Audit allowlist is specific in content but not yet specific in stable line numbers. Require a post-20-02 refresh.
+
+`writeLog` stripping is the main hidden risk: because `RawDataSendBegin/Write` are shared substrate APIs, the plan should audit all current and planned callers before deleting logs.
+
+### Plan-Level Deviations Assessment
+
+| Deviation | Assessment | Rationale |
+|---|---:|---|
+| `SetVideoChannel` split from `SetVideoBroadcastActive` | **OK** | Correct for connect-time capability registration independent of broadcast state. |
+| New `m_sync_interval_cnt` | **OK** | Matches NinjamZap missing field; test covers monotonic increment. |
+| Two-`RawDataSendWrite` prefix + NAL split | **CAUTION** | Efficient, but receiver must treat the rawdata byte stream continuously across queue items. Add a test with prefix and data split across `MAX_ENC_BLOCKSIZE` boundaries. |
+| `std::chrono::steady_clock::now()` budget probe under test guard | **OK** | Acceptable under `JAMWIDE_BUILD_TESTS`; keep out of production and allowlisted. |
+
+### Verdict
+
+**REVISE** before execution.
+
+Targeted edits:
+
+1. **20-02 Task 2 (H8):** replace plain-`memcpy` seqlock payload access with a TSan-clean design, preferably two atomic `uint64_t` GUID halves, and update tests accordingly.
+2. **20-01 Task 2 (H9):** resolve encoder `Subscription`/thread/resource teardown ordering and reconfigure semantics. Single ordering: mark closing → release Subscription + wait for in-flight onFrame → wake/stop/join encoder thread → free resources.
+3. **20-02 MF3 wording (M-WORD):** remove "at most 1 marker-only interval" unless bounded; tie SPS/PPS guarantee to successful publish.
+4. **20-00/20-02 audit allowlist (M13):** require final line-number refresh after 20-02 lands; fail audit if entries still say "TBD".
+5. **20-00 (M12):** add caller audit before deleting RawData `writeLog` diagnostics — list all `RawDataSendBegin/Write` callers, confirm no required diagnostics are lost.
+6. **20-03 (M11):** clarify END-on-broadcast-off behavior if disconnect/plugin close happens before next interval — document teardown signal OR add safe force-END mechanism.
+
+### Round 4 Risk Assessment
+
+Overall risk: **MEDIUM-HIGH** until the seqlock and encoder lifetime issues are revised. After those targeted edits, downgrade to **MEDIUM** and execute with caution due to live-server UAT and audio-thread carve-out complexity.
+
+---
+
+## Consensus Across All Four Rounds
+
+Single reviewer (codex / gpt-5.5) across all four rounds. The review-revise loop has now produced:
+
+- **R1 → 4 HIGHs** on original architecture.
+- **R2 (post-R1-revision) → H1/H4 closed; H2 partial; H3 open; 3 NEW HIGHs (H5/H6/H7).**
+- **R3 (post-R2-strict-NinjamZap-literal-revision) → H2/H3/H6/H7 closed; H5 partial; 4 NEW MEDIUMs (M7-M10). Verdict: PROCEED-WITH-CAUTION with 5 must-fix items.**
+- **R4 (post-plan-creation) → MF2/MF4/MF5 satisfied; MF1 partial (seqlock impl flaw); MF3 satisfied with wording risk; 2 NEW HIGHs (H8 seqlock payload race, H9 encoder lifetime ordering) + 4 NEW MEDIUMs (M11-M13 + wording) + 1 LOW. Verdict: REVISE.**
+
+### Pattern: each round surfaces issues the prior round's substrate could not have caught
+
+- R1 caught substrate-mismatch
+- R2 caught reference-import race patterns
+- R3 caught the architectural compromises in the carve-outs
+- R4 catches the **implementation-detail traps** in plan tasks — seqlock memory-model UB and encoder-lifetime contradiction are things a checker can't see without thinking through C++ specifics and JUCE subscription semantics
+
+### Going into Plan Revision (or Execution)
+
+Two strategies:
+
+**Option A — Apply R4 targeted edits via `/gsd-plan-phase 20 --reviews` revision pass.** Bake the 6 targeted edits into a planner revision call, re-run plan-checker iteration 3 to confirm, then execute. Adds ~10-15 minutes; closes H8/H9 before any code is written.
+
+**Option B — Note R4 findings, proceed to execute, fix during execution.** Faster start, but H8 (seqlock UB) and H9 (encoder lifetime) are real correctness bugs an executor following the plan verbatim could ship. The cost of detecting them in test (TSan + UAT) is higher than the cost of fixing them in the plan.
+
+**Recommendation: Option A.** The seqlock fix (atomic two-uint64_t GUID halves) is a 5-line plan amendment; the encoder lifetime ordering is a 3-line single-ordering specification. Both are cheaper to fix in the plan than to debug after the executor ships them.

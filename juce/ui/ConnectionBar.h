@@ -35,7 +35,6 @@ public:
     std::function<void(float)> onScaleChanged;  // D-23
     std::function<void()> onFitClicked;
     std::function<void(int)> onRouteModeChanged;  // 0=manual, 1=by-channel, 2=by-user
-    std::function<void()> onVideoClicked;
     std::function<void()> onDebugSnapshotClicked;
 
     // Phase 19-02 — native camera UI callbacks (MEDIUM-1 decision tree wiring).
@@ -44,8 +43,6 @@ public:
     std::function<void()> onCameraClicked;
     std::function<void(int)> onCameraQualitySelected;
     std::function<void()> onCameraStopRequested;
-
-    void setVideoActive(bool active);
 
     // Phase 19-02 — camera button state (capturing → green; setCameraLabel swaps
     // the text on Unavailable to "Recheck permission"). setCameraQualityPreset
@@ -87,11 +84,9 @@ private:
 
     int currentStatus = -1;
 
-    // Video button (D-01: in ConnectionBar, D-02: toggle with color states)
-    juce::TextButton videoButton;
-
     // Phase 19-02 — native Camera button (D-11: NEVER disabled by Connect state;
-    // independent of NJClient connection). Sits immediately left of videoButton.
+    // independent of NJClient connection). The legacy VDO.Ninja Video button
+    // was removed in 2026-05; Camera is now the sole video entry point.
     // Backed by a file-local subclass (defined in .cpp) so we can intercept
     // right-click for the quality + Stop Camera popup menu.
     class CameraButton;

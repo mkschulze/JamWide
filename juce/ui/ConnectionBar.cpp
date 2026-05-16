@@ -243,23 +243,12 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
         addAndMakeVisible(*midiStatusDot);
     }
 
-    // Video button (D-01: in ConnectionBar, D-02: toggle with color states)
-    videoButton.setButtonText("Video");
-    videoButton.setColour(juce::TextButton::buttonColourId,
-        juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
-    videoButton.setColour(juce::TextButton::textColourOffId,
-        juce::Colour(JamWideLookAndFeel::kTextSecondary));
-    videoButton.setTooltip("Open video companion in browser");
-    videoButton.setEnabled(false);  // D-03: disabled until connected
-    videoButton.onClick = [this]() {
-        if (onVideoClicked) onVideoClicked();
-    };
-    addAndMakeVisible(videoButton);
-
-    // Phase 19-02 — Camera button. Sits left of Video; D-11 says it is
-    // independent of Connect state so we do NOT disable it. Left-click
-    // dispatches to the editor's decision tree (MEDIUM-1); right-click
-    // is handled by CameraButton::mouseDown above.
+    // Phase 19-02 — Camera button. The legacy VDO.Ninja Video button used
+    // to sit immediately right of it and was removed in 2026-05 (Camera is
+    // the v1.3 replacement). D-11 says Camera is independent of Connect
+    // state so we do NOT disable it. Left-click dispatches to the editor's
+    // decision tree (MEDIUM-1); right-click is handled by
+    // CameraButton::mouseDown above.
     cameraButton = std::make_unique<CameraButton>(*this);
     cameraButton->setButtonText("Camera");
     cameraButton->setColour(juce::TextButton::buttonColourId,
@@ -353,14 +342,9 @@ void ConnectionBar::resized()
         midiStatusDot->setBounds(rightX - 44, 0, 44, getHeight());
         rightX -= 44 + gap;
     }
-    // Video button — 54px so "Video" fits at the 15pt button font without
-    // JUCE drawFittedText horizontally squashing it. The original 44px spec
-    // was calibrated against a different font and clipped on Windows.
-    videoButton.setBounds(rightX - 54, y, 54, h);
-    rightX -= 54 + gap;
-    // Phase 19-02 — Camera button sits LEFT of Video. 60px so the
-    // "Recheck permission" label (CameraState::Unavailable) fits without
-    // truncation in JUCE drawFittedText at 15pt.
+    // Phase 19-02 — Camera button. 130px so the "Recheck permission" label
+    // (CameraState::Unavailable) fits without truncation in JUCE
+    // drawFittedText at 15pt. Legacy Video button removed 2026-05.
     if (cameraButton) {
         cameraButton->setBounds(rightX - 130, y, 130, h);
         rightX -= 130 + gap;
@@ -575,26 +559,9 @@ void ConnectionBar::updateStatus(int njcStatus, int /*numUsers*/)
             break;
     }
 
-    // D-03: Video button disabled when not connected
-    if (njcStatus == NJClient::NJC_STATUS_OK) {
-        videoButton.setEnabled(true);
-        // Restore correct color based on video active state
-        if (processorRef.videoCompanion && processorRef.videoCompanion->isActive())
-            videoButton.setColour(juce::TextButton::textColourOffId,
-                juce::Colour(JamWideLookAndFeel::kAccentConnect));
-        else
-            videoButton.setColour(juce::TextButton::textColourOffId,
-                juce::Colour(JamWideLookAndFeel::kTextSecondary));
-        videoButton.setTooltip("Open video companion in browser");
-    } else {
-        videoButton.setEnabled(false);
-        // D-03: 50% alpha for disabled state text
-        videoButton.setColour(juce::TextButton::textColourOffId,
-            juce::Colour(JamWideLookAndFeel::kTextSecondary).withAlpha(0.5f));
-        videoButton.setTooltip("Connect to a server first");
-    }
-
-    // D-19: Deactivate video on disconnect (no persistence across sessions)
+    // D-19: Deactivate VDO.Ninja video companion on disconnect. Kept in
+    // place after the Video button removal so any session that landed with
+    // an active companion still tears it down cleanly on disconnect.
     if (njcStatus != NJClient::NJC_STATUS_OK && njcStatus != NJClient::NJC_STATUS_PRECONNECT) {
         if (processorRef.videoCompanion && processorRef.videoCompanion->isActive()) {
             processorRef.videoCompanion->deactivate();
@@ -705,16 +672,6 @@ void ConnectionBar::updateSyncState(int state)
     else
         textCol = juce::Colour(JamWideLookAndFeel::kAccentConnect);
     syncButton.setColour(juce::TextButton::textColourOffId, textCol);
-}
-
-void ConnectionBar::setVideoActive(bool active)
-{
-    if (active)
-        videoButton.setColour(juce::TextButton::textColourOffId,
-            juce::Colour(JamWideLookAndFeel::kAccentConnect));  // D-02: green when active
-    else
-        videoButton.setColour(juce::TextButton::textColourOffId,
-            juce::Colour(JamWideLookAndFeel::kTextSecondary));
 }
 
 // Phase 19-02 — camera button state setters wired from the editor's

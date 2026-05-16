@@ -234,15 +234,25 @@ if(JAMWIDE_BUILD_JUCE)
 
     # Phase 20-01 Task 1: VideoEncoder interface headers (Wave-1 contracts).
     # Header-only at Task 1 — no library dependencies; Plan 20-02 will bind to
-    # these surfaces and the Openh264Encoder.cpp implementation added in
-    # Task 2 will link the ffmpeg::lgpl target via jamwide_use_ffmpeg().
-    # These three headers are reserved seams that compile without any cpp
-    # consumer in the target.
+    # these surfaces.
     target_sources(JamWideJuce PRIVATE
         juce/video/encoder/VideoEncoder.h
         juce/video/encoder/VideoEncoderConfig.h
         juce/video/encoder/VideoEncoderListener.h
     )
+
+    # Phase 20-01 Task 2: Openh264Encoder concrete implementation.
+    # Links libavcodec / libswscale / libopenh264 via jamwide_use_ffmpeg().
+    # The ffmpeg cmake include + ffmpeg::lgpl target are gated on the vendored
+    # tree being present (libs/ffmpeg/<platform>/lib/); ffmpeg.cmake emits a
+    # WARNING + empty INTERFACE if not present, so we include it once here.
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ffmpeg.cmake)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/jamwide_use_ffmpeg.cmake)
+    target_sources(JamWideJuce PRIVATE
+        juce/video/encoder/Openh264Encoder.h
+        juce/video/encoder/Openh264Encoder.cpp
+    )
+    jamwide_use_ffmpeg(JamWideJuce)
 
     target_compile_definitions(JamWideJuce PUBLIC
         JUCE_WEB_BROWSER=0
@@ -721,5 +731,25 @@ if(JAMWIDE_BUILD_TESTS)
         juce::juce_data_structures
         juce::juce_gui_basics)
     add_test(NAME plugin_state_v3_v4 COMMAND test_plugin_state_v3_v4)
+
+    # Phase 20-01 Task 2: Openh264Encoder bring-up + IDR-sync + drop-oldest +
+    # reconfigure (no subscription churn, R4 H9) + 7-step teardown ordering
+    # (R4 H9). Pure-C++ test per MEDIUM-5 discipline — does NOT link against
+    # JamWideJuce / NJClient. Links encoder sources + frame distributor +
+    # JUCE graphics directly. ffmpeg::lgpl via jamwide_use_ffmpeg().
+    add_executable(test_video_encoder
+        tests/test_video_encoder.cpp
+        juce/video/encoder/Openh264Encoder.cpp
+        juce/video/native/JamWideFrameDistributor.cpp)
+    target_compile_definitions(test_video_encoder PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_include_directories(test_video_encoder PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(test_video_encoder PRIVATE
+        juce::juce_core
+        juce::juce_events
+        juce::juce_graphics)
+    jamwide_use_ffmpeg(test_video_encoder)
+    add_test(NAME video_encoder COMMAND test_video_encoder)
 
 endif()

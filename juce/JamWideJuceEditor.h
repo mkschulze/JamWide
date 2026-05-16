@@ -12,6 +12,7 @@
 #include "video/VideoPrivacyDialog.h"
 #include "video/native/JamWideCameraDevice.h"
 #include "video/native/CameraFallbackCause.h"
+#include "video/native/CameraStatusDialog.h"
 
 namespace jamwide {
     class CameraPreviewWindow;
@@ -79,6 +80,16 @@ private:
     // privacy dialog is lazily constructed on first need (~24 bytes idle).
     std::unique_ptr<jamwide::CameraPreviewWindow> previewWindow_;
     std::unique_ptr<jamwide::NativeCameraPrivacyDialog> privacyDialog_;
+
+    // Phase 19-03 — cause-aware fallback dialog (D-13..D-16). Owns the
+    // suppress-after-first-show state. onCameraFallback delegates here.
+    jamwide::CameraStatusDialog cameraStatusDialog_;
+
+    // Phase 19-03 — VDO.Ninja coexistence toast (D-27). Once-per-editor-
+    // lifetime guard so we never spam the user. Atomic for paranoid safety
+    // (the lambda capturing `this` runs on the message thread, but atomic
+    // exchange is the canonical idiom for "fire-at-most-once" flags).
+    std::atomic<bool> coexistenceToastShown_{false};
 
     // Custom arrow button — TextButton truncates to "..." at 16px width
     struct ChatToggleButton : public juce::Component

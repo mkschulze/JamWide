@@ -682,9 +682,12 @@ if(JAMWIDE_BUILD_TESTS)
         tests/test_camera_cause_mapping.cpp
         juce/video/native/CameraStatusDialog.cpp)
     target_compile_definitions(test_camera_cause_mapping PRIVATE JAMWIDE_BUILD_TESTS=1)
+    # /juce on the include path so the test can reach video/native/CameraStatusDialog.h
+    # (matches the test_plugin_state_v3_v4 include layout from 19-02 Task 3).
     target_include_directories(test_camera_cause_mapping PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/juce)
     target_link_libraries(test_camera_cause_mapping PRIVATE juce::juce_core juce::juce_gui_basics)
     add_test(NAME camera_cause_mapping COMMAND test_camera_cause_mapping)
 

@@ -7,6 +7,7 @@
 #include "video/native/CameraAuthorization.h"
 #include "video/native/CameraPreviewWindow.h"
 #include "video/native/NativeCameraPrivacyDialog.h"
+#include "video/native/CameraStatusDialog.h"
 
 #include <chrono>
 #include <variant>
@@ -182,6 +183,27 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
     connectionBar.onCameraClicked = [this]() {
         auto* cam = processorRef.getNativeCamera();
         if (! cam) return;
+
+        // Phase 19-03 Task 2 (D-27) — VDO.Ninja coexistence soft warning.
+        // Fires at MOST ONCE per editor lifetime (atomic exchange guarantees
+        // even with parallel timer callbacks the toast is shown once). The
+        // toast is INFORMATIONAL — we fall through to the state-switch so
+        // the camera toggle proceeds in parallel (D-27 "User can ignore and
+        // proceed").
+        if (processorRef.videoCompanion
+            && processorRef.videoCompanion->isActive()
+            && ! coexistenceToastShown_.exchange(true)) {
+            auto opts = juce::MessageBoxOptions{}
+                .withIconType(juce::MessageBoxIconType::NoIcon)
+                .withTitle("Multiple video stacks active")
+                .withMessage("VDO.Ninja video is also active. Bandwidth and "
+                             "CPU may be high - consider stopping one for "
+                             "better quality.")
+                .withButton("OK");
+            juce::AlertWindow::showAsync(opts, [](int){});
+            // Fall through — D-27 says the toast does NOT block the toggle.
+        }
+
         const auto state = cam->getState();
 
         switch (state) {
@@ -759,13 +781,22 @@ void JamWideJuceEditor::onCameraStateChanged(jamwide::CameraState newState)
         case jamwide::CameraState::Capturing:
             connectionBar.setCameraLabel("Camera");
             connectionBar.setCameraActive(true);
+            // 19-03 — once we have a successful capture, clear the fallback
+            // dialog's suppression so the next denial re-shows the dialog
+            // (cause-change re-show, D-14).
+            cameraStatusDialog_.reset();
             break;
         case jamwide::CameraState::Idle:
             connectionBar.setCameraLabel("Camera");
             connectionBar.setCameraActive(false);
             break;
+        case jamwide::CameraState::Opening:
+            // 19-03 — state machine left Unavailable; clear suppression so a
+            // subsequent denial (e.g. open fails differently) re-shows.
+            cameraStatusDialog_.reset();
+            break;
         default:
-            // Opening / Retrying / Failed: keep current label until a stable
+            // Retrying / Failed: keep current label until a stable
             // state is reached. Avoids label-thrash during retry storms.
             break;
     }
@@ -776,10 +807,59 @@ void JamWideJuceEditor::onCameraStateChanged(jamwide::CameraState newState)
     drivePreviewWindowVisibility(newState);
 }
 
+// 19-03 Task 1 — cause-aware fallback dialog (D-13..D-16, T-19-01).
+//
+// The dialog is owned by the editor (cameraStatusDialog_ member). Its show()
+// is suppression-aware: same cause back-to-back returns Dismiss immediately.
+// onCameraStateChanged resets the suppression on transitions out of
+// Unavailable (Opening/Capturing) so the next denial re-shows.
+//
+// The Action returned by the dialog dispatches per Codex HIGH-7:
+//
+//   OpenSystemSettings -> platform-conditional deep-link (macOS x-apple URL,
+//                         Windows ms-settings URL). The OS opens its privacy
+//                         pane; the user can flip the switch back, then click
+//                         Recheck on the dialog (which we re-show via the
+//                         FallbackListener next time the state machine emits
+//                         a fallback).
+//
+//   RecheckPermission  -> nativeCamera->recheckPermission() — D-12 explicit
+//                         re-check. The state machine routes back through
+//                         the auth path.
+//
+//   Dismiss            -> close + focus the Camera button so the user can
+//                         try again later via keyboard nav.
 void JamWideJuceEditor::onCameraFallback(jamwide::CameraFallbackCause cause)
 {
-    juce::ignoreUnused(cause);
-    // 19-03 Task 1 wires CameraStatusDialog here.
+    const juce::String hostName = juce::PluginHostType().getHostDescription();
+    cameraStatusDialog_.show(cause, hostName,
+        [this](jamwide::CameraStatusDialog::Action action) {
+            auto* cam = processorRef.getNativeCamera();
+            switch (action) {
+                case jamwide::CameraStatusDialog::Action::OpenSystemSettings: {
+                #if JUCE_MAC
+                    // NOLINTNEXTLINE(misc-line-length): single-line URL keeps
+                    // the verify-grep literal in one match (plan §<verification>).
+                    juce::URL("x-apple.systempreferences:com.apple.preference.security?Privacy_Camera").launchInDefaultBrowser();
+                #elif JUCE_WINDOWS
+                    juce::URL("ms-settings:privacy-webcam").launchInDefaultBrowser();
+                #else
+                    // Linux / other — no-op (Phase 19 ships macOS + Windows only).
+                #endif
+                    return;
+                }
+                case jamwide::CameraStatusDialog::Action::RecheckPermission: {
+                    if (cam) cam->recheckPermission();   // D-12
+                    return;
+                }
+                case jamwide::CameraStatusDialog::Action::Dismiss: {
+                    // Focus the Camera button so the user can re-trigger via
+                    // keyboard. Cheap UX cue; no functional dependency.
+                    connectionBar.grabKeyboardFocus();
+                    return;
+                }
+            }
+        });
 }
 
 // HIGH-5 first-launch sequence — switches on the CURRENT auth status and

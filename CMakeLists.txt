@@ -165,6 +165,9 @@ if(JAMWIDE_BUILD_JUCE)
         COPY_PLUGIN_AFTER_BUILD TRUE
         MICROPHONE_PERMISSION_ENABLED TRUE
         MICROPHONE_PERMISSION_TEXT "JamWide needs microphone access for standalone mode"
+        # Phase 19-01 Task 1: NSCameraUsageDescription plumbed into Info.plist by JUCE.
+        CAMERA_PERMISSION_ENABLED TRUE
+        CAMERA_PERMISSION_TEXT "JamWide uses your webcam to share video with NINJAM peers."
     )
 
     juce_generate_juce_header(JamWideJuce)
@@ -204,11 +207,39 @@ if(JAMWIDE_BUILD_JUCE)
         target_sources(JamWideJuce PRIVATE juce/video/BrowserDetect_win.cpp)
     endif()
 
+    # Phase 19-01 Task 1: native camera capture sources. All files exist as stubs
+    # after this plan's Task 1 Step 1; subsequent tasks (and downstream plans
+    # 19-02 / 19-03) fill them with real implementations. Stubs are kept in the
+    # build so CMake configure + JamWideJuce build both succeed at end of every
+    # task in 19-01 (HIGH-1 mitigation — no missing source files).
+    target_sources(JamWideJuce PRIVATE
+        juce/video/native/JamWideFrameDistributor.cpp
+        juce/video/native/CameraStateMachine.cpp
+        juce/video/native/JamWideCameraDevice.cpp
+        juce/video/native/CameraStatusDialog.cpp
+        juce/video/native/CameraPreviewWindow.cpp
+        juce/video/native/CameraPreviewTile.cpp
+        juce/video/native/NativeCameraPrivacyDialog.cpp
+    )
+
+    # Phase 19-01 Task 1: CameraAuthorization platform dispatch (mirrors BrowserDetect).
+    # macOS .mm calls AVCaptureDevice authorizationStatusForMediaType; Windows .cpp
+    # returns NotApplicable (no TCC analogue on desktop — cause detected via
+    # openDeviceAsync + watchdog instead).
+    if(APPLE)
+        target_sources(JamWideJuce PRIVATE juce/video/native/CameraAuthorization_mac.mm)
+    else()
+        target_sources(JamWideJuce PRIVATE juce/video/native/CameraAuthorization_windows.cpp)
+    endif()
+
     target_compile_definitions(JamWideJuce PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_DISPLAY_SPLASH_SCREEN=0
+        # Phase 19-01 Task 1 (Risk E closure): expose juce::CameraDevice on the
+        # JamWideJuce target (was previously scoped only to the video_spike test).
+        JUCE_USE_CAMERA=1
     )
 
     target_include_directories(JamWideJuce PRIVATE
@@ -226,6 +257,11 @@ if(JAMWIDE_BUILD_JUCE)
             juce::juce_gui_extra
             juce::juce_osc
             juce::juce_cryptography
+            # Phase 19-01 Task 1: juce::CameraDevice + juce::ImageButton/Image
+            # support. Already linked into the video_spike test target; promoted
+            # here onto JamWideJuce now that the native capture pipeline is
+            # being wired into the plugin (Risk E closure).
+            juce::juce_video
         PUBLIC
             juce::juce_recommended_config_flags
             juce::juce_recommended_lto_flags
@@ -577,5 +613,87 @@ if(JAMWIDE_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
     add_test(NAME peer_churn_simulation COMMAND test_peer_churn_simulation)
+
+    # ───────────────────────────────────────────────────────────────────────
+    # Phase 19-01 Task 1: native camera capture pipeline tests.
+    # Pure-C++ executables — MEDIUM-5 mitigation: NO test links against the
+    # JamWideJuce plugin target. Each test compiles whatever subset of
+    # juce/video/native/*.cpp it needs as compile-time inputs.
+    #
+    # Test stubs (int main(){return 0;}) are created in Task 1 Step 1; bodies
+    # are filled by later tasks / downstream plans:
+    #   - test_frame_distributor / test_frame_distributor_lifetime → Task 3
+    #   - test_camera_state_machine                                → Task 4
+    #   - test_camera_retry_backoff / test_camera_frame_stall      → Task 5
+    #   - test_plugin_state_v3_v4                                  → 19-02 Task 3
+    #   - test_camera_cause_mapping                                → 19-03 Task 1
+    # ───────────────────────────────────────────────────────────────────────
+    add_executable(test_frame_distributor
+        tests/test_frame_distributor.cpp
+        juce/video/native/JamWideFrameDistributor.cpp)
+    target_compile_definitions(test_frame_distributor PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_include_directories(test_frame_distributor PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(test_frame_distributor PRIVATE juce::juce_core juce::juce_graphics)
+    add_test(NAME camera_frame_distributor COMMAND test_frame_distributor)
+
+    add_executable(test_frame_distributor_lifetime
+        tests/test_frame_distributor_lifetime.cpp
+        juce/video/native/JamWideFrameDistributor.cpp)
+    target_compile_definitions(test_frame_distributor_lifetime PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_include_directories(test_frame_distributor_lifetime PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(test_frame_distributor_lifetime PRIVATE juce::juce_core juce::juce_graphics)
+    add_test(NAME camera_frame_distributor_lifetime COMMAND test_frame_distributor_lifetime)
+
+    add_executable(test_camera_state_machine
+        tests/test_camera_state_machine.cpp
+        juce/video/native/CameraStateMachine.cpp)
+    target_compile_definitions(test_camera_state_machine PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_include_directories(test_camera_state_machine PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(test_camera_state_machine PRIVATE juce::juce_core)
+    add_test(NAME camera_state_machine COMMAND test_camera_state_machine)
+
+    add_executable(test_camera_retry_backoff
+        tests/test_camera_retry_backoff.cpp
+        juce/video/native/CameraStateMachine.cpp)
+    target_compile_definitions(test_camera_retry_backoff PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_include_directories(test_camera_retry_backoff PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(test_camera_retry_backoff PRIVATE juce::juce_core)
+    add_test(NAME camera_retry_backoff COMMAND test_camera_retry_backoff)
+
+    add_executable(test_camera_frame_stall
+        tests/test_camera_frame_stall.cpp
+        juce/video/native/CameraStateMachine.cpp)
+    target_compile_definitions(test_camera_frame_stall PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_include_directories(test_camera_frame_stall PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(test_camera_frame_stall PRIVATE juce::juce_core)
+    add_test(NAME camera_frame_stall COMMAND test_camera_frame_stall)
+
+    add_executable(test_camera_cause_mapping
+        tests/test_camera_cause_mapping.cpp
+        juce/video/native/CameraStatusDialog.cpp)
+    target_compile_definitions(test_camera_cause_mapping PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_include_directories(test_camera_cause_mapping PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(test_camera_cause_mapping PRIVATE juce::juce_core juce::juce_gui_basics)
+    add_test(NAME camera_cause_mapping COMMAND test_camera_cause_mapping)
+
+    add_executable(test_plugin_state_v3_v4 tests/test_plugin_state_v3_v4.cpp)
+    target_compile_definitions(test_plugin_state_v3_v4 PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_include_directories(test_plugin_state_v3_v4 PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(test_plugin_state_v3_v4 PRIVATE juce::juce_core juce::juce_data_structures)
+    add_test(NAME plugin_state_v3_v4 COMMAND test_plugin_state_v3_v4)
 
 endif()

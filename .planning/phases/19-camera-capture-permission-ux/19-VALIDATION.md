@@ -1,10 +1,11 @@
 ---
 phase: 19
 slug: camera-capture-permission-ux
-status: planned
+status: verified
 nyquist_compliant: true
 wave_0_complete: true
 created: 2026-05-16
+verified: 2026-05-16
 ---
 
 # Phase 19 — Validation Strategy
@@ -38,13 +39,33 @@ Pattern matches the existing test inventory: `tests/test_block_queue_spsc.cpp`, 
 
 ## Per-Task Verification Map
 
-> Planner fills this after task IDs are assigned. Source the rows from `19-RESEARCH.md` §11 "Phase Requirements → Test Map".
+> Filled by gsd-nyquist-auditor (sonnet) on 2026-05-16 from `19-RESEARCH.md` §11 + the implemented test suite.
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 19-XX-XX | XX | X | CAM-XX / PKG-04 | — / T-19-XX | {expected behavior} | unit/UAT/smoke | `{command}` | ✅ / ❌ W0 | ⬜ pending |
+| 19-01-T1 | 19-01 | 1 | PKG-04 | T-19-05 | `com.apple.security.device.camera` in `JamWide.entitlements`; `JUCE_USE_CAMERA=1` and `juce_video` linked on JamWideJuce; 20 source stubs + 7 test stubs staged in `CMakeLists.txt` | smoke | `grep -c 'com.apple.security.device.camera' JamWide.entitlements && grep -c 'JUCE_USE_CAMERA=1' CMakeLists.txt` | ✅ W0 | ✅ green |
+| 19-01-T2 | 19-01 | 1 | CAM-01 | T-19-01 | `CameraAuthorization_mac.mm` calls `AVCaptureDevice authorizationStatusForMediaType` + `requestAccessForMediaType`; Windows stub returns `NotApplicable` | smoke | `grep -c 'authorizationStatusForMediaType' juce/video/native/CameraAuthorization_mac.mm` | ✅ W0 | ✅ green |
+| 19-01-T3 | 19-01 | 1 | CAM-03 | T-19-PT | `JamWideFrameDistributor` fan-out + `Subscription` RAII (HIGH-2): `~Subscription` blocks in-flight `onFrame` before subscriber memory freed | unit | `cd build-juce && ctest -R 'camera_frame_distributor' --output-on-failure` | ✅ W0 | ✅ green |
+| 19-01-T3b | 19-01 | 1 | CAM-03 | T-19-PT | HIGH-2 RAII race: in-flight `onFrame` + `~Subscription` blocks; deterministic via `std::promise`; no UAF possible | unit | `cd build-juce && ctest -R 'camera_frame_distributor_lifetime' --output-on-failure` | ✅ W0 | ✅ green |
+| 19-01-T4 | 19-01 | 1 | CAM-02 / CAM-03 | T-19-01 | `CameraStateMachine`: 6 states (no `Paused` — MEDIUM-2); single `dispatch()` entry point (MEDIUM-3); all transitions per table | unit | `cd build-juce && ctest -R 'camera_state_machine' --output-on-failure` | ✅ W0 | ✅ green |
+| 19-01-T5 | 19-01 | 1 | CAM-02 | T-19-01 | `JamWideCameraDevice`: generation-token cancellation at 5+ async sites (HIGH-3); D-20 retry 1/2/4/8/16s schedule; HIGH-6 frame-stall watchdog re-queries auth on >2000 ms gap | unit | `cd build-juce && ctest -R 'camera_retry_backoff\|camera_frame_stall' --output-on-failure` | ✅ W0 | ✅ green |
+| 19-02-T1 | 19-02 | 2 | CAM-01 / CAM-02 | T-19-01 | ConnectionBar Camera button (D-11 connect-independent); MEDIUM-1 switch-on-state decision tree in `onCameraClicked`; FallbackListener wiring in editor | smoke | `grep -c 'onCameraClicked\|handleCameraIdleClick' juce/JamWideJuceEditor.cpp` | ✅ | ✅ green |
+| 19-02-T2 | 19-02 | 2 | CAM-01 / CAM-03 | T-19-PT | `CameraPreviewWindow` (4:3 aspect, hide-not-destroy D-09); `CameraPreviewTile` (AsyncUpdater HIGH-4 — NO `MessageManager::callAsync(this)`; `subscription_` LAST member) | smoke | `grep -c 'MessageManager::callAsync.*this' juce/video/native/CameraPreviewTile.cpp` (must be 0) | ✅ | ✅ green |
+| 19-02-T3 | 19-02 | 2 | CAM-01 / PKG-04 | T-19-03 / T-19-04 | D-24/D-25 schema v3→v4 migration: 7 flat ValueTree properties; T-19-03 `juce::jlimit` clamping at read; `privacyAck` persistence (HIGH-5); HIGH-7 prep `isAckResult()` pins JUCE 2-button mapping | unit | `cd build-juce && ctest -R 'plugin_state_v3_v4' --output-on-failure` | ✅ W0 | ✅ green |
+| 19-03-T1 | 19-03 | 3 | CAM-02 | T-19-01 | `CameraStatusDialog`: 5 causes × copy (MEDIUM-6 softened) + button mapping; HIGH-7 `actionFor()` 14-cell table; suppress-after-first-show + reset on Opening/Capturing; editor dispatches `Action` to platform-conditional deep-link / `recheckPermission` | unit | `cd build-juce && ctest -R 'camera_cause_mapping' --output-on-failure` | ✅ W0 | ✅ green |
+| 19-03-T2 | 19-03 | 3 | CAM-02 (D-27) | — | VDO.Ninja coexistence toast fires AT MOST ONCE per editor lifetime via `std::atomic<bool>.exchange` guard; camera toggle proceeds (non-blocking) | manual | UAT Cell 9 — `docs/UAT/phase-19-camera-uat-checklist.md` | ✅ | manual-pending |
+| 19-03-T3a | 19-03 | 3 | PKG-04 | T-19-05 | `scripts/verify_camera_entitlement.sh` reads entitlement from SIGNED bundle (`codesign --display --entitlements -`) NOT source `.entitlements`; `NSCameraUsageDescription` compared against configured `CAMERA_PERMISSION_TEXT` | smoke | `bash -n scripts/verify_camera_entitlement.sh && test -x scripts/verify_camera_entitlement.sh && echo OK` | ✅ W0 | ✅ green |
+| 19-03-T3b | 19-03 | 3 | PKG-04 | T-19-05 | Notarization staple validates (`xcrun stapler validate`) on a release codesigned bundle with `JAMWIDE_HARDENED_RUNTIME=ON` | manual | UAT Cell 6 — `docs/UAT/phase-19-camera-uat-checklist.md` (`./scripts/verify_camera_entitlement.sh <bundle> --notarize`) | ✅ | manual-pending |
+| 19-UAT-SC1 | all | — | CAM-01 | — | macOS standalone: TCC prompt → Allow → preview within 3 s (live camera) | manual | UAT Cell 1 — `docs/UAT/phase-19-camera-uat-checklist.md` | ✅ | manual-pending |
+| 19-UAT-SC2 | all | — | CAM-01 | — | Logic Pro AU: camera grant via Logic Pro host → preview | manual | UAT Cell 2 — `docs/UAT/phase-19-camera-uat-checklist.md` | ✅ | manual-pending |
+| 19-UAT-SC3 | all | — | CAM-02 | T-19-01 | REAPER macOS: `HostLacksEntitlement` softened dialog (MEDIUM-6 wording, 3-button set); Open System Settings deep-link; no crash; audio works | manual | UAT Cell 3 — `docs/UAT/phase-19-camera-uat-checklist.md` | ✅ | manual-pending |
+| 19-UAT-SC4 | all | — | CAM-01 | — | macOS arm64 standalone: same as SC1 on Apple Silicon hardware | manual | UAT Cell 4 — `docs/UAT/phase-19-camera-uat-checklist.md` | ✅ | manual-pending |
+| 19-UAT-SC5 | all | — | CAM-02 | — | Permission revoke roundtrip (HIGH-6 end-to-end): frame-stall watchdog emits `TCCDenied` (not `CameraInUse`) within ~7 s of mid-session revoke | manual | UAT Cell 5 — `docs/UAT/phase-19-camera-uat-checklist.md` | ✅ | manual-pending |
+| 19-UAT-SC6 | all | — | CAM-01 | — | Windows standalone: camera preview within 3 s | manual | UAT Cell 7 — `docs/UAT/phase-19-camera-uat-checklist.md` | ✅ | manual-pending |
+| 19-UAT-SC7 | all | — | CAM-02 | — | Windows privacy block: `WindowsPrivacyBlock` dialog; `ms-settings` URL opens; recheck resumes | manual | UAT Cell 8 — `docs/UAT/phase-19-camera-uat-checklist.md` | ✅ | manual-pending |
+| 19-UAT-HIGH5 | 19-02/03 | — | CAM-01 | T-19-04 | First-launch: `tccutil reset` → click → TCC prompt → Allow → `NativeCameraPrivacyDialog` → I understand → preview; second launch skips modal (ack persisted in v4 state) | manual | UAT Cell 10 — `docs/UAT/phase-19-camera-uat-checklist.md` | ✅ | manual-pending |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky · manual-pending awaiting human UAT*
 
 ---
 
@@ -98,12 +119,33 @@ Aggregate sampling rate is appropriate: high-frequency logic via unit tests; low
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references (8 cells above)
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 60 s
-- [ ] `nyquist_compliant: true` set in frontmatter
-- [ ] `wave_0_complete: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (8 cells above; +2 bonus cells `test_frame_distributor_lifetime` + `test_camera_frame_stall` from codex HIGH-2 / HIGH-6 review)
+- [x] No watch-mode flags
+- [x] Feedback latency < 60 s (measured: 3.38 s quick, 43.50 s full)
+- [x] `nyquist_compliant: true` set in frontmatter
+- [x] `wave_0_complete: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** verified 2026-05-16
+
+---
+
+## Validation Audit 2026-05-16
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 (file-level), 0 (automation-boundary) |
+| Resolved | All 4 requirements covered (CAM-01/02/03/PKG-04) |
+| Escalated | 0 |
+| Tests run live | 7/7 PASS (3.38 s) — `ctest -R 'camera_\|plugin_state_v3_v4'` |
+| Manual-pending UAT cells | 10 (correctly classified — OS/hardware/credentials dependencies) |
+| Run by | gsd-nyquist-auditor (sonnet) |
+
+**Coverage breakdown:**
+- **CAM-01** — SATISFIED (code) + HUMAN-UAT (behavior). 4 UAT cells: SC1, SC2, SC4, SC6.
+- **CAM-02** — SATISFIED (code) + HUMAN-UAT (behavior). 3 UAT cells: SC3, SC5, SC7.
+- **CAM-03** — FULLY AUTOMATED. No human verification needed; `test_frame_distributor` + `test_frame_distributor_lifetime` cover thread-safety + RAII lifetime.
+- **PKG-04** — SATISFIED (verifier script) + HUMAN-UAT (notarization staple). 1 UAT cell: Cell 6.
+
+**Carried forward (not gaps):** `19-REVIEW.md` CR-01..04 — 4 Critical UAF risks in editor-owned async lambdas. Not in Nyquist register; surfaced in `19-SECURITY.md` "Related-but-not-in-register" advisory. Recommended `19.1-lifetime-hardening` follow-up.

@@ -809,6 +809,19 @@ void JamWideJuceEditor::onCameraFallback(jamwide::CameraFallbackCause cause)
                     return;
                 }
                 case jamwide::CameraStatusDialog::Action::RecheckPermission: {
+                    // 2026-05-16 UX fix (Phase 19 UAT Cell 3 gap): reset the
+                    // dialog's last-shown-cause cache before issuing the
+                    // recheck. Without this, D-14 duplicate-suppression in
+                    // CameraStatusDialog::show silently swallows the re-show
+                    // when the status is still unchanged (cause stays equal),
+                    // firing onResult(Dismiss) with no visible feedback —
+                    // making the button appear broken to the user. Resetting
+                    // here lets the state-machine-emitted fallback (if still
+                    // denied after recheck) re-display the same dialog and
+                    // confirm the unchanged state. When status DID flip to
+                    // Authorized, no fallback is emitted and the camera
+                    // opens normally — reset is a no-op for that path.
+                    cameraStatusDialog_.reset();
                     if (cam) cam->recheckPermission();   // D-12
                     return;
                 }

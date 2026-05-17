@@ -806,27 +806,47 @@ void Openh264Encoder::scanAndPublishSpsPps_(const unsigned char* nal_stream,
         return;
     }
 
-    // NinjamZap VIDEO_SYNC.md §7 wire format for the SPS/PPS block:
+    // NinjamZap canonical wire format for the SPS/PPS chunk
+    // (ninjamzap-core/tests/video-sync/harness/TestClient.cpp:156-176
+    // sendFakeSPSPPS — the byte-exact reference the upstream receiver
+    // expects):
     //
+    //   [4B BE inner_len]                <- outer length prefix (REQUIRED;
+    //                                       the receiver's chunk reassembler
+    //                                       reads this to find chunk
+    //                                       boundaries — same role as the
+    //                                       marker's leading 4 bytes)
     //   [2B BE SPS len][SPS NAL bytes (no start code)]
     //   [2B BE PPS len][PPS NAL bytes (no start code)]
     //
     // The annex-B start code (0x00 0x00 0x00 0x01) is 4 bytes; we strip it
     // from each NAL by starting at sps_start+4 / pps_start+4. The 2-byte
     // big-endian length prefix tells the receiver how many NAL bytes
-    // follow. Plan 20-02's original "raw [SPS-NAL][PPS-NAL] concatenation,
-    // no per-NAL length prefix" was a misread of the spec — the web
-    // decoder could not parse it and rejected the entire video stream.
+    // follow.
+    //
+    // Build-#335 prior: commit 6d23b5c emitted only the inner portion
+    // without the outer [4B BE inner_len] wrapper, after reading
+    // VIDEO_SYNC.md docs but not the upstream encoder code. The reassembler
+    // reads the first 4 bytes of the chunk and got `[2B sps_len][SPS first
+    // two bytes]` instead of a length — desync, web viewer rejected the
+    // entire stream.
     const int sps_payload_len = (sps_end - sps_start) - 4;
     const int pps_payload_len = (pps_end - pps_start) - 4;
     if (sps_payload_len <= 0 || pps_payload_len <= 0 ||
         sps_payload_len > 0xFFFF || pps_payload_len > 0xFFFF) {
         return;
     }
+    const int inner_len = 2 + sps_payload_len + 2 + pps_payload_len;
 
     std::vector<unsigned char> buf;
-    buf.reserve(2 + static_cast<std::size_t>(sps_payload_len) +
-                2 + static_cast<std::size_t>(pps_payload_len));
+    buf.reserve(4 + static_cast<std::size_t>(inner_len));
+
+    // [4B BE inner_len] — outer length prefix for the receiver's chunk
+    // reassembler. Matches upstream TestClient::sendFakeSPSPPS framing.
+    buf.push_back(static_cast<unsigned char>((inner_len >> 24) & 0xFF));
+    buf.push_back(static_cast<unsigned char>((inner_len >> 16) & 0xFF));
+    buf.push_back(static_cast<unsigned char>((inner_len >>  8) & 0xFF));
+    buf.push_back(static_cast<unsigned char>( inner_len        & 0xFF));
 
     // [2B BE SPS len][SPS NAL bytes without start code]
     buf.push_back(static_cast<unsigned char>((sps_payload_len >> 8) & 0xFF));

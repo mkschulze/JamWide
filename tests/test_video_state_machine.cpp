@@ -109,23 +109,32 @@ static void test_video_block_emits_begin_marker_sps_when_active() {
     unsigned char guid[16];
     memcpy(guid, out[0]->guid, 16);
 
-    // Item 1: 20-byte sync marker per VIDEO_SYNC.md §6:
-    //   Bytes 0-3 : BE uint32 interval counter
-    //   Bytes 4-19: audio channel-0 GUID
-    // Plan 20-02 originally emitted a 24-byte marker with an extra 4-byte
-    // length prefix; the wire-format audit against the upstream spec
-    // (jacinside/ninjamzap-core docs/VIDEO_SYNC.md) corrected this.
-    if (out[1]->type != 1 || out[1]->flags != 0 || out[1]->data.GetSize() != 20
+    // Item 1: 24-byte sync marker matching upstream
+    // ninjamzap-core njclient.cpp:3055-3070 wire layout:
+    //   Bytes 0-3 : BE uint32 = 20 (outer length prefix; receiver
+    //               reassembler uses this to find chunk boundaries)
+    //   Bytes 4-7 : BE uint32 interval counter
+    //   Bytes 8-23: audio channel-0 GUID
+    // Commit 6d23b5c briefly shipped a 20-byte marker without the outer
+    // [4B BE 20] prefix after reading VIDEO_SYNC.md docs (which describe
+    // the inner payload) but not the upstream encoder code. The fix that
+    // restored the 24-byte form is verified against
+    // ninjamzap-core/tests/video-sync/harness/TestClient.cpp.
+    if (out[1]->type != 1 || out[1]->flags != 0 || out[1]->data.GetSize() != 24
         || memcmp(out[1]->guid, guid, 16) != 0) {
-        FAIL("item 1 is not the 20-byte sync marker WRITE"); free_drained(out); return;
+        FAIL("item 1 is not the 24-byte sync marker WRITE"); free_drained(out); return;
     }
     const unsigned char* m = (const unsigned char*)out[1]->data.Get();
-    // Bytes 0-3: BE uint32 interval counter; seq is 1 on first on_new_interval.
-    if (m[0] != 0 || m[1] != 0 || m[2] != 0 || m[3] != 1) {
-        FAIL("marker interval counter (bytes 0-3) != BE u32 = 1"); free_drained(out); return;
+    // Bytes 0-3: BE uint32 = 20 (outer length prefix).
+    if (m[0] != 0 || m[1] != 0 || m[2] != 0 || m[3] != 20) {
+        FAIL("marker outer length prefix (bytes 0-3) != BE u32 = 20"); free_drained(out); return;
     }
-    // Bytes 4-19: audio_ch0_guid; zero-filled when no Local_Channel registered.
-    for (int i = 4; i < 20; ++i) {
+    // Bytes 4-7: BE uint32 interval counter; seq is 1 on first on_new_interval.
+    if (m[4] != 0 || m[5] != 0 || m[6] != 0 || m[7] != 1) {
+        FAIL("marker interval counter (bytes 4-7) != BE u32 = 1"); free_drained(out); return;
+    }
+    // Bytes 8-23: audio_ch0_guid; zero-filled when no Local_Channel registered.
+    for (int i = 8; i < 24; ++i) {
         if (m[i] != 0) { FAIL("marker audio_ch0_guid not zero-filled with no Local_Channel"); free_drained(out); return; }
     }
 
@@ -259,8 +268,8 @@ static void test_video_frame_during_marker_interleave_is_blocked() {
             FAIL("BEGIN found but marker or SPS-PPS missing — m_video_cs ordering violated");
             free_drained(out); done.store(true); frame_thread.join(); return;
         }
-        if (out[marker_idx]->type != 1 || out[marker_idx]->data.GetSize() != 20) {
-            FAIL("item after BEGIN is not the 20-byte sync marker — interleave occurred");
+        if (out[marker_idx]->type != 1 || out[marker_idx]->data.GetSize() != 24) {
+            FAIL("item after BEGIN is not the 24-byte sync marker — interleave occurred");
             free_drained(out); done.store(true); frame_thread.join(); return;
         }
         if (out[spspps_idx]->type != 1 || out[spspps_idx]->data.GetSize() != (int)spspps.size()) {
@@ -298,9 +307,10 @@ static void test_video_marker_uses_audio_ch0_guid() {
     client.DrainRawDataSendQueueForTest(out);
     if (out.size() < 2) { FAIL("expected BEGIN + marker"); free_drained(out); return; }
     const unsigned char* m = (const unsigned char*)out[1]->data.Get();
-    // 20-byte marker (VIDEO_SYNC.md §6): bytes 4-19 are audio_ch0_guid.
-    // NONE-match path: 16 zero bytes when no Local_Channel registered at chidx=0.
-    for (int i = 4; i < 20; ++i) {
+    // 24-byte marker (upstream njclient.cpp:3055-3070): bytes 8-23 are
+    // audio_ch0_guid. NONE-match path: 16 zero bytes when no Local_Channel
+    // registered at chidx=0.
+    for (int i = 8; i < 24; ++i) {
         if (m[i] != 0) {
             char buf[128]; snprintf(buf, sizeof(buf), "marker byte %d != 0 (expected NONE-match path with no Local_Channel)", i);
             FAIL(buf); free_drained(out); return;
@@ -330,7 +340,7 @@ static void test_video_cold_start_marker_only_first_interval() {
         FAIL(buf); free_drained(out); return;
     }
     if (out[0]->type != 0) { FAIL("cold-start item 0 != BEGIN"); free_drained(out); return; }
-    if (out[1]->type != 1 || out[1]->data.GetSize() != 20) { FAIL("cold-start item 1 != 20-byte marker"); free_drained(out); return; }
+    if (out[1]->type != 1 || out[1]->data.GetSize() != 24) { FAIL("cold-start item 1 != 24-byte marker"); free_drained(out); return; }
     free_drained(out);
 
     // Simulate encoder warm-up completing: publish SPS/PPS.
@@ -355,7 +365,7 @@ static void test_video_cold_start_marker_only_first_interval() {
             FAIL("iter: item 0 != END(prev)"); free_drained(iter_out); return;
         }
         if (iter_out[1]->type != 0) { FAIL("iter: item 1 != BEGIN"); free_drained(iter_out); return; }
-        if (iter_out[2]->type != 1 || iter_out[2]->data.GetSize() != 20) { FAIL("iter: item 2 != 20-byte marker"); free_drained(iter_out); return; }
+        if (iter_out[2]->type != 1 || iter_out[2]->data.GetSize() != 24) { FAIL("iter: item 2 != 24-byte marker"); free_drained(iter_out); return; }
         if (iter_out[3]->type != 1 || iter_out[3]->data.GetSize() != (int)spspps.size()
             || memcmp(iter_out[3]->data.Get(), spspps.data(), spspps.size()) != 0) {
             FAIL("iter: item 3 != SPS/PPS — revised MF3 wording violated"); free_drained(iter_out); return;

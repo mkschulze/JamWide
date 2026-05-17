@@ -38,6 +38,15 @@
 #include "njclient.h"
 #include "mpb.h"
 
+// Plan 21-02 Task 1 (W-2 forward-decl resolution): VideoRecvState carries a
+// std::shared_ptr<jamwide::Openh264Decoder>. shared_ptr's type-erased deleter
+// (captured at make_shared time in Plan 21-03's JUCE-linked TU) means
+// njclient.cpp can destroy VideoRecvState without seeing Openh264Decoder's
+// full type — so no #include "../../juce/video/decoder/Openh264Decoder.h"
+// here (it would pull juce_graphics into the njclient static lib which is
+// intentionally non-JUCE). VideoRecvSlotSnapshot.h IS included via njclient.h
+// because the std::array<VideoRecvSlotSnapshot, 4> member needs the full POD.
+
 static int64_t currentMillis()
 {
     using namespace std::chrono;
@@ -3408,6 +3417,48 @@ bool NJClient::IsVideoFourcc(unsigned int fcc) const
 }
 
 // ---------------------------------------------------------------------------
+// Plan 21-02 Task 1 (W-2 forward-decl resolution + codex Cluster 2 Option A):
+// VideoRecvState ctor body. Ctor zero-inits the same scalars that the
+// previous inline initializer list (Plan 21-01 Task 1) zero-inited.
+// decoderSlots default-init (each slot's `size = 0; frameCount = 0;`);
+// decoderSlotIndexQ default-init (empty); nextDecoderSlotFillIndex /
+// decoderProducerSeq default-init to 0 per the in-class default-member-
+// initializers in njclient.h; decoder (std::shared_ptr) and sink (raw
+// pointer) default-init to nullptr.
+//
+// Dtor is `= default` in the header (W-2 resolution): std::shared_ptr's
+// type-erased deleter handles Openh264Decoder cleanup without njclient.cpp
+// needing the full type. Plan 21-03 lazy-constructs `decoder` via
+// std::make_shared<Openh264Decoder>(...) inside a JUCE-linked TU where
+// the deleter is captured; the cleanup at NJClient destruction
+// (m_video_streams.Empty(true) → delete vs → ~VideoRecvState → ~shared_ptr
+// → captured deleter → Openh264Decoder::~Openh264Decoder which runs the
+// R4 H9 7-step teardown) requires no special handling here.
+//
+// Plan 21-03 owns sink teardown sequencing at the user-leave call site
+// (codex Cluster 3 — sink unwiring happens BEFORE VideoRecvState destruction).
+// ---------------------------------------------------------------------------
+NJClient::VideoRecvState::VideoRecvState()
+    : frame_idx(0)
+    , expected_frames(0)
+    , append_active(false)
+    , append_to_next(false)
+    , append_to_pending(false)
+    , stream_chidx(0)
+    , empty_count(0)
+    , hold_count(0)
+    , synced(false)
+    , last_played_sender_seq(-1)
+    , drop_resync_count(0)
+{
+  memset(append_guid, 0, 16);
+  key[0]             = 0;
+  stream_username[0] = 0;
+  memset(prev_ds_guid, 0, 16);
+  memset(last_played_audio_guid, 0, 16);
+}
+
+// ---------------------------------------------------------------------------
 // Plan 21-01 Task 1 (D-14): VideoRecvState lookup/create/remove helpers.
 // Verbatim port of ninjamzap-core/njclient.cpp:2124-2173. JamWide deviation:
 // none. The strchr-'@' branch in findOrCreateVideoStream is preserved
@@ -3704,6 +3755,60 @@ void NJClient::handleVideoRecvEnd_(const unsigned char guid[16])
   m_video_recv_cs.Leave();
 }
 
+// Plan 21-02 Task 2 (codex Cluster 1 + Cluster 2 Option A): push the
+// current vs->playing slot bytes into the per-peer decoder via the
+// VideoRecvState-owned snapshot ring. Called from runVideoReceiveBlock_
+// after each site that populates vs->playing (STAGE-1 promote,
+// PREV/NONE-match immediate-play, accumulating-fallback).
+//
+// Audio-thread integration:
+//   - memcpy vs->playing.data → vs->decoderSlots[fillIdx] (bounded at
+//     4 MB per copyFrom — Plan 21-01 D-16 envelope's copyFrom allowlist)
+//   - try_push fillIdx onto vs->decoderSlotIndexQ (lock-free)
+//   - fetch_add(1, release) on vs->decoderProducerSeq — the decoder
+//     polls this with 15 ms timed wait (codex Cluster 1 — NO OS
+//     sync primitives on the audio thread; see Phase 21 envelope)
+//
+// Skips if vs->decoder is null (Plan 21-03 lazy-constructs the decoder
+// on first H264 BEGIN; in Plan 21-02 production vs->decoder is always
+// null so this method is a no-op in production builds). Test paths
+// can construct VideoRecvState + Openh264Decoder directly to exercise
+// the push pathway.
+//
+// nextDecoderSlotFillIndex is incremented unconditionally so the slot
+// index space cycles round-robin even if try_push fails (e.g., decoder
+// is slow and SPSC is full — should never happen with 4-deep depth and
+// 6 Hz audio cadence, but defensive). On try_push failure we silently
+// drop the slot; libavcodec auto-recovers on next IDR (D-18 / Phase 20
+// D-14 — IDR-per-interval).
+void NJClient::pushPlayingSnapshotToDecoder_(VideoRecvState* vs)
+{
+  if (!vs || !vs->decoder || !vs->playing.active || vs->playing.frameCount <= 0) {
+    return;
+  }
+  const int fillIdx =
+      vs->nextDecoderSlotFillIndex.fetch_add(1, std::memory_order_relaxed) & 3;
+  // codex Cluster 2 Option A — memcpy bytes + offsets into VideoRecvState-
+  // owned slot. copyFromVideoRecvBuffer is bounded-clamped to 4 MB / 256
+  // frames per the defensive caps in VideoRecvSlotSnapshot.h.
+  vs->decoderSlots[(std::size_t)fillIdx].copyFromVideoRecvBuffer(
+      vs->playing.data.Get(),         vs->playing.data.GetSize(),
+      vs->playing.frameOffsets.Get(), vs->playing.frameCount);
+  // codex Cluster 2 — push the integer index, NOT a raw-pointer view.
+  if (vs->decoderSlotIndexQ.try_push(fillIdx)) {
+    // codex Cluster 1 — atomic-seq publish; the decoder polls this.
+    // NO OS sync primitives are invoked here or anywhere else on the
+    // audio thread (the audit-allowlist envelope in
+    // .claude/agents/realtime-audio-reviewer.md's Phase 21 section
+    // forbids event-signal calls on the audio path).
+    vs->decoderProducerSeq.fetch_add(1, std::memory_order_release);
+  }
+  // try_push failure is a backlog event (4 swaps queued; decoder is
+  // slower than the swap cadence — should never happen under normal
+  // operation since the decoder drains in <1 swap interval). The slot
+  // is silently dropped; libavcodec auto-recovers on next IDR per D-18.
+}
+
 // Verbatim port of ninjamzap-core/njclient.cpp:3084-3256 (audio-thread
 // on_new_interval video receive block). One JamWide carve-out (D-16 +
 // Phase 15.1-07a HIGH-2): read m_remoteuser_mirror[s].chans[0].next_ds[0]
@@ -3714,6 +3819,13 @@ void NJClient::handleVideoRecvEnd_(const unsigned char guid[16])
 // block is wrapped under JAMWIDE_BUILD_TESTS with steady_clock measurement
 // and CAS-updates m_run_video_receive_block_max_nanos_. Production builds
 // see no overhead — the entire timing block compiles out.
+//
+// Plan 21-02 Task 2 (codex Cluster 1 + 2): at THREE sites where vs->playing
+// is freshly populated (STAGE-1 promote, PREV/NONE-match immediate-play,
+// accumulating-fallback), call pushPlayingSnapshotToDecoder_(vs) to memcpy
+// the slot into the decoder's snapshot ring + bump the producer-seq
+// atomic. No-op if vs->decoder is null (always null in Plan 21-02
+// production; Plan 21-03 lazy-constructs).
 void NJClient::runVideoReceiveBlock_()
 {
 #ifdef JAMWIDE_BUILD_TESTS
@@ -3735,6 +3847,10 @@ void NJClient::runVideoReceiveBlock_()
         vs->playing.copyFrom(vs->pending);
         vs->pending.reset();
         vs->frame_idx = 0;
+        // Plan 21-02 Task 2 (codex Cluster 1 + 2): hand the freshly-
+        // populated playing slot to the decoder via the snapshot-ring
+        // memcpy + index-push + atomic-seq publish path.
+        pushPlayingSnapshotToDecoder_(vs);
       }
 
       vs->append_active = false;
@@ -3833,6 +3949,9 @@ void NJClient::runVideoReceiveBlock_()
             vs->playing.reset();
             vs->playing.copyFrom(vs->next);
             vs->frame_idx = 0;
+            // Plan 21-02 Task 2 (codex Cluster 1 + 2): hand the freshly-
+            // populated playing slot to the decoder via snapshot ring.
+            pushPlayingSnapshotToDecoder_(vs);
           }
           vs->next.reset();
         }
@@ -3860,6 +3979,9 @@ void NJClient::runVideoReceiveBlock_()
           vs->accumulating.frameOffsets.Resize(0);
           vs->accumulating.frameCount = 0;
           vs->frame_idx = 0;
+          // Plan 21-02 Task 2 (codex Cluster 1 + 2): hand the freshly-
+          // populated playing slot to the decoder via snapshot ring.
+          pushPlayingSnapshotToDecoder_(vs);
         }
       } else {
         vs->hold_count = 0;

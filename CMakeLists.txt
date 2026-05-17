@@ -252,6 +252,20 @@ if(JAMWIDE_BUILD_JUCE)
         juce/video/encoder/Openh264Encoder.h
         juce/video/encoder/Openh264Encoder.cpp
     )
+
+    # Plan 21-02 Task 1: VideoDecoder interface + NalChunk POD + VideoRecvSlotSnapshot
+    # POD (codex Cluster 2 Option A) + Openh264Decoder header (Wave-2 contracts).
+    # Plan 21-02 Task 2: Openh264Decoder.cpp implementation. Links libavcodec /
+    # libswscale via jamwide_use_ffmpeg() — same linkage as the Phase 20 encoder
+    # block above (already invoked on JamWideJuce a few lines below).
+    target_sources(JamWideJuce PRIVATE
+        juce/video/decoder/VideoDecoder.h
+        juce/video/decoder/NalChunk.h
+        juce/video/decoder/VideoRecvSlotSnapshot.h
+        juce/video/decoder/Openh264Decoder.h
+        juce/video/decoder/Openh264Decoder.cpp
+    )
+
     jamwide_use_ffmpeg(JamWideJuce)
 
     target_compile_definitions(JamWideJuce PUBLIC
@@ -780,6 +794,53 @@ if(JAMWIDE_BUILD_TESTS)
         juce::juce_data_structures
         juce::juce_gui_basics)
     add_test(NAME plugin_state_v3_v4 COMMAND test_plugin_state_v3_v4)
+
+    # Plan 21-02 Task 3: H.264 decoder COD-03 unit test (8 sub-tests).
+    # Mirrors test_video_encoder; links libavcodec + libswscale via
+    # jamwide_use_ffmpeg. Pure-C++ in-process; links the decoder .cpp
+    # plus njclient. WORKING_DIRECTORY at source root so the fixture
+    # files (tests/fixtures/*.bin) resolve correctly via relative paths
+    # in the test source.
+    add_executable(test_video_decoder
+        tests/test_video_decoder.cpp
+        juce/video/decoder/Openh264Decoder.cpp)
+    target_compile_definitions(test_video_decoder PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_include_directories(test_video_decoder PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/juce)
+    target_link_libraries(test_video_decoder PRIVATE
+        njclient
+        juce::juce_core
+        juce::juce_events
+        juce::juce_graphics)
+    if(APPLE)
+        # Test_processor_video_lifecycle pattern: bump main-thread stack to
+        # 16 MB so the macOS-default 8 MB doesn't bite during static init
+        # of juce_graphics / juce_events / libavcodec global state. The
+        # DecoderBundle (16 MB per snapshot ring) is heap-allocated via
+        # unique_ptr inside each sub-test so it does NOT live on the stack,
+        # but JUCE init still touches enough to overflow the default 8 MB
+        # on x86_64 macOS.
+        target_link_options(test_video_decoder PRIVATE
+            "LINKER:-stack_size,0x1000000")  # 16 MB main-thread stack
+    endif()
+    jamwide_use_ffmpeg(test_video_decoder)
+    add_test(NAME video_decoder COMMAND test_video_decoder
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Plan 21-02 Task 3 (EXCLUDE_FROM_ALL): fixture-binary generator.
+    # Not built by default; run manually via:
+    #   ./scripts/build.sh gen_baseline_fixtures
+    #   ./build-juce/gen_baseline_fixtures
+    # Regenerates tests/fixtures/*.bin using the vendored libopenh264
+    # encoder. SHA-256 hashes recorded in tests/fixtures/README.md.
+    add_executable(gen_baseline_fixtures EXCLUDE_FROM_ALL
+                   tests/fixtures/gen-baseline-fixtures.cpp)
+    target_include_directories(gen_baseline_fixtures PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    jamwide_use_ffmpeg(gen_baseline_fixtures)
 
     # Phase 20-01 Task 2: Openh264Encoder bring-up + IDR-sync + drop-oldest +
     # reconfigure (no subscription churn, R4 H9) + 7-step teardown ordering

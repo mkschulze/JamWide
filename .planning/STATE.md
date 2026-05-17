@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Native Video
 status: executing
-stopped_at: Phase 21 Waves 1+2 complete; Plan 21-03 automated portion merged, awaiting live UAT against video.ninjamzap.com:2049
-last_updated: "2026-05-17T17:25:00Z"
-last_activity: 2026-05-17 -- Phase 21 execution paused at Plan 21-03 Task 5 UAT checkpoint
+stopped_at: Phase 22 context gathered
+last_updated: "2026-05-17T20:59:56.771Z"
+last_activity: 2026-05-17 -- Phase 21 execution started
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 10
-  completed_plans: 7
-  percent: 33
+  completed_plans: 10
+  percent: 50
 ---
 
 # Project State
@@ -165,8 +165,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-05-17T17:25:00Z
-Stopped at: Phase 21 execution paused at Plan 21-03 Task 5 — live UAT against video.ninjamzap.com:2049 deferred (no collaborator available)
+Last session: 2026-05-17T20:59:56.752Z
+Stopped at: Phase 22 context gathered
 Most recent commit on working branch: 19a1050 (chore: merge executor worktree (21-03: distributor + sink + processor wiring + UAT procedure))
 Resume artifacts: .planning/phases/21-h-264-decoder-receive-pipeline/.continue-here.md (refreshed 2026-05-17T17:25Z)
 
@@ -194,6 +194,7 @@ Resume artifacts: .planning/phases/21-h-264-decoder-receive-pipeline/.continue-h
 **Plan 21-03 Task 5: live UAT against video.ninjamzap.com:2049.** Procedure at `tests/uat/phase-21-receive-uat-procedure.md` (4 cells, 35-50 min). Requires (1) a coordinated collaborator broadcasting video (or 2 for Cell 4), (2) a `--tests`-enabled standalone build for the JAMWIDE_BUILD_TESTS-gated lldb counter accessors, (3) reading per-peer + audio-thread-receive-block counters via lldb.
 
 **Closure paths per codex Cluster 9 policy:**
+
 - State A: all 4 cells PASS → `Phase 21 closed (Cells 1-4 PASS)`.
 - State B: some cells BLOCKED → deferred-risk records in STATE.md + report status line `Phase 21 closed with deferred-risk Cells X, Y tracked in STATE.md → Phase 24`.
 

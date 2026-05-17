@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Native Video
 status: executing
-stopped_at: Phase 21 context gathered
-last_updated: "2026-05-17T15:37:12.660Z"
-last_activity: 2026-05-17 -- Phase 21 planning complete
+stopped_at: v1.1-beta.20.6 release shipped — Phase 21 ready to execute next
+last_updated: "2026-05-17T16:54:47.979Z"
+last_activity: 2026-05-17 -- Phase 21 execution started
 progress:
   total_phases: 6
   completed_phases: 2
@@ -21,14 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-05)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Phase 21 — h-264-decoder-and-receive-pipeline (about to start via discuss-phase)
+**Current focus:** Phase 21 — h-264-decoder-receive-pipeline
 
 ## Current Position
 
-Phase: 20 (h-264-encoder-send-pipeline) — **COMPLETE 2026-05-17**
-Status: Ready to execute
+Phase: 21 (h-264-decoder-receive-pipeline) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 21
 Next phase: Phase 21 (H.264 Decoder & Receive Pipeline) — about to invoke `/gsd-discuss-phase 21` to gather context before planning. Phase 21 implements the symmetric inverse of Phase 20: 4-stage receive (`accumulating → next → pending → playing`) + GUID-pairing decision tree (DS / PREV / no-match with `kHoldCapDrop = 4`) + libavcodec H264 decode per peer + per-user `juce::Image` delivery to the UI layer (which Phase 22 will render).
-Last activity: 2026-05-17 -- Phase 21 planning complete
+Last activity: 2026-05-17 -- Phase 21 execution started
 Milestone scope (v1.3 = macOS + Windows testable beta on upstream ninjamzap-server, `video.ninjamzap.com:2049` documented as the recommended public instance — JamWide's existing NINJAM server browser UI is untouched):
 
 - Phase 19 — Camera Capture & Permission UX (3 plans) — CAM-01, CAM-02, CAM-03, PKG-04 (entitlements). Cross-platform via JUCE `juce_CameraDevice_{mac,windows}.h`; REAPER fallback is macOS-only (SPARTA #82).
@@ -164,10 +165,19 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-05-17T12:59:59.685Z
-Stopped at: Phase 21 context gathered
-Most recent commit on working branch: 8e5fa6c (wip) + uncommitted fix at HEAD+1
-Resume artifacts: .planning/HANDOFF.json (stale — pre-#337 context) + .planning/phases/20-h-264-encoder-send-pipeline/.continue-here.md (refreshed)
+Last session: 2026-05-17T16:50:00Z
+Stopped at: v1.1-beta.20.6 release shipped — Phase 21 ready to execute next
+Most recent commit on working branch: f86fc74 (wip: phase-21 planning done; v1.1-beta.20.6 release in-flight CI) — local-only, ahead of origin/quick/260515-0pc-native-video-port (tip 75e3dd3)
+Resume artifacts: HANDOFF.json DELETED (one-shot, consumed) + .planning/phases/21-h-264-decoder-receive-pipeline/.continue-here.md (stale — pre-release; supersede on next pause)
+
+### Release shipped this session (2026-05-17)
+
+- **v1.1-beta.20.6** published as prerelease at tag `75e3dd3` (mac arm64 only):
+  https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.6
+  Asset: `JamWide-macOS.tar.gz` (23.5 MB; `.app` + `.vst3` + `.component` + `.clap`).
+  CI run `25996593334` green (build-macos 6m53s). Windows + Linux + universal-mac deferred to Phase 23 per workflow `if: ${{ false }}` gates.
+
+- **Per user directive, `docs/download.md` NOT updated** — beta.20.5 link remains the user-facing recommendation on the download page since v1.1-beta.20.6 is mac-arm64-only and most users want the cross-platform 20.5 build. Tag is published for testers who specifically want the Phase 20 wire-format fixes on Apple Silicon.
 
 ### Phase 20 root-cause finding (2026-05-17)
 

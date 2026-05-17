@@ -333,6 +333,16 @@ void Openh264Decoder::parseSlotAndFeed_(const VideoRecvSlotSnapshot& snapshot)
         //   first 2 bytes parse as plausible sps_len, sps_len + 2 + 2 +
         //   pps_len_min <= frameSize, inner SPS first byte's NAL
         //   unit_type & 0x1f == 7.
+        //
+        // When detected, send SPS and PPS as a SINGLE concatenated
+        // Annex-B packet (00 00 00 01 SPS 00 00 00 01 PPS) — libavcodec
+        // expects the parameter sets to arrive together, not as two
+        // separate send_packet calls (the separate-send pattern
+        // triggers AVERROR_INVALIDDATA on the SPS alone because the
+        // decoder cannot recover its state without seeing the PPS in
+        // the same packet sequence). This matches how the pushNalChunk
+        // path (test_first_frame_emits) works — that test passes the
+        // full SPS+start_code+PPS in one chunk and libavcodec is happy.
         if (frameSize >= 6) {
             const unsigned int sps_len = ((unsigned int)frame[0] << 8) | frame[1];
             if (sps_len >= 4 && (int)(2 + sps_len + 2) <= frameSize - 1) {
@@ -342,9 +352,42 @@ void Openh264Decoder::parseSlotAndFeed_(const VideoRecvSlotSnapshot& snapshot)
                     const unsigned int pps_len    =
                         ((unsigned int)frame[2 + sps_len] << 8) | frame[2 + sps_len + 1];
                     const unsigned char* pps_body = frame + 2 + sps_len + 2;
-                    if ((int)(2 + sps_len + 2 + pps_len) <= frameSize) {
-                        sendAnnexB_(sps_body, (int)sps_len);
-                        sendAnnexB_(pps_body, (int)pps_len);
+                    if ((int)(2 + sps_len + 2 + pps_len) <= frameSize
+                        && pps_len > 0) {
+                        // Build a combined SPS+PPS Annex-B packet in
+                        // annexBScratch_ and send as one packet.
+                        const std::size_t combined =
+                            4 + (std::size_t)sps_len + 4 + (std::size_t)pps_len;
+                        if (annexBScratch_.size() < combined) {
+                            annexBScratch_.resize(combined);
+                        }
+                        std::memcpy(annexBScratch_.data(),
+                                    kAnnexBStartCode, 4);
+                        std::memcpy(annexBScratch_.data() + 4,
+                                    sps_body, (std::size_t)sps_len);
+                        std::memcpy(annexBScratch_.data() + 4 + sps_len,
+                                    kAnnexBStartCode, 4);
+                        std::memcpy(annexBScratch_.data() + 4 + sps_len + 4,
+                                    pps_body, (std::size_t)pps_len);
+                        // Call send_packet directly with the combined buffer
+                        // (bypass sendAnnexB_ which would re-wrap with a
+                        // single start code).
+                        if (codecContext_ != nullptr && packet_ != nullptr) {
+                            av_packet_unref(packet_);
+                            packet_->data = annexBScratch_.data();
+                            packet_->size = (int)combined;
+                            const int rc = avcodec_send_packet(codecContext_, packet_);
+                            // AVERROR_INVALIDDATA on a parameter-set-only
+                            // packet (SPS+PPS, no slice) is libavcodec
+                            // saying "I parsed your headers but there's no
+                            // frame yet" — NOT a decode failure. Don't
+                            // count.
+                            if (rc < 0 && rc != AVERROR(EAGAIN)
+                                && rc != AVERROR_INVALIDDATA) {
+                                decode_error_count_.fetch_add(1, std::memory_order_relaxed);
+                            }
+                            drainReceiveFrameLoop_();
+                        }
                         continue;
                     }
                 }
@@ -374,6 +417,14 @@ void Openh264Decoder::sendAnnexB_(const unsigned char* nal, int nalLen)
     std::memcpy(annexBScratch_.data(),       kAnnexBStartCode, 4);
     std::memcpy(annexBScratch_.data() + 4,   nal,             (std::size_t)nalLen);
 
+    // Use a stack-allocated AVPacket with raw data pointer into our
+    // scratch buffer. After each successful send, drain receive_frame
+    // immediately — that ensures libavcodec has consumed the packet
+    // data before we reuse the scratch buffer on the next sendAnnexB_
+    // call. (Without ref-counting via av_packet_make_refcounted, the
+    // packet data is not copied; libavcodec parses it in place during
+    // send_packet, which is fine as long as we drain receive_frame
+    // before mutating the buffer.)
     av_packet_unref(packet_);
     packet_->data = annexBScratch_.data();
     packet_->size = (int)needed;
@@ -385,22 +436,39 @@ void Openh264Decoder::sendAnnexB_(const unsigned char* nal, int nalLen)
     // means "buffer full, drain receive_frame first") just bump the
     // counter and move on; libavcodec auto-recovers on the next IDR.
     if (rc < 0 && rc != AVERROR(EAGAIN)) {
-        decode_error_count_.fetch_add(1, std::memory_order_relaxed);
-        // If send failed, still attempt to drain (defensive).
+        // AVERROR_INVALIDDATA on a parameter-set-only packet (NAL units
+        // 7 = SPS, 8 = PPS, 6 = SEI) is libavcodec saying "I parsed your
+        // headers but there's no frame to give yet" — NOT a decode
+        // failure. Don't count it. Only count real decode errors on
+        // packets that purport to carry a slice (NAL type 1, 5, etc.).
+        const unsigned char nal_type = (nalLen >= 1) ? (nal[0] & 0x1f) : 0;
+        const bool is_parameter_set = (nal_type == 7 || nal_type == 8 || nal_type == 6);
+        if (!is_parameter_set) {
+            decode_error_count_.fetch_add(1, std::memory_order_relaxed);
+        }
         drainReceiveFrameLoop_();
+        return;
     }
 
     // If send returned EAGAIN, the decoder's internal queue is full — we
-    // must drain receive_frame before retrying. Drain here; the next
-    // sendAnnexB_ call will succeed.
+    // must drain receive_frame before retrying. Drain here; the retry
+    // sends the same packet (still in scratch) again.
     if (rc == AVERROR(EAGAIN)) {
         drainReceiveFrameLoop_();
         // Retry the send after draining.
         const int rc2 = avcodec_send_packet(codecContext_, packet_);
         if (rc2 < 0 && rc2 != AVERROR(EAGAIN)) {
             decode_error_count_.fetch_add(1, std::memory_order_relaxed);
+            return;
         }
     }
+
+    // Successful send (rc == 0 or successful retry after EAGAIN). Drain
+    // receive_frame NOW so the consumed-but-not-yet-decoded data inside
+    // libavcodec is processed BEFORE we reuse annexBScratch_ on the
+    // next sendAnnexB_ call. Most calls produce zero or one frame; the
+    // drain is cheap when the queue is empty (single EAGAIN return).
+    drainReceiveFrameLoop_();
 }
 
 void Openh264Decoder::drainReceiveFrameLoop_()

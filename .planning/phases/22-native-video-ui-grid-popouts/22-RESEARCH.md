@@ -969,32 +969,34 @@ void VideoTileBase::paintPopoutIcon_(juce::Graphics& g) {
 | A9 | Mixer min-height clamp behavior: cap band at `bandH = mainH - kMixerMinH` where kMixerMinH≈260 | (mentioned in Discretion not implemented above) | MEDIUM — Open D-discretion. Recommend: cap band, never auto-collapse — user dragged it, user owns it; mixer scrolls if needed. |
 | A10 | Self-tile popout = re-show existing `previewWindow_` (no new window) | D-09 verbatim | LOW — Locked decision; assumption is correctness of mapping. |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+*All open questions resolved by planner per recommendations below. Each `Recommendation:` line is treated as `**RESOLVED:**`.*
 
 1. **Should self-tile's ↗ icon be present at all if D-09 says "re-open existing CameraPreviewWindow"?**
    - What we know: D-09 locks self-popout re-opens existing window. D-04 locks always-visible ↗ icons on every tile.
    - What's unclear: For consistency, self-tile should show ↗; for clarity, perhaps a different icon (e.g., "▢" for "open in window" — but that conflicts with D-04 wording).
-   - Recommendation: Show ↗ on self-tile too; on click re-show `previewWindow_`. Distinct from peer-popout but UX consistent.
+   - **RESOLVED:** Show ↗ on self-tile too; on click re-show `previewWindow_`. Distinct from peer-popout but UX consistent.
 
 2. **Should sink-poll attach/detach be debounced?**
    - What we know: 30Hz Timer means peer join/leave triggers `addAndMakeVisible` + `resized()` within ~33ms. Rapid join/leave (network flap) could cause flicker.
    - What's unclear: How common is rapid peer churn on `video.ninjamzap.com:2049`? UAT will tell.
-   - Recommendation: No debounce for v1.3 beta; revisit per beta UAT feedback.
+   - **RESOLVED:** No debounce for v1.3 beta; revisit per beta UAT feedback.
 
 3. **Detached-grid bring-back: where do existing popouts go?**
    - What we know: D-18 says clicking bring-back destroys the detached-grid window and restores tiles in-place. But per-peer popouts can be active simultaneously per D-17.
    - What's unclear: If a peer popout is open AND the detached-grid is detached, the peer's slot in the detached grid shows "Popped out →" placeholder. On detached-grid bring-back, the placeholder transitions back to the in-main-view band's placeholder — which is correct per D-03 — but the planner must ensure the placeholder-vs-tile state machine handles both transitions.
-   - Recommendation: Document the 4-state truth table explicitly in the plan: {band-tile, band-placeholder, detached-tile, detached-placeholder} based on {gridDetached, peerPoppedOut}.
+   - **RESOLVED:** Document the 4-state truth table explicitly in the plan: {band-tile, band-placeholder, detached-tile, detached-placeholder} based on {gridDetached, peerPoppedOut}.
 
 4. **What happens to the popout window when its peer leaves the room?**
    - What we know: D-17 close hides; the underlying Subscription stays alive (paired with deferred-listener side-table). Peer leaves → distributor `removeSink` runs → PeerVideoSink destructor blocks for in-flight callbacks → Subscription's cached sink pointer dangles.
    - What's unclear: Does the popout window auto-close? Show "(left)" overlay? Keep showing last frame frozen?
-   - Recommendation: Treat peer-leave as a visual freeze (last decoded frame stays, no overlay change). On peer rejoin, the popout's tile re-acquires the new sink via Subscription's deferred-listener re-bind. Document in plan.
+   - **RESOLVED:** Treat peer-leave as a visual freeze (last decoded frame stays, no overlay change). On peer rejoin, the popout's tile re-acquires the new sink via Subscription's deferred-listener re-bind. Document in plan.
 
 5. **Should the placeholder cards animate on transition (tile fade out → card fade in)?**
    - What we know: Discretion item ("layout reshuffle animation").
    - What's unclear: Snap-vs-fade preference for v1.3 beta.
-   - Recommendation: Snap for v1.3 beta; revisit per UAT feedback.
+   - **RESOLVED:** Snap for v1.3 beta; revisit per UAT feedback.
 
 ## Environment Availability
 

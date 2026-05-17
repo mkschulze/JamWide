@@ -2,7 +2,7 @@
 phase: 22
 slug: native-video-ui-grid-popouts
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-05-17
 ---
@@ -40,10 +40,20 @@ created: 2026-05-17
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD | TBD | TBD | DISP-01 | — | per-peer tile renders inside main view band | unit + UAT | `ctest -R "phase22_grid_layout"` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | DISP-02 | — | popout window opens on click, drag-to-second-monitor works | UAT | manual cell 2 | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | DISP-03 | T-22-SP | popout survives grid toggle without UAF | UAT | manual cell 3 | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | DISP-04 | — | grid toggle off/on does not disconnect NINJAM session | UAT | manual cell 4 | ❌ W0 | ⬜ pending |
+| 22-01 T1 | 22-01 | 1 | DISP-01 (computeGridLayout) | — | pure-function layout solver, deterministic + 4:3 aspect | unit | `ctest -R "^video_grid_layout\$"` | 🟡 W0 (this plan creates) | ⬜ pending |
+| 22-01 T2 | 22-01 | 1 | DISP-01 (tile substrate) | T-22-MO-1 | MEMBER-ORDER CONTRACT: subscription_ is LAST member | build | `cmake --build . --target JamWideJuce_VST3` | n/a (build) | ⬜ pending |
+| 22-01 T3 | 22-01 | 1 | DISP-01 (tile substrate) | T-22-MO-1 | runtime offset proof subscription_ > all other members | unit | `ctest -R "^video_tile_member_order\$"` | 🟡 W0 (this plan creates) | ⬜ pending |
+| 22-02 T1 | 22-02 | 2 | DISP-01 (band container) | T-22-RE-2 | 30Hz sink-poll + self-broadcast atomic observation | build | `cmake --build . --target JamWideJuce_VST3` | n/a (build) | ⬜ pending |
+| 22-02 T2 | 22-02 | 2 | DISP-01, DISP-04 (toggle wiring) | T-22-RE-1 | toggleGridBand zero NJClient calls; auto-open latch fires once | build + grep gate | `awk '/toggleGridBand/,/^}/' juce/JamWideJuceEditor.cpp | grep -cE 'client\.\|NJClient::'` returns 0 | n/a (gate) | ⬜ pending |
+| 22-02 T3 | 22-02 | 2 | DISP-01, DISP-04, D-05 | — | visual: band toggles, peer tile renders, auto-open fires | UAT | manual cells A-G | n/a (manual) | ⬜ pending |
+| 22-03 T1 | 22-03 | 3 | DISP-02 | T-22-MM | popout DocumentWindow opens; multi-monitor clamp applied | build | `cmake --build . --target JamWideJuce_VST3` | n/a (build) | ⬜ pending |
+| 22-03 T2 | 22-03 | 3 | DISP-02, DISP-03 (placeholders + bring-back) | T-22-LT-1 | editor destructor clears popouts BEFORE LookAndFeel teardown (POSITIONAL — line numbers checked) | build + positional gate | `awk '/JamWideJuceEditor::~JamWideJuceEditor/,/^}/' juce/JamWideJuceEditor.cpp \| grep -n -E 'remotePopouts_\.clear\|detachedGrid_\.reset\|gridBand_\.reset\|setLookAndFeel\(nullptr\)' \| python3 -c "import sys; rows=[l.rstrip().split(':',1) for l in sys.stdin]; nums=[(int(n),t) for n,t in rows]; cl=[n for n,t in nums if 'setLookAndFeel' not in t]; laf=[n for n,t in nums if 'setLookAndFeel' in t]; assert len(cl)>=3 and len(laf)>=1 and all(c<min(laf) for c in cl), 'order broken'" | n/a (gate) | ⬜ pending |
+| 22-03 T3 | 22-03 | 3 | DISP-02 (lifetime) | T-22-MM, T-22-LT-2 | popout close-hides, bring-back destroys, multi-listener safe | unit | `ctest -R "^remote_peer_popout_lifetime\$"` | 🟡 W0 (this plan creates) | ⬜ pending |
+| 22-03 T4 | 22-03 | 3 | DISP-02, DISP-03 | T-22-MM | visual: popouts, detached-grid, coexistence, multi-monitor | UAT | manual cells A-G | n/a (manual) | ⬜ pending |
+| 22-04 T1 | 22-04 | 4 | DISP-01..04 (persistence) | T-22-SP | v4→v5 bump; `<video>` subtree; jlimit clamping + map cap | build + grep gate | `grep -q "kRemotePopoutMapCap = 64" juce/JamWideJuceProcessor.h` | n/a (gate) | ⬜ pending |
+| 22-04 T2 | 22-04 | 4 | DISP-01..04 (persistence) | T-22-SP | inline-replica `V5VideoState`/`readV5Video`/`writeV5Video` round-trip + v4 graceful upgrade + 200→64 cap + 300-char username drop + jlimit bounds clamp (10 sub-tests). NO processor link. End-to-end UAT-only via Cell 13. | unit | `ctest -R "^plugin_state_v4_v5\$"` | 🟡 W0 (this plan creates) | ⬜ pending |
+| 22-04 T3 | 22-04 | 4 | DISP-01..04 | — | UAT procedure + report templates exist (13 cells) | file existence | `test -f tests/uat/phase-22-grid-popout-uat-procedure.md` | n/a (doc) | ⬜ pending |
+| 22-04 T4 | 22-04 | 4 | DISP-01, DISP-02, DISP-03, DISP-04 | T-22-SP, T-22-MM | operator UAT sign-off (State A or State B) | UAT | manual procedure | n/a (manual) | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 

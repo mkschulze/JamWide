@@ -1,6 +1,7 @@
 # Phase 22: Native Video UI (Grid + Popouts) - Context
 
 **Gathered:** 2026-05-17
+**Updated:** 2026-05-18 — codex `--reviews` replan added M6 option (b) extraction to deferred items (v1.4)
 **Status:** Ready for planning
 
 <domain>
@@ -45,7 +46,7 @@ Phase 22 is the consumer-side UI for Phase 21's decoded video. It builds three c
 
 - **D-08: Two specialized tile component classes — `SelfVideoTile` (for self, Phase 19 distributor) + `RemotePeerTile` (for peers, Phase 21 distributor) — sharing a common chrome/render base class.** Cleanest cut for the two different subscription shapes (callback `Subscriber` for self vs RAII `Subscription` for peers). Shared base handles: 4:3 letterbox painting, username overlay strip, status overlays ("video starting…", "syncing…"), popout `↗` button rendering. Each derived class owns its subscription lifecycle. Both classes follow Phase 19 `CameraPreviewTile`'s MEMBER-ORDER CONTRACT (subscription as LAST declared member).
 
-- **D-09: Self-tile popout button re-opens Phase 19's existing `CameraPreviewWindow`.** Clicking the self-tile's `↗` calls into a `JamWideJuceProcessor` controller that shows the existing camera preview window (toggles visibility, mirroring how `JamWideJuceEditor::drivePreviewWindowVisibility` already works). NO second self-popout window is created — that would render the same camera frame twice. Per-peer popouts are NEW windows (Phase 19 popout has no per-peer counterpart).
+- **D-09: Self-tile popout button re-opens Phase 19's existing `CameraPreviewWindow`.** Clicking the self-tile's `↗` calls into a `JamWideJuceProcessor` controller that shows the existing camera preview window (toggles visibility, mirroring how `JamWideJuceEditor::drivePreviewWindowVisibility` already works). NO second self-popout window is created — that would render the same camera frame twice. Per-peer popouts are NEW windows (Phase 19 popout has no per-peer counterpart). **Codex M5 codex closure (2026-05-18 `--reviews` replan):** the dispatch is now typed via `enum class VideoPopoutTargetKind { Self, RemotePeer }` + `struct VideoPopoutTarget { kind; username; }` — NOT a magic-string `username == "__self__"` comparison. The editor's `openOrToggleRemotePopout(VideoPopoutTarget)` switches on `t.kind`.
 
 - **D-10: Fixed default band height (~280px planner-picked baseline) with draggable horizontal resizer on bottom edge.** Resizer drag updates band height; persisted across sessions in the new `<video>` state subtree (D-19). Mixer height = main_area − band_height when band is open. Predictable mixer behavior (mixer doesn't auto-shrink when peers join). User has a recourse (drag resizer) to recover mixer height or grow video band.
 
@@ -61,13 +62,23 @@ Phase 22 is the consumer-side UI for Phase 21's decoded video. It builds three c
 
 - **D-14: Bounds-only persistence; popouts always start CLOSED on plugin/standalone launch.** Mirror of Phase 19 D-10 ("Camera always starts OFF on launch"). Detached-grid window and per-peer popouts persist their last bounds across sessions but do NOT auto-reopen on load. User must explicitly click `↗` to open; the window then appears at its last-persisted bounds. Eliminates "surprise windows appearing on DAW reload" UX. Matches the privacy-default tone of Phase 19.
 
-- **D-15: Per-peer popout bounds keyed by username — `Map<String username, Rectangle bounds>`.** Dave's popout opens at Dave's last bounds whenever Dave is in the room, regardless of server. Survives username collisions with the rarer server-collision edge case left unhandled (NINJAM use rarely sees identical usernames across servers in the same user session). Matches the user's mental model "Dave's popout window." Simple map structure; planner serializes as XML inside the `<video>` ValueTree subtree.
+- **D-15: Per-peer popout bounds keyed by username — `Map<String username, Rectangle bounds>`.** Dave's popout opens at Dave's last bounds whenever Dave is in the room, regardless of server. Survives username collisions with the rarer server-collision edge case left unhandled (NINJAM use rarely sees identical usernames across servers in the same user session). Matches the user's mental model "Dave's popout window." Simple map structure; planner serializes as XML inside the `<video>` ValueTree subtree. **Codex H2 codex closure (2026-05-18):** production storage is `juce::HashMap<juce::String, juce::Rectangle<int>>` (NOT `std::unordered_map`) per the `juce/osc/OscAddressMap.h:65` precedent — iteration order is hash-stable per session, giving deterministic `<popout>` child node order in saved XML for diffability.
 
 - **D-16: Detached-grid window is a single state slot — `Rectangle bounds` (just position+size, no per-peer state inside the window).** Detached-grid window is a singleton (only one can be open at a time). Persists its bounds across sessions. Auto-restore = NO (matches D-14). Title bar shows "JamWide — Video Grid" (planner can refine).
 
 - **D-17: Closing a popout HIDES the window; does NOT destroy the underlying distributor Subscription.** Mirror of Phase 19 D-09 (`CameraPreviewWindow::closeButtonPressed` hides without affecting capture state). The popout window's `closeButtonPressed` calls `setVisible(false)`; the underlying `RemotePeerTile` keeps its `JamWideRemoteFrameDistributor::Subscription` alive (so frames keep arriving and the tile stays warm for next reopen — also keeps the in-grid placeholder card showing "Popped out →" with the bring-back affordance until the user either reopens or fully closes via an "X destroy" affordance — planner picks the explicit destroy semantics).
 
-- **D-18: "Bring back" affordance on placeholder cards = click the card → destroy the popout/detached-grid window → restore the live tile/grid in-place.** Bring-back is the explicit destroy path for popouts and detached-grid windows. After bring-back, the next click on `↗` opens a fresh popout at the last-persisted bounds.
+  **Codex H3 codex closure (2026-05-18 `--reviews` replan) — 4-state truth table for tile `↗` semantics:**
+  | State | Popout window | Tile `↗` click | Window X click | Placeholder click |
+  |-------|---------------|----------------|----------------|-------------------|
+  | (A) Absent (initial) | not created | CREATE+SHOW; placeholder mounts | n/a | n/a |
+  | (B) Visible | visible | HIDE; placeholder stays | HIDE; placeholder stays | RE-SHOW (placeholder usually hidden when popout visible — rare path) |
+  | (C) Hidden | hidden | **RE-SHOW** (non-destructive); placeholder stays | n/a | **DESTROY**; tile returns |
+  | (D) Destroyed | not created | (same as A) | n/a | n/a |
+
+  Codex H3 explicitly disambiguated state (C): clicking `↗` on a tile whose popout is hidden RE-SHOWS the popout (preserving bounds + Subscription). The destroy path is exclusively via placeholder click → `bringBackRemotePopout`. This makes "bring back" the single, predictable destroy path; the tile `↗` is the toggle-visibility path.
+
+- **D-18: "Bring back" affordance on placeholder cards = click the card → destroy the popout/detached-grid window → restore the live tile/grid in-place.** Bring-back is the explicit destroy path for popouts and detached-grid windows. After bring-back, the next click on `↗` opens a fresh popout at the last-persisted bounds. (Consistent with codex H3 state-machine above — placeholder click is the only path from C to D.)
 
 - **D-19: State schema bump v4 → v5; new `<video>` ValueTree subtree (NOT extending `<camera>`).** Phase 19 D-24 bumped state to v4 for the `<camera>` subtree. Phase 22 bumps to v5 and adds a separate `<video>` subtree with: `gridVisible` (bool, default false), `gridBandHeight` (int, default ~280px), `detachedGridBounds` (Rectangle), `popoutBounds` (Map<username, Rectangle>). NEW subtree (not extending `<camera>`) because grid state is independent of camera state — coupling them violates the existing Phase 19 D-09 "orthogonal camera/popout" principle. `loadState` handles missing v4→v5 fields gracefully via defaults.
 
@@ -85,7 +96,7 @@ Phase 22 is the consumer-side UI for Phase 21's decoded video. It builds three c
 - **Stale popout bounds handling** when monitor disconnected (use `juce::Component::setBoundsConstrained` to clamp to current screen — standard JUCE pattern).
 - **Aspect-lock policy for remote popouts** (4:3 mirror of Phase 19 D-07 — both source surfaces are 320×240).
 - **Keyboard shortcuts** for grid toggle / popout / detach (planner: none for v1.3 beta; revisit per beta UAT feedback).
-- **"Popped out window's explicit destroy" affordance** vs always treating close as hide-with-card-affordance-for-bring-back (per D-17 nuance).
+- **"Popped out window's explicit destroy" affordance** vs always treating close as hide-with-card-affordance-for-bring-back (per D-17 nuance). Codex H3 picked the side: tile `↗` toggles visibility on state-C; placeholder click is the explicit destroy.
 - **Detached-grid window title bar text and icon** (planner picks "JamWide — Video Grid" or similar).
 
 </decisions>
@@ -126,6 +137,9 @@ Phase 22 is the consumer-side UI for Phase 21's decoded video. It builds three c
 - `juce/JamWideJuceProcessor.cpp:72-74` — Distributor instantiation. Phase 22 does NOT touch this.
 - `juce/ui/ChannelStripArea.h:13` (`refreshFromUsers(const std::vector<NJClient::RemoteUserInfo>&)`) — Roster discovery pattern. Phase 22 reuses `client->GetRemoteUsersSnapshot(cachedUsers)` to iterate peers for tile-per-peer rendering.
 - `juce/ui/JamWideLookAndFeel.h` + `.cpp` — VB-Banana dark-theme LookAndFeel for tile chrome + popout window chrome (memory: `feedback_ui_preferences`).
+- `juce/ui/BotFilter.h` + `.cpp` — **NEW (codex H1 closure, 2026-05-18):** namespace-scoped `jamwide::isBot` + `jamwide::stripAtSuffix` extracted from `ChannelStripArea.cpp`'s former anonymous namespace (where they had internal linkage, blocking any cross-TU use). Plan 22-02 Task 0 creates this header pair; Plans 22-02 + JamWideJuceEditor `#include "ui/BotFilter.h"` and call through `jamwide::` prefix.
+- `juce/osc/OscAddressMap.h:65` — `juce::HashMap<juce::String, int>` precedent for the codex H2 NARROWED closure: applies only to copyable value types where deterministic iteration matters (Plan 22-04's `juce::HashMap<juce::String, juce::Rectangle<int>>` for `remotePopoutBoundsMap_`).
+- `juce/midi/MidiMapper.h:105` — `std::unordered_map<juce::String, int>` precedent proving `std::hash<juce::String>` ships with JUCE 8. Used for in-memory `std::unique_ptr<T>`-valued maps in Plans 22-02/22-03 (`peerTiles_`, `remotePopouts_`, `peerPlaceholders_`) because `juce::HashMap::set()` does copy-assign and cannot hold move-only types.
 
 ### State persistence pattern (precedent)
 
@@ -136,6 +150,7 @@ Phase 22 is the consumer-side UI for Phase 21's decoded video. It builds three c
 - `feedback_ui_preferences` — VB-Audio Voicemeeter Banana style, dark theme, full custom LookAndFeel. Drives D-04 (always-visible controls), D-11 (minimal tile chrome), and the band's visual integration with the mixer.
 - `feedback_no_scroll_wheel_faders` — Scroll passes through to viewport, not adjust volume. **Applies to grid-band-with-many-peers scroll case** (D-06 fallback) — scroll wheel should scroll the band, not interact with tiles.
 - `feedback_uat_scope_redflags` — Never let an executor's "verify only X, skip Y" UAT pass when Y is a user-visible happy-path. Phase 22's UAT must explicitly cover DISP-01/02/03/04 — grid opens, popout opens, both coexist, toggling doesn't disconnect.
+- `feedback_video_surfaces_detachable` (2026-05-17 NEW) — Every JamWide video surface needs detach-to-window for multi-monitor jam workflows. Phase 22 surfaces this: grid band + whole-grid-window + per-peer-window, all simultaneous. Treat detachability as Tier-1 gray area in any video phase. Codex M7 reinforces this — the detached band must stay in sync with the main band's placeholder state via editor-driven `setPeerPoppedOut` on BOTH bands.
 
 ### Project + requirements
 
@@ -166,11 +181,12 @@ Phase 22 is the consumer-side UI for Phase 21's decoded video. It builds three c
 - **State version bumps for schema additions.** Phase 14 v2→v3 (MIDI), Phase 19 v3→v4 (camera), Phase 22 v4→v5 (video). `loadState` handles missing fields via defaults.
 - **Per-tile/per-window chrome via custom `LookAndFeel`.** Phase 19 D-08 established this; Phase 22 reuses verbatim.
 - **Singleton popout pattern** — Phase 19's `CameraPreviewWindow` is owned by the editor and toggled visible. Phase 22's per-peer popouts are NOT singletons (one per peer); the detached-grid window IS a singleton.
+- **Container choice for `juce::String`-keyed maps** (codex H2 NARROWED, 2026-05-18) — for **copyable** value types (e.g. `juce::Rectangle<int>`), prefer `juce::HashMap<juce::String, V>` for deterministic per-session iteration order (good for serialized XML diffability) per `juce/osc/OscAddressMap.h:65`. For **move-only** value types (e.g. `std::unique_ptr<T>`), use `std::unordered_map<juce::String, V>` because `juce::HashMap::set()` does copy-assign at `juce_HashMap.h:244` (fails template instantiation on `unique_ptr`); `juce/midi/MidiMapper.h:105` proves `std::hash<juce::String>` ships with JUCE 8 so `std::unordered_map<juce::String, ...>` compiles cleanly.
 
 ### Integration Points
 
 - **`JamWideJuceEditor::resized()`** (`juce/JamWideJuceEditor.cpp:370-405`) — Phase 22 inserts the grid band between `sessionInfoStrip.setBounds(...)` and `channelStripArea.setBounds(area)`. New conditional `if (gridBandVisible)` block.
-- **`JamWideJuceEditor` member list** — Phase 22 adds: `VideoGridBand gridBand` (`juce::Component`), `std::unique_ptr<DetachedGridWindow> detachedGrid` (lazy), `std::unordered_map<String, std::unique_ptr<RemotePeerPopoutWindow>> remotePopouts` (lazy per peer), `std::unique_ptr<SelfVideoPopoutDelegate>` (delegates to existing `CameraPreviewWindow`).
+- **`JamWideJuceEditor` member list** — Phase 22 adds: `VideoGridBand gridBand` (`juce::Component`), `std::unique_ptr<DetachedGridWindow> detachedGrid` (lazy), `std::unordered_map<juce::String, std::unique_ptr<RemotePeerPopoutWindow>> remotePopouts` (lazy per peer — codex H2 NARROWED: `std::unordered_map` required because value type is move-only `unique_ptr`; `juce::HashMap::set` copy-assigns), `std::unique_ptr<SelfVideoPopoutDelegate>` (delegates to existing `CameraPreviewWindow`).
 - **`JamWideJuceProcessor::getRemoteFrameDistributor()`** (`juce/JamWideJuceProcessor.h:186`) — Editor obtains the distributor reference here; passes to grid band + popouts via constructor.
 - **`ConnectionBar`** — New `GridButton` member; `onClick` lambda calls `editor.toggleGridBand()`.
 - **Plugin state save/load** — Phase 22 adds `<video>` ValueTree subtree write/read; bumps version constant 4→5.
@@ -183,13 +199,13 @@ Phase 22 is the consumer-side UI for Phase 21's decoded video. It builds three c
 
 - **Placeholder card visual:** Dark VB-style frame matching surrounding chrome, faint dark-translucent backdrop. Text: per-peer = `"Popped out →"` ; whole-grid = `"Grid is in detached window →"`. Click anywhere on the card to bring back. Cursor changes to pointer on hover.
 - **Tile username strip:** Semi-transparent dark band across the bottom ~18px tall. Username in soft white at ~70% opacity, left-aligned, 4px padding. Auto-hides on mouse-hover-of-video (so user can inspect the full frame).
-- **Popout `↗` icon:** Small (~12-14px), top-right corner, 4px inset. Soft-white at ~70% opacity over faint dark-translucent backdrop (matches Phase 21 overlay style). On hover, opacity bumps to 100% and tile shows a tooltip "Pop out window".
-- **Grid band header (when band is open):** Thin (~24px tall) strip across the top of the band. Right edge: `↗ ×` (detach + close). Left edge: peer count badge `[3 peers]` (optional, Claude's discretion). Below the header: the tile flow area.
+- **Popout `↗` icon:** Small (~12-14px), top-right corner, 4px inset. Soft-white at ~70% opacity over faint dark-translucent backdrop (matches Phase 21 overlay style). On hover, opacity bumps to 100% and tile shows a tooltip "Pop out window". **Codex L9 closure (2026-05-18):** UAT Cell 1 explicitly verifies the `↗` glyph renders correctly (no tofu). Fallback if missing on Windows: small `Path`-drawn triangle.
+- **Grid band header (when band is open):** Thin (~24px tall) strip across the top of the band. Right edge: `↗ ×` (detach + close). Left edge: peer count badge `[3 peers]` (optional, Claude's discretion). Below the header: the tile flow area. **Codex M7 closure (2026-05-18):** `VideoGridBand` has a `Mode` enum (`MainBand`|`DetachedBand`) — the `↗` detach icon is painted ONLY when `mode_ == MainBand` (the detached band's inner band suppresses its own detach affordance since it's already detached).
 - **ConnectionBar Grid button label state machine:** "Grid" (idle/off) → "Grid (on)" (band visible). Tooltip on hover: "Toggle video grid" (idle), "Hide video grid" (active).
 - **Detached-grid window title:** `JamWide — Video Grid`. Window icon = the JamWide app icon. Default size = 800×450 or sized to fit current band content + chrome (planner picks).
 - **Per-peer popout window title:** `JamWide — <username>`. Default size = 320×240 + chrome (matches Phase 19 D-07 default). Aspect-locked 4:3 (mirror of Phase 19 D-07).
-- **Auto-open trigger** (D-05): observes `PeerVideoSink::first_frame_seen` atomic flipping false→true on ANY peer for the first time in the session. After first auto-open, subsequent peer-first-frames do NOT re-auto-open if the user has explicitly closed the band.
-- **Bring-back from placeholder card:** clicking the card triggers `editor.bringBackPopout(username)` or `editor.reattachGrid()`. The corresponding window is destroyed; the live tile/grid renders in-place again.
+- **Auto-open trigger** (D-05): observes `PeerVideoSink::first_frame_seen` atomic flipping false→true on ANY peer for the first time in the session. After first auto-open, subsequent peer-first-frames do NOT re-auto-open if the user has explicitly closed the band. **Codex M4 closure (2026-05-18):** the latch fires SYNCHRONOUSLY after releasing the `cachedUsersMutex` — NO `MessageManager::callAsync` (the timer is already on the message thread; the async shim was both unnecessary AND a UAF surface).
+- **Bring-back from placeholder card:** clicking the card triggers `editor.bringBackRemotePopout(username)` or `editor.reattachGrid()`. The corresponding window is destroyed; the live tile/grid renders in-place again. **Codex H3 closure (2026-05-18):** "bring back" is the EXCLUSIVE destroy path. Clicking tile `↗` on a hidden popout RE-SHOWS it (state C → B, non-destructive).
 
 </specifics>
 
@@ -214,10 +230,11 @@ Phase 22 is the consumer-side UI for Phase 21's decoded video. It builds three c
 - **Keyboard shortcuts** (e.g., `Ctrl+G` for grid toggle, `Ctrl+P` for popout active peer) — Deferred to v1.3 beta UAT feedback.
 - **Multi-camera tile (PIP within self-tile)** — Phase 19 ships single-camera selection (D-17 auto-pick deviceIndex=0). If a multi-camera UI lands, the self-tile may need a camera-source selector.
 - **Detached-grid window with its own controls (e.g., per-peer remove from grid)** — v1.3 detached-grid is a 1:1 mirror of the band. Custom layouts in detached mode is a v1.4+ idea.
+- **(NEW from codex M6 review, 2026-05-18) Extract pure helpers `serializeVideoStateToValueTree(...)` / `deserializeVideoStateFromValueTree(...)`** — Currently the production processor's `<video>` save/load logic and the test's inline replica are independent code paths kept in sync via a source-level grep gate (M6 option (a)). Long-term cleaner discipline is option (b): extract the two pure helpers into `juce/state/VideoStateSerialization.{h,cpp}`, have BOTH production AND test call them. This eliminates the inline-replica drift class entirely. Deferred from v1.3 (cost: 2 new files + plumbing; benefit: structural; current grep gate is sufficient defense for v1.3 ship). Track as a v1.4 cleanup task.
 
 </deferred>
 
 ---
 
 *Phase: 22-native-video-ui-grid-popouts*
-*Context gathered: 2026-05-17*
+*Context gathered: 2026-05-17 · Codex `--reviews` replan applied: 2026-05-18 (H1+H2+H3+M4+M5+M6+M7+L8+L9)*

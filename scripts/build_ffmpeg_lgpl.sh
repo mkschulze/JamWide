@@ -121,7 +121,11 @@ if [ "$CISCO_PREBUILT" = "source-build" ]; then
     cd openh264-src
     case "$OS|$ARCH" in
       "Darwin|arm64")
-        make OS=darwin64 ARCH=arm64 "-j${NCPU}"
+        # openh264 v2.1.1's Makefile includes build/platform-$(OS).mk; only
+        # build/platform-darwin.mk exists (no platform-darwin64.mk). Earlier
+        # `OS=darwin64` invocation failed with "platform-darwin64.mk: No such
+        # file or directory" on macos-14 (Apple Silicon) runners.
+        make OS=darwin ARCH=arm64 "-j${NCPU}"
         # Build outputs ./libopenh264.6.dylib in the source tree
         cp -f libopenh264.6.dylib "$WORK/$OPENH264_SO_NAME"
         ;;

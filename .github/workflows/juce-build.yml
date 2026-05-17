@@ -182,6 +182,38 @@ jobs:
       - name: Setup CMake
         uses: lukka/get-cmake@latest
 
+      - name: Setup MSYS2 (for ffmpeg ./configure + make)
+        # Phase 14.3-01: ffmpeg's autotools build needs a unix-like environment
+        # on Windows. JamWide itself still builds via MSVC; only the vendored
+        # ffmpeg+openh264 step uses MinGW64-gcc to produce DLLs (DLL ABI is
+        # interop-stable with MSVC consumers).
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-nasm
+            autoconf
+            automake
+            make
+            git
+
+      - name: Vendor LGPL ffmpeg
+        # Phase 14.3-01: produce libs/ffmpeg/windows-x86_64/ on the CI runner.
+        # Invoked under MSYS2 bash so uname returns MINGW64_NT-* and the script
+        # picks the windows-x86_64 leg (Cisco openh264 win64 prebuilt + ffmpeg
+        # LGPL from source). All inputs are static; no untrusted github event
+        # data flows into shell.
+        shell: msys2 {0}
+        run: bash scripts/build_ffmpeg_lgpl.sh
+
+      - name: Verify LGPL discipline
+        shell: msys2 {0}
+        run: bash scripts/verify_ffmpeg_lgpl.sh
+
       - name: Configure CMake
         run: |
           cmake -B build `
@@ -241,6 +273,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential cmake pkg-config \
+            nasm \
             libasound2-dev \
             libjack-jackd2-dev \
             libfreetype-dev \
@@ -253,6 +286,17 @@ jobs:
             libcurl4-openssl-dev \
             libwebkit2gtk-4.1-dev \
             libssl-dev
+
+      - name: Vendor LGPL ffmpeg
+        # Phase 14.3-01: produce libs/ffmpeg/linux-x86_64/ on the CI runner via
+        # scripts/build_ffmpeg_lgpl.sh. The script's OS+ARCH dispatch picks the
+        # Linux-x86_64 leg (Cisco openh264 v2.1.1 prebuilt + ffmpeg LGPL from
+        # source). All inputs are static; no untrusted github event data flows
+        # into shell.
+        run: bash scripts/build_ffmpeg_lgpl.sh
+
+      - name: Verify LGPL discipline
+        run: bash scripts/verify_ffmpeg_lgpl.sh
 
       - name: Configure CMake
         run: |

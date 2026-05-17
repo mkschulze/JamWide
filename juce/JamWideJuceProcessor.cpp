@@ -72,6 +72,11 @@ JamWideJuceProcessor::JamWideJuceProcessor()
     // (Plan 21-03 Task 2 lands NJClient::SetRemoteFrameDistributor).
     remoteFrameDistributor = std::make_unique<jamwide::JamWideRemoteFrameDistributor>();
     client->SetRemoteFrameDistributor(remoteFrameDistributor.get());
+    // Phase 21-03 Task 2: install the function-pointer table that the
+    // distributor TU implements. njclient.cpp calls through these to avoid
+    // forcing juce_graphics / juce_events / libavcodec into the njclient
+    // static library's link surface.
+    client->SetVideoDistributorOps(jamwide::getDefaultVideoDistributorOps());
 
     // MIDI mapper (created after NJClient and OscServer, same ownership pattern)
     midiMapper = std::make_unique<MidiMapper>(*this);

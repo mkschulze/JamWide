@@ -1,6 +1,12 @@
 // Phase 21-03 Task 1 — JamWideRemoteFrameDistributor implementation.
 #include "JamWideRemoteFrameDistributor.h"
 #include "PeerVideoSink.h"
+#include "../decoder/Openh264Decoder.h"
+
+// Plan 21-03 Task 2: include the NJClient header to see VideoRecvState's
+// shared_ptr<Openh264Decoder> decoder + raw PeerVideoSink* sink members so
+// the function-pointer table implementations can dereference vs in this TU.
+#include "../../../src/core/njclient.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -245,6 +251,176 @@ JamWideRemoteFrameDistributor::subscribeToPeer(const char*           username,
 
     const std::uint64_t id = sink->addListener(std::move(onRepaint));
     return Subscription{this, key, id};
+}
+
+std::shared_ptr<Openh264Decoder>
+JamWideRemoteFrameDistributor::createDecoderAndSinkForPeer(
+    const char* username, int chidx, int width, int height,
+    std::array<jamwide::VideoRecvSlotSnapshot, 4>& slotRing,
+    jamwide::SpscRing<int, 4>&                     slotIndexQ,
+    std::atomic<std::uint64_t>&                    producerSeq)
+{
+    if (!username) return nullptr;
+
+    // Step (a): find-or-create the sink for this peer. v1.3 fixed receive
+    // surface size 320x240 per codex Cluster 10 LOW — the decoder rescales
+    // via SwsContext recreate (D-07).
+    PeerVideoSink* sinkPtr = findOrCreateSink(username, chidx, width, height);
+    if (!sinkPtr) return nullptr;
+
+    // Step (b)+(c): construct decoder via std::make_shared. shared_ptr's
+    // type-erased deleter is captured at make_shared time INSIDE this
+    // translation unit — JamWideRemoteFrameDistributor.cpp links
+    // juce_graphics / juce_events / libavcodec. njclient.cpp (which does NOT
+    // link juce_graphics) can store the resulting shared_ptr on
+    // VideoRecvState::decoder and destroy it later without seeing the full
+    // Openh264Decoder type (W-2 resolution).
+    auto decoder = std::make_shared<Openh264Decoder>(slotRing, slotIndexQ, producerSeq);
+    decoder->setSink(sinkPtr);
+
+    // Step (d): heavyweight open(). avcodec_open2 + start the decoder
+    // thread. Returns false on libavcodec failure — undo the sink in that
+    // case so we don't leak it.
+    if (!decoder->open(width, height)) {
+        juce::Logger::writeToLog(
+            juce::String("Plan 21-03: decoder open failed for peer ")
+            + juce::String(username) + juce::String(" chidx=")
+            + juce::String(chidx));
+        decoder.reset();
+        removeSink(username, chidx);
+        return nullptr;
+    }
+    return decoder;
+}
+
+void JamWideRemoteFrameDistributor::tearDownDecoderAndSink(
+    std::shared_ptr<Openh264Decoder>& decoder,
+    const char* username, int chidx)
+{
+    // Step 1 (codex Cluster 3): decoder->close() — joins the decoder thread.
+    // Idempotent — R4 H9 close() is a no-op on already-closed.
+    if (decoder) {
+        decoder->close();
+    }
+    // Step 2 (codex Cluster 3): decoder->setSink(nullptr) — clears the
+    // decoder's back-reference. After close() joined the thread, no
+    // decoder-thread sink-touch can fire, but this is the defensive
+    // belt-and-suspenders guarantee.
+    if (decoder) {
+        decoder->setSink(nullptr);
+    }
+    // Step 4 (codex Cluster 3): remove the sink from the distributor. The
+    // unique_ptr<PeerVideoSink> dtor runs codex Cluster 3's dtor contract
+    // (cancelPendingUpdate + wait for in-flight).
+    if (username) {
+        removeSink(username, chidx);
+    }
+    // Caller's local shared_ptr ref drops here on scope exit. The decoder
+    // dtor is now a no-op (already closed).
+}
+
+// ─── Function-pointer table implementations (Plan 21-03 Task 2) ───────────
+// These are the JUCE-linked TU implementations of NJClient::VideoDistributorOps.
+// JamWideJuceProcessor populates m_njClient's ops table by pointing at these.
+// njclient.cpp calls them through the table without needing to see
+// Openh264Decoder / PeerVideoSink full types.
+
+namespace {
+
+// Opaque heap-allocated handle that owns the shared_ptr<Openh264Decoder>
+// during the brief window between create_decoder and install_decoder /
+// destroy_decoder. The void* opaque pointer in NJClient is one of these.
+struct OpaqueDecoderHandle {
+    std::shared_ptr<Openh264Decoder> decoder;
+};
+
+static void* op_create_decoder(jamwide::JamWideRemoteFrameDistributor* dist,
+                                const char* username, int chidx,
+                                int width, int height,
+                                std::array<jamwide::VideoRecvSlotSnapshot, 4>* slotRing,
+                                jamwide::SpscRing<int, 4>*                     slotIndexQ,
+                                std::atomic<std::uint64_t>*                    producerSeq,
+                                jamwide::PeerVideoSink** out_sink_ptr)
+{
+    if (!dist || !slotRing || !slotIndexQ || !producerSeq) return nullptr;
+    auto decoder = dist->createDecoderAndSinkForPeer(
+        username, chidx, width, height,
+        *slotRing, *slotIndexQ, *producerSeq);
+    if (!decoder) return nullptr;
+    if (out_sink_ptr) {
+        *out_sink_ptr = dist->findSink(username, chidx);
+    }
+    auto* handle = new OpaqueDecoderHandle{std::move(decoder)};
+    return static_cast<void*>(handle);
+}
+
+static void op_install_decoder(void* opaque_decoder, NJClient::VideoRecvState* vs)
+{
+    if (!opaque_decoder || !vs) return;
+    auto* handle = static_cast<OpaqueDecoderHandle*>(opaque_decoder);
+    vs->decoder = std::move(handle->decoder);
+    delete handle;
+}
+
+static void op_destroy_decoder(void* opaque_decoder)
+{
+    if (!opaque_decoder) return;
+    auto* handle = static_cast<OpaqueDecoderHandle*>(opaque_decoder);
+    // shared_ptr destructor runs R4 H9 7-step close on the underlying
+    // Openh264Decoder via the type-erased deleter captured at make_shared time.
+    delete handle;
+}
+
+static void op_remove_sink(jamwide::JamWideRemoteFrameDistributor* dist,
+                            const char* username, int chidx)
+{
+    if (dist && username) dist->removeSink(username, chidx);
+}
+
+// Tear-down: moves vs->decoder out, releases its sink touch + the sink itself,
+// then drops the local. This implementation is called OUTSIDE m_video_recv_cs
+// by njclient.cpp's user-leave block (per codex Cluster 4 — heavy work off
+// the audio-thread mutex).
+static void op_tear_down_decoder(jamwide::JamWideRemoteFrameDistributor* dist,
+                                  NJClient::VideoRecvState* vs,
+                                  const char* username, int chidx)
+{
+    if (!vs) return;
+
+    // Step 3 prep: move vs->decoder out + clear vs->sink. These mutations
+    // happen while njclient.cpp is OUTSIDE m_video_recv_cs — the audio
+    // thread may briefly observe vs->decoder=non-null & vs->sink=null and
+    // execute pushPlayingSnapshotToDecoder_. That code only checks
+    // vs->decoder boolean + accesses vs->decoderSlots/decoderSlotIndexQ/
+    // decoderProducerSeq fields (no sink touch); the decoder thread's
+    // scaleAndSwapImage_ sink-touch sees sink_=null (cleared by setSink
+    // below) and skips. Harmless.
+    std::shared_ptr<Openh264Decoder> local = std::move(vs->decoder);
+    vs->sink = nullptr;
+    vs->decoder.reset();
+
+    // Steps 1 + 2 + 4.
+    if (local) {
+        local->close();
+        local->setSink(nullptr);
+    }
+    if (dist && username) {
+        dist->removeSink(username, chidx);
+    }
+    // local destructs here — shared_ptr ref drops, R4 H9 close already done.
+}
+
+} // anonymous namespace
+
+NJClient::VideoDistributorOps getDefaultVideoDistributorOps() noexcept
+{
+    NJClient::VideoDistributorOps ops;
+    ops.create_decoder    = &op_create_decoder;
+    ops.install_decoder   = &op_install_decoder;
+    ops.destroy_decoder   = &op_destroy_decoder;
+    ops.remove_sink       = &op_remove_sink;
+    ops.tear_down_decoder = &op_tear_down_decoder;
+    return ops;
 }
 
 void JamWideRemoteFrameDistributor::unsubscribe_(const std::string& key,

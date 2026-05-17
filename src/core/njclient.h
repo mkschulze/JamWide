@@ -67,6 +67,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -769,6 +770,145 @@ public:
   void RawDataSendWrite(const unsigned char guid[16], const void *data,
                         int dataLen, bool isEnd);
 
+  // -------------------------------------------------------------------------
+  // Phase 21 receive pipeline (Plan 21-01 Task 1). Verbatim port of
+  // ninjamzap-core/njclient.h:345-414 + cpp:2124-2173 (D-14).
+  //
+  // Public so future plans (21-02 decoder, 21-03 distributor) and the
+  // JAMWIDE_BUILD_TESTS test harness can resolve a VideoRecvState by key
+  // and inspect its slot bytes for parsing / verification.
+  //
+  // One amendment (D-11): VideoRecvBuffer's ctor pre-allocates 4 MB so
+  // subsequent WRITE-handler Resize() calls within the cap are realloc-
+  // free (RT-safe accumulation on the run thread, bounded memcpy cost
+  // for audio-thread copyFrom under D-16).
+  //
+  // Wire-format contract for VideoRecvBuffer (codex review Cluster 6):
+  //
+  //   `data`             - concatenated frame payloads. The 4-byte BE OUTER length
+  //                        prefix that the WRITE handler reads off the wire is
+  //                        CONSUMED by the run-thread accumulator and DOES NOT appear
+  //                        in `data`. Each frame's payload bytes appear back-to-back.
+  //
+  //   `frameOffsets[i]`  - byte offset INTO `data` of frame `i`'s FIRST payload byte.
+  //                        `frameOffsets[i+1] - frameOffsets[i]` is frame `i`'s payload
+  //                        size; `frameOffsets[frameCount]` == data.GetSize().
+  //
+  //   Frame payload layouts (each frame, after the outer prefix is stripped):
+  //
+  //     24-byte marker (first frame when frameCount == 1, payload size == 20 bytes):
+  //         [4B BE sender_seq][16B audio_ch0_guid]
+  //         The OUTER 4B BE prefix value for the marker frame MUST equal 20
+  //         (decimal). Phase 20 commit 6d23b5c lost cycles to truncating the marker
+  //         to 20 bytes on the wire (missing the outer prefix); this contract is
+  //         the regression guard. Reference:
+  //         /Users/cell/dev/ninjamzap-core/tests/video-sync/harness/TestClient.cpp:120-176
+  //         (sendVideoFrame + sendFakeSPSPPS).
+  //
+  //     SPS/PPS chunk (when present): no Annex-B start codes; Annex-B wrap is the
+  //         decoder's job (Plan 21-02 sendAnnexB_ helper):
+  //         [2B BE sps_len][SPS_NAL_bytes][2B BE pps_len][PPS_NAL_bytes]
+  //
+  //     Per-frame NAL chunk (common case): single NAL unit, no prefix, no start code:
+  //         [NAL_bytes]
+  //
+  // This contract is the AUTHORITY for the parser in Plan 21-02
+  // `Openh264Decoder::parseSlotAndFeed_`. The contract is unit-tested in Plan 21-01
+  // Task 3 (test_marker_parse_extracts_guid_and_seq) and Plan 21-02 Task 3
+  // (test_pushSlotView_full_ninjamzap_bytes - codex Cluster 7).
+  struct VideoRecvBuffer {
+    WDL_HeapBuf data;
+    WDL_TypedBuf<int> frameOffsets;
+    int frameCount;
+    char username[256];
+    unsigned char guid[16];
+    unsigned int fourcc;
+    int chidx;
+    int interval_seq; // receiver's interval counter at BEGIN time
+    unsigned char audio_guid[16]; // sender's audio ch0 GUID for this interval (from marker chunk, zero=no marker)
+    bool active;
+    // Multi-write reassembly: when a logical frame is split across raw-data WRITEs by the
+    // sender's MAX_ENC_BLOCKSIZE chunker, we accumulate bytes here until the frame is
+    // complete. `pending_remaining` is bytes still expected before the in-progress frame
+    // is finalized (frameCount++ happens at completion, not on every WRITE).
+    int pending_remaining;
+    int sender_seq; // sender's m_sync_interval_cnt for this interval (from 24B marker, -1=unknown)
+    VideoRecvBuffer() : frameCount(0), fourcc(0), chidx(0), interval_seq(-1), active(false), pending_remaining(0), sender_seq(-1) {
+      username[0] = 0; memset(guid, 0, 16); memset(audio_guid, 0, 16);
+      // Phase 21 D-11: pre-allocate 4 MB so subsequent WRITE-handler Resize()
+      // calls inside the WRITE accumulation never realloc. Resize(0, false)
+      // shrinks the LOGICAL size to 0 without releasing the underlying
+      // capacity (WDL_HeapBuf::Resize with resizedown=false: line 132-203 of
+      // wdl/heapbuf.h - the alloc-size-change branch is only entered when
+      // newsize > m_alloc OR newsize < resizedown_under, and resizedown_under
+      // is 0 here, so the realloc branch is skipped and only m_size is
+      // updated). Verified at Plan 21-01 Task 1 ack.
+      data.Resize(4 * 1024 * 1024, true);
+      data.Resize(0, false);
+    }
+    void reset() { data.Resize(0); frameOffsets.Resize(0); frameCount = 0; fourcc = 0; chidx = 0; interval_seq = -1; active = false; pending_remaining = 0; sender_seq = -1; username[0] = 0; memset(guid, 0, 16); memset(audio_guid, 0, 16); }
+    void copyFrom(const VideoRecvBuffer &src) {
+      fourcc = src.fourcc; chidx = src.chidx; active = src.active; frameCount = src.frameCount;
+      memcpy(username, src.username, sizeof(username));
+      memcpy(guid, src.guid, 16);
+      int sz = src.data.GetSize();
+      data.Resize(sz, false);
+      if (sz > 0) memcpy(data.Get(), src.data.Get(), sz);
+      frameOffsets.Resize(src.frameCount, false);
+      if (src.frameCount > 0) memcpy(frameOffsets.Get(), src.frameOffsets.Get(), src.frameCount * sizeof(int));
+      interval_seq = src.interval_seq;
+      memcpy(audio_guid, src.audio_guid, 16);
+      pending_remaining = src.pending_remaining;
+      sender_seq = src.sender_seq;
+    }
+  };
+
+  // Per-user video receive state.
+  // Pipeline: accumulating (during interval download) -> next (after start/END) ->
+  // pending (1-swap defer to align with audio output) -> playing. The pending slot adds
+  // exactly one swap of latency so the video's first frame appears at the same moment
+  // the matching audio becomes audible (audio's natural decoder/output-buffer lag is
+  // ~1 interval). Going to 2 slots overshoots by one interval ("video se ve tarde").
+  struct VideoRecvState {
+    VideoRecvBuffer accumulating;
+    VideoRecvBuffer next;
+    VideoRecvBuffer pending; // matched at SWAP N, moves to playing at SWAP N+1
+    VideoRecvBuffer playing;
+    int frame_idx;
+    int expected_frames;
+    bool append_active;
+    bool append_to_next;
+    bool append_to_pending; // routing for late WRITEs when video is held in `pending` waiting for SWAP+1 promote
+    unsigned char append_guid[16];
+    // Stable identifiers - set at creation, never reset. accumulating's username/chidx
+    // can be cleared by reset(), so we can't rely on those for stream lookup.
+    char stream_username[256];
+    int stream_chidx;
+    char key[280]; // "username:chidx"
+    int  empty_count;           // consecutive SWAPs with no video data
+    int  hold_count;            // consecutive SWAPs where GUID mismatch held video
+    unsigned char prev_ds_guid[16]; // ds->guid from the previous SWAP - video marker is 1 SWAP behind ds
+    bool synced;                // true once we have aligned at least once via DS or PREV match
+    int  last_played_sender_seq; // sender_seq of the last interval we played (-1 if never)
+    unsigned char last_played_audio_guid[16]; // audio_guid of the last interval we played
+    int  drop_resync_count;     // diagnostic: number of force-resyncs (HOLD cap exceeded)
+    VideoRecvState() : frame_idx(0), expected_frames(0), append_active(false), append_to_next(false), append_to_pending(false), stream_chidx(0),
+                       empty_count(0), hold_count(0), synced(false), last_played_sender_seq(-1), drop_resync_count(0) {
+      memset(append_guid, 0, 16); key[0] = 0; stream_username[0] = 0; memset(prev_ds_guid, 0, 16);
+      memset(last_played_audio_guid, 0, 16);
+    }
+  };
+
+  // Public accessors — production code must hold m_video_recv_cs across any
+  // dereference (helpers themselves do NOT take the lock). The four private
+  // state-machine helpers (handleVideoRecvBegin_ / handleVideoRecvWrite_ /
+  // handleVideoRecvEnd_ / runVideoReceiveBlock_) DO take the lock internally
+  // and are declared in the protected: section.
+  VideoRecvState *findVideoStream(const char *username, int chidx);
+  VideoRecvState *findOrCreateVideoStream(const char *username, int chidx);
+  VideoRecvState *findVideoStreamByGUID(const unsigned char *guid);
+  void removeVideoStream(const char *username, int chidx);
+
   // ---------------------------------------------------------------------
   // Phase 20-00 + R3 MF4: queue observability surface for Plan 20-03.
   //
@@ -860,6 +1000,51 @@ public:
   // attempt will spin to the retry cap and return false + zero-fill.
   static void TestForceOddParityForTest(TestLocalChannelHandle& h);
   static void TestRestoreEvenParityForTest(TestLocalChannelHandle& h);
+
+  // ---------------------------------------------------------------------
+  // Plan 21-01 Task 1 (codex Cluster 5): thin forwarder helpers exposing
+  // the four single-source state-machine helpers + a few VideoRecvState
+  // inspection / fixture helpers for unit tests. The Dispatch* functions
+  // are ONE-LINE forwarders that call handleVideoRecvBegin_ /
+  // handleVideoRecvWrite_ / handleVideoRecvEnd_ — they do NOT inline a
+  // copy of the state-machine logic.
+  // ---------------------------------------------------------------------
+  void DispatchTestVideoRecvBegin(const unsigned char guid[16], unsigned int fourcc,
+                                   const char *username, int chidx);
+  void DispatchTestVideoRecvWrite(const unsigned char guid[16],
+                                   const void *data, int dataLen, bool isEnd);
+  void DispatchTestVideoRecvEnd(const unsigned char guid[16]);
+  void RunOnNewIntervalReceiveBlockForTest();
+  VideoRecvState* GetVideoStreamForTest(const char *username, int chidx);
+
+  // Populate m_remoteuser_mirror[slot] so the GUID-pair decision tree in
+  // runVideoReceiveBlock_ can find a "remote user" matching the
+  // VideoRecvState's stream_username. Tests own the DecodeState lifetime;
+  // ClearTestRemoteUserMirror frees the test-allocated DecodeStates and
+  // resets the mirror slot.
+  void AddTestRemoteUserMirrorWithDs(int slot, const char *username, int channel,
+                                      const unsigned char guid[16]);
+  void ClearTestRemoteUserMirror(int slot);
+
+  // Run the user-leave video-state reset (mirrors the inline block at the
+  // m_remoteusers Delete site). Tests call this to verify
+  // test_user_leave_resets_video_sync_state.
+  void DispatchTestUserLeaveForVideoReset(const char *username);
+
+  // ---------------------------------------------------------------------
+  // Plan 21-01 Task 2 (codex Cluster 1): runVideoReceiveBlock_ timing
+  // instrumentation accessors. Production builds DO NOT see these — entire
+  // JAMWIDE_BUILD_TESTS block compiles out.
+  //
+  // getRunVideoReceiveBlockMaxNanosForTest returns the worst-case
+  // nanosecond duration observed across all invocations of
+  // runVideoReceiveBlock_ since the last reset (or NJClient construction).
+  // getRunVideoReceiveBlockLastPeerCountForTest returns the
+  // m_video_streams.GetSize() observed during the most-recent invocation.
+  // ---------------------------------------------------------------------
+  std::uint64_t getRunVideoReceiveBlockMaxNanosForTest() const noexcept;
+  int           getRunVideoReceiveBlockLastPeerCountForTest() const noexcept;
+  void          resetRunVideoReceiveBlockTimingForTest() noexcept;
 #endif
 
   // -- Phase 14.2: Instamode latency measurement (VID-13) --
@@ -1028,6 +1213,24 @@ protected:
       int           chidx;
   };
   WDL_PtrList<RawDataDownloadTracker> m_rawdata_downloads;
+
+  // Phase 21 (Plan 21-01 Task 1): per-peer video receive state list +
+  // mutex. State struct definitions are in the public section above (so
+  // Plan 21-02 decoder + JAMWIDE_BUILD_TESTS test harness can name them).
+  WDL_PtrList<VideoRecvState> m_video_streams;
+  WDL_Mutex m_video_recv_cs;
+
+  // Phase 21 (Plan 21-01 Task 2 - codex Cluster 5): single-source private
+  // state-machine helpers. Production dispatchers, test dispatchers, AND
+  // the audio-thread on_new_interval video receive block all call into
+  // these four helpers. The helpers each acquire m_video_recv_cs
+  // internally - callers must NOT pre-acquire.
+  void handleVideoRecvBegin_(const unsigned char guid[16], unsigned int fourcc,
+                              const char *username, int chidx);
+  void handleVideoRecvWrite_(const unsigned char guid[16],
+                              const void *data, int dataLen);
+  void handleVideoRecvEnd_(const unsigned char guid[16]);
+  void runVideoReceiveBlock_();
 
   WDL_HeapBuf tmpblock;
 
@@ -1219,6 +1422,14 @@ protected:
   // JAMWIDE_BUILD_TESTS-only so production builds do not run the
   // steady_clock::now() probe on the audio thread.
   std::atomic<uint64_t> m_on_new_interval_video_block_worst_case_ns{0};
+
+  // Plan 21-01 Task 2 (codex Cluster 1): receive-side audio-thread budget
+  // probe — worst-case nanos + last-observed peer count for
+  // runVideoReceiveBlock_. CAS-update via compare_exchange_weak loop, see
+  // njclient.cpp runVideoReceiveBlock_ body. Same shape as the send-side
+  // probe above. JAMWIDE_BUILD_TESTS-only.
+  std::atomic<std::uint64_t> m_run_video_receive_block_max_nanos_{0};
+  std::atomic<int>           m_run_video_receive_block_last_peer_count_{0};
 #endif
 
   // Diagnostic counters for the 2026-05-02 RemoteUserMirror orphan-fields fix.

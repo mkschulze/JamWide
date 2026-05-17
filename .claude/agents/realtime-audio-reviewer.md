@@ -240,5 +240,93 @@ gate confirms zero unreplaced placeholder tokens remain.
 ### Auditor zero-CRITICAL gate scope
 
 All other audio-path violations remain CRITICAL — these are the only carve-
-outs accepted under the D-09 envelope. The auditor zero-CRITICAL gate applies
-OUTSIDE this envelope.
+outs accepted under the **D-09 (Phase 20)** + **D-16 (Phase 21, parity-
+only)** envelopes. The auditor zero-CRITICAL gate applies OUTSIDE these
+envelopes. Phase 21's envelope explicitly forbids generalization-by-analogy
+to other subsystems.
+
+## Phase 21 audit allowlist envelope
+
+> **Decision authority:** CONTEXT.md D-14 / D-15 / D-16 / D-20-mirror +
+> REVIEWS.md codex Cluster 1.
+> **Status:** Published 2026-05-17 by Plan 21-01 Task 4; line-number-
+> refreshed by the same commit (Task 2 + Task 3 lines are stable after
+> this commit lands).
+
+> **The Phase 21 envelope is accepted ONLY as parity with the upstream NinjamZap source port** (`ninjamzap-core/njclient.cpp:3084-3256`). The envelope MUST NOT be treated as a general permission for similar audio-thread work in unrelated subsystems. Specifically:
+>
+> - The `m_video_recv_cs` acquire on the audio thread is accepted BECAUSE
+>   the upstream NinjamZap audio-thread `on_new_interval` does the
+>   equivalent acquire and JamWide is a byte-for-byte port. Any FUTURE
+>   audio-thread mutex acquire in another subsystem requires a SEPARATE
+>   design review — it does not inherit acceptance from Phase 21.
+> - The `VideoRecvBuffer::copyFrom` up to 4 MB on the audio thread is
+>   accepted BECAUSE it is bounded (one per peer per swap; pre-allocated;
+>   realloc-free per D-11) AND because upstream does the equivalent. Any
+>   FUTURE audio-thread memcpy in another subsystem requires its own
+>   bounded-cost analysis.
+> - The `m_remoteuser_mirror[s].chans[0].next_ds[0]->guid` read is accepted
+>   via the Phase 15.1-07a HIGH-2 carve-out which already underwent its
+>   own design review.
+>
+> **Timing instrumentation requirement (codex Cluster 1):** the
+> `runVideoReceiveBlock_` helper carries a JAMWIDE_BUILD_TESTS-gated
+> `std::chrono::steady_clock` timing wrapper (Plan 21-01 Task 2). Tests
+> are required to read `getRunVideoReceiveBlockMaxNanosForTest()` and
+> assert sane bounds under simulated peer load. Phase 21-03 UAT MUST
+> report a 3-peer max-nanos number; if it exceeds 1 ms (1,000,000 ns)
+> per swap under steady-state, escalate to a follow-up design review.
+
+### src/core/njclient.cpp `NJClient::runVideoReceiveBlock_()` (Plan 21-01 Task 2 — single source of truth for audio-thread video receive)
+
+- `src/core/njclient.cpp:3723` — `WDL_MutexLock vrlock(&m_video_recv_cs)` opening the whole-block critical section (D-15, NinjamZap-literal whole-block serialization parallel to D-08 send-side)
+- `src/core/njclient.cpp:3724` — `m_video_streams.GetSize()` iteration entry — read-only structural traversal under `m_video_recv_cs`
+- `src/core/njclient.cpp:3735` — `vs->playing.copyFrom(vs->pending)` STAGE-1 promote (D-16 accepts Resize + memcpy up to 4 MB per peer per swap; cost ~0.4 ms per peer at HD per RESEARCH §Pitfall 6)
+- `src/core/njclient.cpp:3754-3784` — iteration over `m_remoteuser_mirror[s]` reading `chans[0].next_ds[0]->guid` for the GUID-pair comparison (Phase 15.1-07a HIGH-2 carve-out reused; ONLY the `.guid` field is read, no other DecodeState member)
+- `src/core/njclient.cpp:3796` — `const int kHoldCapDrop = 4` literal — no allocation, scalar comparisons only
+- `src/core/njclient.cpp:3826` — `vs->pending.copyFrom(vs->next)` DS-match defer path (1-swap defer; copyFrom carve-out)
+- `src/core/njclient.cpp:3834` — `vs->playing.copyFrom(vs->next)` PREV-match immediate play path (copyFrom carve-out)
+- `src/core/njclient.cpp:3840` — `memset(vs->prev_ds_guid, ...)` 16-byte scalar memcpy/memset of GUID — bounded, no realloc
+- scalar reads/writes throughout: `vs->next.active`, `vs->next.frameCount`, `vs->next.audio_guid` (16-byte memcmp), `vs->next.sender_seq`, `vs->frameOffsets` reads, `vs->hold_count`, `vs->empty_count`, `vs->synced`, `vs->last_played_sender_seq`, `vs->last_played_audio_guid`, `vs->drop_resync_count`, `vs->append_active`, `vs->append_to_next`, `vs->append_to_pending` — all bounded, no allocation
+- **(JAMWIDE_BUILD_TESTS-only)** `src/core/njclient.cpp:3870-3879` — `std::chrono::steady_clock` measurement around the inner scope; CAS-update of `m_run_video_receive_block_max_nanos_` via `compare_exchange_weak`; relaxed-order store on `m_run_video_receive_block_last_peer_count_`. **Zero overhead in production builds — entire block compiles out (codex Cluster 1).**
+- **(Forward reference)** Plan 21-02 (next wave) will push a slot snapshot onto a per-peer SPSC at the end of the SWAP block. Per CONTEXT.md D-12 revised + codex Cluster 2 Option A: snapshot lives in a `VideoRecvState`-owned ring of 4 pre-allocated 4 MB buffers; the audio-thread cost is one bounded memcpy + one integer push (within the copyFrom allowlist).
+
+### src/core/njclient.cpp on_new_interval call site
+
+- `src/core/njclient.cpp:6010` — `runVideoReceiveBlock_();` invocation; ADJACENT to the Phase 20 send-side video block (different mutex — `m_video_recv_cs` vs `m_video_cs`).
+
+### src/core/njclient.cpp on the audio-thread receive path
+
+**No `writeLog` / `SYNCLOG` / `printf` calls remain.** Plan 21-01 Task 2
+stripped upstream SYNCLOG sites. NinjamZap source has `SYNCLOG` which is
+a no-op-able macro; JamWide port does NOT carry over the macro nor any
+equivalent — symmetric to Phase 20 R2 H7 + R4 M12.
+
+**No `WaitableEvent::signal()` calls remain (codex Cluster 1).** Plan
+21-02 redesign moves the decoder-thread wake-up off the audio thread
+entirely — Plan 21-02's `pushSlotSnapshot` will use an atomic sequence
+counter that the decoder thread polls with a short timed wait, NOT a
+`juce::WaitableEvent::signal()` from the audio thread. See Plan 21-02
+for the implementation when it lands.
+
+### src/core/njclient.cpp on the run-thread BEGIN/WRITE/END dispatch sites (Plan 21-01 Task 2 — augmentations of existing Phase 14.3-03 handlers; NOT audio-thread, listed for envelope completeness)
+
+- `src/core/njclient.cpp:2415` — `handleVideoRecvBegin_(dib.guid, dib.fourcc, dib.username, dib.chidx)` invocation inside the BEGIN raw-data branch (run thread; helper acquires `m_video_recv_cs` internally — not audio thread)
+- `src/core/njclient.cpp:2540` — `handleVideoRecvWrite_(diw.guid, diw.audio_data, diw.audio_data_len)` invocation inside the WRITE raw-data branch (run thread)
+- `src/core/njclient.cpp:2555` — `handleVideoRecvEnd_(diw.guid)` invocation inside the END raw-data branch (run thread)
+
+### src/core/njclient.cpp on the user-leave video-state reset path (Plan 21-01 Task 2 — augmentation of the m_remoteusers Delete site; run thread, NOT audio thread)
+
+- `src/core/njclient.cpp:2187-2202` — `m_video_recv_cs.Enter()` + iteration over `m_video_streams` resetting matching VideoRecvState's `prev_ds_guid` + slot members + `m_video_recv_cs.Leave()`. Run thread inside `m_users_cs`-protected branch; verbatim port of upstream `:1306-1322`. Not audio thread; listed for envelope completeness.
+
+### Phase 21 timing instrumentation surface (codex Cluster 1)
+
+`getRunVideoReceiveBlockMaxNanosForTest()` (JAMWIDE_BUILD_TESTS-only,
+declared in `src/core/njclient.h` under the JAMWIDE_BUILD_TESTS guard,
+body at `src/core/njclient.cpp:3889-3897`) is the required UAT
+measurement surface. Plan 21-03 UAT MUST report a 3-peer max-nanos
+number and record it in the UAT report. If 3-peer max-nanos exceeds
+1 ms (1,000,000 ns) per swap under steady-state, escalate to a
+follow-up design review — Plan 21-02's slot-handoff redesign may need
+a smaller per-slot cap or the parser may need to move out of D-16's
+envelope.

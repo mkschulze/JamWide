@@ -510,6 +510,28 @@ if(JAMWIDE_BUILD_TESTS)
     target_link_libraries(test_video_state_machine PRIVATE njclient)
     add_test(NAME video_state_machine COMMAND test_video_state_machine)
 
+    # Plan 21-01 Task 3: receive-side state machine + GUID-pair decision
+    # tree test (WIRE-02). Eleven sub-tests covering the nine original
+    # behavior scenarios plus two codex Cluster 10 malformed-length tests
+    # (zero-length frame, oversize prefix clamps at 4 MB cap). Mirrors
+    # the test_video_state_machine wiring; pure-C++ in-process test
+    # linking against the njclient static library via the
+    # JAMWIDE_BUILD_TESTS-gated thin-forwarder dispatchers
+    # DispatchTestVideoRecvBegin/Write/End +
+    # RunOnNewIntervalReceiveBlockForTest + GetVideoStreamForTest +
+    # AddTestRemoteUserMirrorWithDs + ClearTestRemoteUserMirror +
+    # DispatchTestUserLeaveForVideoReset (codex Cluster 5 — no
+    # state-machine duplication, helpers are the SAME ones production
+    # dispatchers and the audio-thread on_new_interval call).
+    add_executable(test_video_recv_state tests/test_video_recv_state.cpp)
+    target_include_directories(test_video_recv_state PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_compile_definitions(test_video_recv_state PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_link_libraries(test_video_recv_state PRIVATE njclient)
+    add_test(NAME video_recv_state COMMAND test_video_recv_state)
+
     # Plan 20-02 Task 2: per-channel atomic seqlock on Local_Channel for the
     # audio_ch0_guid read (R3 MF1 + R4 H8 — TSan-clean by design via atomic
     # two-uint64_t halves). Stress writer/reader concurrency, retry-cap fallback,

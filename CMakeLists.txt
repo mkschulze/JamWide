@@ -813,9 +813,13 @@ if(JAMWIDE_BUILD_TESTS)
     # plus njclient. WORKING_DIRECTORY at source root so the fixture
     # files (tests/fixtures/*.bin) resolve correctly via relative paths
     # in the test source.
+    # Plan 21-03 Task 3 wiring: Openh264Decoder.cpp now references
+    # PeerVideoSink::setLastObservedSenderSeqForTest (JAMWIDE_BUILD_TESTS-
+    # gated) — link PeerVideoSink.cpp into the decoder test too.
     add_executable(test_video_decoder
         tests/test_video_decoder.cpp
-        juce/video/decoder/Openh264Decoder.cpp)
+        juce/video/decoder/Openh264Decoder.cpp
+        juce/video/distributor/PeerVideoSink.cpp)
     target_compile_definitions(test_video_decoder PRIVATE JAMWIDE_BUILD_TESTS=1)
     target_include_directories(test_video_decoder PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}

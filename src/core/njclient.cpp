@@ -2173,6 +2173,34 @@ int NJClient::Run() // nonzero if sleep ok
                       if (!theuser->chanpresentmask) // user no longer exists, it seems
                       {
                         chksolo=1;
+                        // Phase 21 Plan 21-01 Task 2 (D-14 user-leave reset):
+                        // verbatim port of ninjamzap-core/njclient.cpp:1306-1322.
+                        // Reset any video sync state tied to this username so a
+                        // future reconnect (or a different user reusing the slot)
+                        // starts clean. Without this, prev_ds_guid / hold_count
+                        // / synced lingered and caused spurious PREV matches and
+                        // "video earlier than audio". Note: the VideoRecvState
+                        // itself is NOT removed — only its fields are reset, so
+                        // a re-join reuses the same key entry (matches upstream
+                        // behavior). Plan 21-03 may add aggressive removal if
+                        // memory pressure shows up in profiling.
+                        m_video_recv_cs.Enter();
+                        for (int vi = 0; vi < m_video_streams.GetSize(); vi++) {
+                          VideoRecvState *vs = m_video_streams.Get(vi);
+                          if (vs && !strcmp(vs->stream_username, theuser->name.Get())) {
+                            memset(vs->prev_ds_guid, 0, 16);
+                            memset(vs->last_played_audio_guid, 0, 16);
+                            vs->hold_count = 0;
+                            vs->empty_count = 0;
+                            vs->synced = false;
+                            vs->last_played_sender_seq = -1;
+                            vs->next.reset();
+                            vs->pending.reset();
+                            vs->accumulating.reset();
+                          }
+                        }
+                        m_video_recv_cs.Leave();
+
                         // 15.1-07a CR-01 + Codex HIGH-3: do NOT delete theuser
                         // inline. Detach from m_remoteusers, capture the victim
                         // pointer + its slot; the publish-wait-defer dance
@@ -2379,6 +2407,12 @@ int NJClient::Run() // nonzero if sleep ok
                                 sizeof(tracker->username));
                   tracker->chidx = dib.chidx;
                   m_rawdata_downloads.Add(tracker);
+                  // Phase 21 Plan 21-01 Task 2: receive-side state-machine
+                  // augmentation. Acquires m_video_recv_cs internally;
+                  // populates per-peer VideoRecvState.accumulating slot.
+                  // Runs BEFORE RawData_Callback so Plan 21-03's lifecycle
+                  // (if registered) sees the fresh accumulating state.
+                  handleVideoRecvBegin_(dib.guid, dib.fourcc, dib.username, dib.chidx);
                   RawData_Callback(RawData_User, 0 /*begin*/,
                                    dib.guid, dib.fourcc, dib.username,
                                    dib.chidx, NULL, 0);
@@ -2495,6 +2529,16 @@ int NJClient::Run() // nonzero if sleep ok
                            guidtostr_tmp(diw.guid),
                            diw.flags&1 ? ":end" : "",
                            diw.audio_data_len);
+                  // Phase 21 Plan 21-01 Task 2: receive-side state-machine
+                  // accumulation (m_video_recv_cs-serialized). Routes
+                  // payload into per-peer VideoRecvState.{accumulating,
+                  // playing, pending, next} slot via GUID-match against
+                  // the appropriate slot. Wire-format contract: outer
+                  // 4-byte BE length prefix CONSUMED here (not stored).
+                  if (diw.audio_data_len > 0 && diw.audio_data)
+                  {
+                    handleVideoRecvWrite_(diw.guid, diw.audio_data, diw.audio_data_len);
+                  }
                   if (RawData_Callback && diw.audio_data_len > 0 && diw.audio_data)
                   {
                     RawData_Callback(RawData_User, 1 /*data*/,
@@ -2503,6 +2547,12 @@ int NJClient::Run() // nonzero if sleep ok
                   }
                   if (diw.flags & 1)
                   {
+                    // Phase 21 Plan 21-01 Task 2: END handler — moves
+                    // accumulating -> next (or finalizes appending slot).
+                    // Runs BEFORE RawData_Callback so Plan 21-03 sees
+                    // the post-END VideoRecvState (next slot ready for
+                    // audio-thread SWAP).
+                    handleVideoRecvEnd_(diw.guid);
                     if (RawData_Callback)
                       RawData_Callback(RawData_User, 2 /*end*/,
                                        t->guid, t->fourcc, t->username, t->chidx,
@@ -3418,6 +3468,434 @@ void NJClient::removeVideoStream(const char *username, int chidx)
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Plan 21-01 Task 2 (codex Cluster 5): single-source state-machine helpers.
+// Production BEGIN/WRITE/END dispatchers AND test dispatchers AND the
+// audio-thread on_new_interval video receive block all call into these four
+// helpers — no state-machine duplication. Each helper acquires
+// m_video_recv_cs internally.
+//
+// SYNCLOG-equivalent log calls are STRIPPED per D-16 (no audio-thread
+// writeLog / printf on the receive path).
+// ---------------------------------------------------------------------------
+
+// Verbatim port of ninjamzap-core/njclient.cpp:1380-1408 (BEGIN-handler body).
+void NJClient::handleVideoRecvBegin_(const unsigned char guid[16], unsigned int fourcc,
+                                      const char *username, int chidx)
+{
+  m_video_recv_cs.Enter();
+  VideoRecvState *vs = findOrCreateVideoStream(username, chidx);
+  // Stop appending if still active (previous download didn't get END)
+  if (vs->append_active) {
+    VideoRecvBuffer &target = vs->append_to_next ? vs->next : vs->playing;
+    vs->expected_frames = target.frameCount;
+    vs->append_active = false;
+    memset(vs->append_guid, 0, 16);
+  }
+  // Burst detection: if next already has data when a new BEGIN arrives,
+  // the sender is sending >1 interval per receiver interval (e.g., after
+  // a toggle off/on). Discarding next keeps video aligned with audio
+  // instead of queueing and falling further behind each burst.
+  if (vs->next.active) {
+    vs->next.reset();
+  }
+  vs->accumulating.reset();
+  vs->accumulating.fourcc = fourcc;
+  vs->accumulating.chidx = chidx;
+  lstrcpyn_safe(vs->accumulating.username, username, sizeof(vs->accumulating.username));
+  memcpy(vs->accumulating.guid, guid, 16);
+  vs->accumulating.active = true;
+  vs->accumulating.interval_seq = m_sync_interval_cnt;
+  m_video_recv_cs.Leave();
+}
+
+// Verbatim port of ninjamzap-core/njclient.cpp:1452-1564 (WRITE-handler
+// accumulation: GUID-routed slot select, 4B BE length-prefix multi-write
+// reassembly, 24-byte marker parse on accumulating's first frame, mid-
+// download startPlaying when accumulating completes its first frame).
+//
+// IMPORTANT — wire-format contract (codex Cluster 6 per njclient.h pin):
+// the 4B BE OUTER length prefix is CONSUMED by this accumulator (it does
+// NOT appear in target->data). frameOffsets[i] points at the payload start
+// of frame i. The marker payload is 20 bytes; the OUTER prefix value is
+// 20 (decimal). Phase 20 commit 6d23b5c regression guard.
+void NJClient::handleVideoRecvWrite_(const unsigned char guid[16],
+                                      const void *data, int dataLen)
+{
+  if (!data || dataLen <= 0) return;
+  m_video_recv_cs.Enter();
+  VideoRecvState *vs = findVideoStreamByGUID(guid);
+  if (!vs) {
+    // No active VideoRecvState for this GUID (BEGIN dropped or out-of-order
+    // WRITE). Upstream's findOrCreateVideoStream fallback at :1458 is
+    // skipped here because the Plan 21-01 dispatch site only routes WRITEs
+    // through this helper AFTER a matching BEGIN landed — out-of-order is
+    // treated as drop.
+    m_video_recv_cs.Leave();
+    return;
+  }
+  bool appending = vs->append_active &&
+                   !memcmp(vs->append_guid, guid, 16);
+
+  // Route WRITE by guid to the correct buffer. Prevents tail WRITEs
+  // of previous downloads from polluting accumulating or triggering
+  // startPlaying with stale data.
+  VideoRecvBuffer *target = NULL;
+  bool targetIsAccumulating = false;
+  if (appending) {
+    if (vs->append_to_pending) target = &vs->pending;
+    else if (vs->append_to_next) target = &vs->next;
+    else target = &vs->playing;
+  } else if (vs->playing.active && !memcmp(vs->playing.guid, guid, 16)) {
+    // Late WRITE for the currently playing interval - append as late frame.
+    target = &vs->playing;
+    memcpy(vs->append_guid, guid, 16);
+    vs->append_active = true;
+    vs->append_to_next = false;
+    vs->append_to_pending = false;
+  } else if (vs->pending.active && !memcmp(vs->pending.guid, guid, 16)) {
+    // Late WRITE for an interval matched at last SWAP, held in pending.
+    target = &vs->pending;
+    memcpy(vs->append_guid, guid, 16);
+    vs->append_active = true;
+    vs->append_to_next = false;
+    vs->append_to_pending = true;
+  } else if (vs->accumulating.active && !memcmp(vs->accumulating.guid, guid, 16)) {
+    target = &vs->accumulating;
+    targetIsAccumulating = true;
+  }
+  // else: unknown/stale download - drop WRITE
+
+  if (target) {
+    // Multi-write reassembly: each logical frame on the wire is prefixed
+    // with a 4-byte big-endian length so the receiver can identify frame
+    // boundaries even when the sender's MAX_ENC_BLOCKSIZE chunker splits a
+    // big frame across multiple WRITEs. We only finalize (frameCount++)
+    // once the full frame arrives.
+    int writeLeft = dataLen;
+    const unsigned char *writePtr = (const unsigned char *)data;
+
+    if (target->pending_remaining == 0) {
+      // Starting a new frame: read 4B length prefix from start of WRITE.
+      // Chunker preserves a single frame per item, so the prefix never
+      // gets split across WRITEs.
+      if (writeLeft >= 4) {
+        unsigned int bodyLen = ((unsigned int)writePtr[0] << 24) |
+                               ((unsigned int)writePtr[1] << 16) |
+                               ((unsigned int)writePtr[2] << 8) |
+                               (unsigned int)writePtr[3];
+        // Phase 21 wire-format contract: target->data holds the PAYLOAD
+        // bytes only (outer prefix CONSUMED here, not stored). Record
+        // frameOffsets pointing at the first payload byte BEFORE we
+        // consume the prefix.
+        target->frameOffsets.Resize(target->frameCount + 1, false);
+        target->frameOffsets.Get()[target->frameCount] = target->data.GetSize();
+        target->pending_remaining = (int)bodyLen;  // payload bytes only
+        // Skip the 4 prefix bytes.
+        writePtr += 4;
+        writeLeft -= 4;
+      } else {
+        // Truncated prefix — drop the WRITE.
+        m_video_recv_cs.Leave();
+        return;
+      }
+    }
+
+    if (target->pending_remaining > 0 && writeLeft > 0) {
+      // Per T-21-01 / T-21-02 mitigation: clamp `take` to the WDL_HeapBuf
+      // pre-allocated capacity (4 MB - curSize). If a malformed wire
+      // declares pending_remaining beyond the cap, this clamp prevents
+      // unbounded allocation; the frame body never completes and is
+      // discarded silently on END.
+      const int CAP = 4 * 1024 * 1024;
+      int curSize = target->data.GetSize();
+      int capLeft = CAP - curSize;
+      if (capLeft < 0) capLeft = 0;
+      int take = writeLeft;
+      if (take > target->pending_remaining) take = target->pending_remaining;
+      if (take > capLeft) take = capLeft;
+      if (take > 0) {
+        target->data.Resize(curSize + take, false);
+        memcpy((char*)target->data.Get() + curSize, writePtr, take);
+        target->pending_remaining -= take;
+      } else if (capLeft == 0 && target->pending_remaining > 0) {
+        // Hit the 4 MB cap; the frame can never complete. Reset
+        // pending_remaining + accumulating to drop the malformed frame
+        // on END. Defensive against T-21-02.
+        target->pending_remaining = 0;
+        // Roll back the partial frameOffsets entry so frameCount is
+        // consistent with target->data.GetSize().
+        if (target->frameOffsets.GetSize() > target->frameCount) {
+          target->frameOffsets.Resize(target->frameCount, false);
+        }
+        m_video_recv_cs.Leave();
+        return;
+      }
+
+      if (target->pending_remaining == 0) {
+        // Frame complete - increment frameCount and run per-frame logic.
+        target->frameCount++;
+        int fc = target->frameCount;
+        int frameStart = target->frameOffsets.Get()[fc - 1];
+        int frameSize = target->data.GetSize() - frameStart;
+
+        // Parse sync marker from first frame of accumulating buffer.
+        // Plan 21-01 wire-format contract: the payload in data is 20
+        // bytes for the marker (outer prefix was consumed; the upstream
+        // OUTER prefix value MUST equal 20). Legacy 4-byte swap-only
+        // marker has payload size 4.
+        if (targetIsAccumulating && fc == 1) {
+          const unsigned char *m = (const unsigned char *)target->data.Get() + frameStart;
+          if (frameSize == 20) {
+            // [4B BE sender_seq][16B audio_ch0_guid] (payload bytes).
+            unsigned int senderSwap = ((unsigned int)m[0] << 24) | ((unsigned int)m[1] << 16) | ((unsigned int)m[2] << 8) | m[3];
+            vs->accumulating.sender_seq = (int)senderSwap;
+            memcpy(vs->accumulating.audio_guid, m + 4, 16);
+          } else if (frameSize == 4) {
+            memset(vs->accumulating.audio_guid, 0, 16);
+            unsigned int senderSwap = ((unsigned int)m[0] << 24) | ((unsigned int)m[1] << 16) | ((unsigned int)m[2] << 8) | m[3];
+            vs->accumulating.sender_seq = (int)senderSwap;
+          }
+        }
+
+        // Mid-download startPlaying (only for fresh accumulating data).
+        if (targetIsAccumulating && !vs->append_active && fc >= 1 && !vs->next.active) {
+          vs->next.copyFrom(vs->accumulating);
+          memcpy(vs->append_guid, vs->accumulating.guid, 16);
+          vs->append_active = true;
+          vs->append_to_next = true;
+          vs->append_to_pending = false;
+          vs->accumulating.data.Resize(0);
+          vs->accumulating.frameOffsets.Resize(0);
+          vs->accumulating.frameCount = 0;
+          vs->accumulating.pending_remaining = 0;
+        }
+      }
+    }
+  }
+  m_video_recv_cs.Leave();
+}
+
+// Verbatim port of ninjamzap-core/njclient.cpp:1568-1591 (END handler:
+// move accumulating -> next when frameCount > 1 if not appending; on
+// appending finalize expected_frames and clear append state).
+void NJClient::handleVideoRecvEnd_(const unsigned char guid[16])
+{
+  m_video_recv_cs.Enter();
+  VideoRecvState *vs = findVideoStreamByGUID(guid);
+  if (vs) {
+    bool wasAppending = vs->append_active &&
+                        !memcmp(vs->append_guid, guid, 16);
+    if (wasAppending) {
+      VideoRecvBuffer &target = vs->append_to_next ? vs->next : vs->playing;
+      vs->expected_frames = target.frameCount;
+      vs->append_active = false;
+      memset(vs->append_guid, 0, 16);
+    } else {
+      if (vs->accumulating.frameCount > 1) {
+        vs->expected_frames = vs->accumulating.frameCount;
+        vs->next.reset();
+        vs->next.copyFrom(vs->accumulating);
+      }
+      vs->accumulating.reset();
+    }
+  }
+  m_video_recv_cs.Leave();
+}
+
+// Verbatim port of ninjamzap-core/njclient.cpp:3084-3256 (audio-thread
+// on_new_interval video receive block). One JamWide carve-out (D-16 +
+// Phase 15.1-07a HIGH-2): read m_remoteuser_mirror[s].chans[0].next_ds[0]
+// for the GUID-pair comparison instead of m_remoteusers[].channels[0].ds
+// (which would need m_users_cs.Enter, CRITICAL on the audio thread).
+//
+// Per codex Cluster 1 (timing instrumentation, NOT deferred to UAT): the
+// block is wrapped under JAMWIDE_BUILD_TESTS with steady_clock measurement
+// and CAS-updates m_run_video_receive_block_max_nanos_. Production builds
+// see no overhead — the entire timing block compiles out.
+void NJClient::runVideoReceiveBlock_()
+{
+#ifdef JAMWIDE_BUILD_TESTS
+  const auto t0_recv_block = std::chrono::steady_clock::now();
+#endif
+  {
+    WDL_MutexLock vrlock(&m_video_recv_cs);
+    for (int vi = 0; vi < m_video_streams.GetSize(); vi++) {
+      VideoRecvState *vs = m_video_streams.Get(vi);
+      if (!vs) continue;
+
+      // STAGE 1: Promote previously-matched video (pending -> playing).
+      // Video that matched at swap N is held in pending and dispatches
+      // starting at swap N+1, adding the missing 1-interval delay so
+      // video first-frame appears at the moment its corresponding audio
+      // becomes audible (audio output buffering ~1 swap).
+      if (vs->pending.active && vs->pending.frameCount >= 1) {
+        vs->playing.reset();
+        vs->playing.copyFrom(vs->pending);
+        vs->pending.reset();
+        vs->frame_idx = 0;
+      }
+
+      vs->append_active = false;
+      vs->append_to_next = false;
+      vs->append_to_pending = false;
+      memset(vs->append_guid, 0, 16);
+
+      if (vs->next.active && vs->next.frameCount >= 1) {
+        bool audioHasData = false;
+        bool guidMatch = false;
+        const unsigned char *videoAudioGuid = vs->next.audio_guid;
+        bool hasGuid = false;
+        for (int gi = 0; gi < 16; gi++) { if (videoAudioGuid[gi]) { hasGuid = true; break; } }
+
+        // Phase 15.1-07a HIGH-2 carve-out: read the senderDs's guid from
+        // m_remoteuser_mirror[s].chans[0].next_ds[0]->guid only (NOT
+        // m_remoteusers[].channels[0].ds — that goes through m_users_cs
+        // which would be a CRITICAL on the audio thread). DecodeState
+        // ownership crosses thread boundaries via the SPSC-handoff
+        // pattern; .guid is set at construction and never written after
+        // — safe to read on audio thread under the existing carve-out.
+        //
+        // For Plan 21-01 simplicity (matches upstream's iteration shape
+        // exactly via the FIRST active mirror slot with next_ds[0] non-
+        // null): the audio thread cannot match by username without
+        // m_users_cs, so we iterate active mirror slots and use the
+        // first one with audio data. Acceptable for single-broadcaster
+        // scenarios; Plan 21-03's distributor audit widens the mirror
+        // to carry username when N>=2 peers broadcast simultaneously.
+        unsigned char senderGuid[16] = {0};
+        bool senderDs = false;
+        int matchType = 0; // 0=none, 1=ds, 2=prev
+        for (int s = 0; s < MAX_PEERS; s++) {
+          auto& um = m_remoteuser_mirror[s];
+          if (!um.active) continue;
+          if (um.chans[0].next_ds[0] != nullptr) {
+            audioHasData = true;
+            const unsigned char *dsGuid = um.chans[0].next_ds[0]->guid;
+            memcpy(senderGuid, dsGuid, 16);
+            senderDs = true;
+            if (hasGuid && !memcmp(dsGuid, videoAudioGuid, 16)) {
+              guidMatch = true;
+              matchType = 1;
+            }
+            if (hasGuid && !guidMatch && !memcmp(vs->prev_ds_guid, videoAudioGuid, 16)) {
+              guidMatch = true;
+              matchType = 2;
+            }
+            break;
+          }
+        }
+
+        // HOLD cap: after this many consecutive mismatches, drop next
+        // instead of force-playing. Force-playing on mismatch was the
+        // primary cause of "video earlier than audio" — by the time we
+        // held 3 swaps, the video frame was already 3 intervals ahead of
+        // the eventual audio. Dropping a single video interval keeps
+        // every subsequent interval aligned.
+        const int kHoldCapDrop = 4;
+        if (!audioHasData) {
+          vs->hold_count = 0;
+          vs->empty_count = 0;
+        } else if (hasGuid && !guidMatch) {
+          vs->hold_count++;
+          vs->empty_count = 0;
+          if (vs->hold_count >= kHoldCapDrop) {
+            // Resync: drop queued video, mark unsynced. We will re-
+            // establish alignment on the next BEGIN/marker.
+            vs->drop_resync_count++;
+            vs->next.reset();
+            vs->hold_count = 0;
+            vs->synced = false;
+          }
+        } else {
+          vs->hold_count = 0;
+          vs->empty_count = 0;
+          // Successful match — record canonical sync point.
+          vs->synced = true;
+          vs->last_played_sender_seq = vs->next.sender_seq;
+          memcpy(vs->last_played_audio_guid, videoAudioGuid, 16);
+          // Adaptive defer based on match type:
+          //   DS match: marker.audioGuid == senderDs->guid → defer 1 swap
+          //   PREV match: marker.audioGuid == prev_ds_guid → play NOW
+          //   NONE match: rare (no audioGuid). Play immediately.
+          bool defer = (matchType == 1);
+          if (defer) {
+            // DS path: hold one swap in pending.
+            vs->pending.reset();
+            vs->pending.copyFrom(vs->next);
+            memcpy(vs->append_guid, vs->pending.guid, 16);
+            vs->append_active = true;
+            vs->append_to_next = false;
+            vs->append_to_pending = true;
+          } else {
+            // PREV/NONE path: play immediately.
+            vs->playing.reset();
+            vs->playing.copyFrom(vs->next);
+            vs->frame_idx = 0;
+          }
+          vs->next.reset();
+        }
+        if (senderDs) memcpy(vs->prev_ds_guid, senderGuid, 16);
+        else memset(vs->prev_ds_guid, 0, 16);
+      } else if (vs->accumulating.active && vs->accumulating.frameCount >= 1) {
+        // Accumulating-fallback only fires when next is empty but
+        // accumulating has frames before END arrives. Requires established
+        // sync (vs->synced) to avoid playing video earlier than audio.
+        bool audioPlaying = false;
+        for (int s = 0; s < MAX_PEERS && !audioPlaying; s++) {
+          auto& um = m_remoteuser_mirror[s];
+          if (um.active && um.chans[0].next_ds[0] != nullptr) audioPlaying = true;
+        }
+        if (audioPlaying && vs->synced) {
+          vs->hold_count = 0;
+          vs->empty_count = 0;
+          vs->playing.reset();
+          vs->playing.copyFrom(vs->accumulating);
+          memcpy(vs->append_guid, vs->accumulating.guid, 16);
+          vs->append_active = true;
+          vs->append_to_next = false;
+          vs->append_to_pending = false;
+          vs->accumulating.data.Resize(0);
+          vs->accumulating.frameOffsets.Resize(0);
+          vs->accumulating.frameCount = 0;
+          vs->frame_idx = 0;
+        }
+      } else {
+        vs->hold_count = 0;
+        vs->empty_count++;
+      }
+    }
+  }
+#ifdef JAMWIDE_BUILD_TESTS
+  const auto t1_recv_block = std::chrono::steady_clock::now();
+  const std::uint64_t elapsed_ns =
+      (std::uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+          t1_recv_block - t0_recv_block).count();
+  m_run_video_receive_block_last_peer_count_.store(
+      m_video_streams.GetSize(), std::memory_order_relaxed);
+  auto cur = m_run_video_receive_block_max_nanos_.load(std::memory_order_relaxed);
+  while (cur < elapsed_ns &&
+         !m_run_video_receive_block_max_nanos_.compare_exchange_weak(
+              cur, elapsed_ns, std::memory_order_relaxed)) { /* retry */ }
+#endif
+}
+
+#ifdef JAMWIDE_BUILD_TESTS
+// Plan 21-01 Task 2 (codex Cluster 1): timing accessor bodies. One-line
+// atomic loads/stores. Tests assert these report sane values after a
+// runVideoReceiveBlock_ invocation.
+std::uint64_t NJClient::getRunVideoReceiveBlockMaxNanosForTest() const noexcept {
+  return m_run_video_receive_block_max_nanos_.load(std::memory_order_relaxed);
+}
+int NJClient::getRunVideoReceiveBlockLastPeerCountForTest() const noexcept {
+  return m_run_video_receive_block_last_peer_count_.load(std::memory_order_relaxed);
+}
+void NJClient::resetRunVideoReceiveBlockTimingForTest() noexcept {
+  m_run_video_receive_block_max_nanos_.store(0, std::memory_order_relaxed);
+  m_run_video_receive_block_last_peer_count_.store(0, std::memory_order_relaxed);
+}
+#endif
 
 void NJClient::DrainRawDataSendQueueForTest(
     std::vector<NJClient::RawDataQueueItem*>& out)
@@ -5404,6 +5882,17 @@ void NJClient::on_new_interval()
         prev, cur, std::memory_order_relaxed)) { /* retry */ }
   }
 #endif
+
+  // Phase 21 Plan 21-01 Task 2 (D-15 + D-16): audio-thread receive-side
+  // SWAP block. Lands ADJACENT to the Phase 20 send-side video block
+  // (above, under m_video_cs). The receive block takes m_video_recv_cs
+  // internally — a DIFFERENT mutex from m_video_cs. Both critical
+  // sections are accepted under the Phase 21 audit allowlist envelope
+  // (.claude/agents/realtime-audio-reviewer.md Plan 21-01 Task 4).
+  //
+  // Under JAMWIDE_BUILD_TESTS the helper carries steady_clock timing
+  // (codex Cluster 1); production builds see zero overhead.
+  runVideoReceiveBlock_();
 
   // 15.1-07a CR-01: m_users_cs.Enter/Leave removed. Audio thread iterates
   // m_remoteuser_mirror[MAX_PEERS]; the next_ds-advance pointer-shuffle

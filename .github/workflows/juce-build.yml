@@ -266,6 +266,14 @@ jobs:
           retention-days: 30
 
   build-linux:
+    # Disabled for v1.3 betas — Phase 19's camera-capture code uses
+    # juce::CameraDevice unconditionally, but juce_video has no
+    # juce_CameraDevice_linux.h (Linux capture deferred per memory
+    # 'project_jamtaba_video_port': Linux is receive-only v1, V4L2
+    # wrapper is post-v1 Item K). Re-enable once a Linux capture path
+    # (or conditional compile around the camera code) lands. Same one-line
+    # flip as build-windows.
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -351,8 +359,10 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    # build-windows deferred to Phase 23 (universal-mac + windows codesign).
-    needs: [build-macos, build-linux]
+    # build-windows + build-linux deferred — Phase 23 (universal-mac +
+    # Windows codesign) AND Linux V4L2 capture wrapper (memory: 'Linux
+    # capture as Item K post-v1'). Mac arm64-only for v1.3 betas.
+    needs: [build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -362,11 +372,10 @@ jobs:
         with:
           path: artifacts
 
-      - name: Prepare macOS and Linux artifacts
+      - name: Prepare macOS artifacts
         run: |
-          # macOS and Linux are already tar.gz (preserves Unix permissions)
+          # macOS is already tar.gz (preserves Unix permissions)
           cp artifacts/JamWide-macOS/JamWide-macOS.tar.gz .
-          cp artifacts/JamWide-Linux/JamWide-Linux.tar.gz .
 
       - name: Create or update release
         env:
@@ -377,20 +386,19 @@ jobs:
           if echo "$TAG_NAME" | grep -qE "beta|alpha|rc"; then
             PRERELEASE_FLAG="--prerelease"
           fi
-          # Phase 23 will re-add JamWide-Windows.zip once build-windows is back.
+          # Phase 23 will re-add JamWide-Windows.zip + JamWide-Linux.tar.gz
+          # once build-windows + build-linux are back online.
           if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             echo "Release $TAG_NAME already exists — uploading assets"
             gh release upload "$TAG_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber \
-              JamWide-macOS.tar.gz \
-              JamWide-Linux.tar.gz
+              JamWide-macOS.tar.gz
           else
             gh release create "$TAG_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --title "$TAG_NAME" \
               --generate-notes \
               $PRERELEASE_FLAG \
-              JamWide-macOS.tar.gz \
-              JamWide-Linux.tar.gz
+              JamWide-macOS.tar.gz
           fi

@@ -67,6 +67,17 @@ JamWideJuceProcessor::JamWideJuceProcessor()
     nativeCamera     = std::make_unique<jamwide::JamWideCameraDevice>(
         *frameDistributor, /*listener*/ nullptr);
 
+    // Phase 21-03 Task 1: receive-side decoded-frame distributor.
+    // Lifetime parallel to frameDistributor; NJClient gets a pointer below
+    // (Plan 21-03 Task 2 lands NJClient::SetRemoteFrameDistributor).
+    remoteFrameDistributor = std::make_unique<jamwide::JamWideRemoteFrameDistributor>();
+    client->SetRemoteFrameDistributor(remoteFrameDistributor.get());
+    // Phase 21-03 Task 2: install the function-pointer table that the
+    // distributor TU implements. njclient.cpp calls through these to avoid
+    // forcing juce_graphics / juce_events / libavcodec into the njclient
+    // static library's link surface.
+    client->SetVideoDistributorOps(jamwide::getDefaultVideoDistributorOps());
+
     // MIDI mapper (created after NJClient and OscServer, same ownership pattern)
     midiMapper = std::make_unique<MidiMapper>(*this);
 }
@@ -101,12 +112,33 @@ JamWideJuceProcessor::~JamWideJuceProcessor()
     // and return early without touching `*this`.
     if (nativeCamera) nativeCamera->shutdown();
     nativeCamera.reset();
-    frameDistributor.reset();
 
     videoCompanion.reset();
     oscServer.reset();
     runThread.reset();
+
+    // Per codex review Cluster 3 (Phase 21-03 Task 1): client.reset() MUST run
+    // BEFORE remoteFrameDistributor.reset(). NJClient::~NJClient destroys
+    // m_video_streams; each VideoRecvState's user-leave / dtor path runs the
+    // four-step shutdown protocol on its decoder + sink (stopAndJoin ->
+    // setSink(nullptr) -> vs->sink = nullptr -> distributor->removeSink). By
+    // the time client.reset() returns, ALL decoder threads have exited AND
+    // ALL sinks have been removed from the distributor's map. The
+    // distributor's sinks_ map is empty when remoteFrameDistributor.reset()
+    // fires next, so no decoder thread can still hold a stale sink pointer.
     client.reset();
+
+    // Distributor next — its sinks_ map is empty (the user-leave shutdown
+    // protocol removed each sink as its VideoRecvState was destroyed by
+    // client.reset()). PeerVideoSink destructors run the codex Cluster 3
+    // dtor contract (cancelPendingUpdate + wait for in-flight) — but with
+    // an empty map there is nothing to destroy.
+    remoteFrameDistributor.reset();
+
+    // Camera-side distributor — independent lifetime (camera thread does
+    // not hold raw NJClient pointers). Position not critical; placed after
+    // for symmetry.
+    frameDistributor.reset();
 }
 
 //==============================================================================

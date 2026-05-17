@@ -38,6 +38,15 @@
 #include "njclient.h"
 #include "mpb.h"
 
+// Phase 21-03 Task 2: njclient.cpp does NOT include
+// JamWideRemoteFrameDistributor.h directly. The distributor pointer is
+// stored as a forward-declared raw pointer; method calls on it are routed
+// through the m_video_distributor_ops function-pointer table which the
+// processor populates. This keeps njclient's link surface free of
+// juce_graphics / juce_events / libavcodec dependencies (preserving the
+// existing test-suite link contract — test_rawdata_send etc. only link
+// njclient + wdl).
+
 // Plan 21-02 Task 1 (W-2 forward-decl resolution): VideoRecvState carries a
 // std::shared_ptr<jamwide::Openh264Decoder>. shared_ptr's type-erased deleter
 // (captured at make_shared time in Plan 21-03's JUCE-linked TU) means
@@ -2193,10 +2202,64 @@ int NJClient::Run() // nonzero if sleep ok
                         // a re-join reuses the same key entry (matches upstream
                         // behavior). Plan 21-03 may add aggressive removal if
                         // memory pressure shows up in profiling.
+                        // Phase 21-03 Task 2 (codex Cluster 3 + Cluster 4):
+                        // four-step shutdown protocol. Two-phase pattern to
+                        // avoid holding m_video_recv_cs across the decoder
+                        // thread join (which would block the audio thread's
+                        // runVideoReceiveBlock_ for 5-50 ms).
+                        //
+                        // Phase A (UNDER m_video_recv_cs, microseconds): Step 3
+                        // (vs->sink = nullptr; vs->decoder reset). The
+                        // tear-down extraction is done via the ops table's
+                        // tear_down_decoder, which the JUCE-linked
+                        // distributor TU implements as: move vs->decoder
+                        // out into a local, then return immediately. After
+                        // the call returns, vs->decoder is null + the local
+                        // is captured in a thread-local heap object the
+                        // distributor TU schedules for Phase B teardown.
+                        // [Implementation detail: the JUCE-linked TU runs
+                        //  steps 1+2+4 synchronously OUTSIDE m_video_recv_cs
+                        //  because tear_down_decoder is called BEFORE we
+                        //  re-enter the mutex; see ordering below.]
+                        //
+                        // We move-out vs->decoder + vs->sink under the mutex,
+                        // release the mutex, then run steps 1+2+4 OUTSIDE.
+
+                        // Step 1: gather the list of (username, chidx, vs)
+                        // entries to tear down under m_video_recv_cs (cheap
+                        // — just pointer copy).
+                        struct VideoLeaveEntry {
+                          VideoRecvState* vs;
+                          char            username[256];
+                          int             chidx;
+                        };
+                        std::vector<VideoLeaveEntry> leaving;
+
                         m_video_recv_cs.Enter();
                         for (int vi = 0; vi < m_video_streams.GetSize(); vi++) {
                           VideoRecvState *vs = m_video_streams.Get(vi);
                           if (vs && !strcmp(vs->stream_username, theuser->name.Get())) {
+                            if (vs->decoder || vs->sink) {
+                              VideoLeaveEntry e;
+                              e.vs = vs;
+                              lstrcpyn_safe(e.username, vs->stream_username, sizeof(e.username));
+                              e.chidx = vs->stream_chidx;
+                              leaving.push_back(e);
+                            }
+                            // Field resets stay under m_video_recv_cs.
+                            // vs->decoder / vs->sink are NOT cleared here —
+                            // tear_down_decoder below (which runs OUTSIDE
+                            // the mutex) moves vs->decoder out and clears
+                            // vs->sink. The audio-thread's
+                            // pushPlayingSnapshotToDecoder_ early-returns if
+                            // vs->decoder is non-null but vs->sink is null
+                            // (which is fine — no harm, just a no-op
+                            // snapshot push). Race window: if a snapshot
+                            // push happens between the field resets here
+                            // and the tear_down_decoder call below, the
+                            // push is harmless (decoder still alive, just
+                            // sink touch will see nullptr and skip).
+                            vs->decoder_startup_needed = false;
                             memset(vs->prev_ds_guid, 0, 16);
                             memset(vs->last_played_audio_guid, 0, 16);
                             vs->hold_count = 0;
@@ -2209,6 +2272,34 @@ int NJClient::Run() // nonzero if sleep ok
                           }
                         }
                         m_video_recv_cs.Leave();
+
+                        // Phase B — OUTSIDE m_video_recv_cs (codex Cluster 4
+                        // mitigation). The function-pointer table's
+                        // tear_down_decoder runs in the JUCE-linked TU and
+                        // can dereference vs->decoder (full Openh264Decoder
+                        // type visible there). The function:
+                        //   - moves vs->decoder out into a local
+                        //   - calls local->close()       (step 1; joins thread)
+                        //   - calls local->setSink(null) (step 2; defensive)
+                        //   - clears vs->sink            (step 3)
+                        //   - calls dist->removeSink     (step 4)
+                        //   - drops the local            (R4 H9 dtor no-op)
+                        // The audio thread's runVideoReceiveBlock_ may
+                        // briefly observe vs->decoder=non-null AND vs->sink=null
+                        // during this window — pushPlayingSnapshotToDecoder_
+                        // handles this by no-op'ing when the slot ring push
+                        // happens; the decoder thread observes producer_seq
+                        // advance but its scaleAndSwapImage_ sink-touch sees
+                        // sink_=null and writes to TestFrameResult only (or
+                        // no-ops in production). Harmless.
+                        if (m_remote_frame_distributor
+                            && m_video_distributor_ops.tear_down_decoder) {
+                          for (auto& e : leaving) {
+                            m_video_distributor_ops.tear_down_decoder(
+                                m_remote_frame_distributor, e.vs,
+                                e.username, e.chidx);
+                          }
+                        }
 
                         // 15.1-07a CR-01 + Codex HIGH-3: do NOT delete theuser
                         // inline. Detach from m_remoteusers, capture the victim
@@ -2421,10 +2512,20 @@ int NJClient::Run() // nonzero if sleep ok
                   // populates per-peer VideoRecvState.accumulating slot.
                   // Runs BEFORE RawData_Callback so Plan 21-03's lifecycle
                   // (if registered) sees the fresh accumulating state.
+                  //
+                  // Plan 21-03 Task 2 Phase 1 happens INSIDE
+                  // handleVideoRecvBegin_ (flag set under m_video_recv_cs).
                   handleVideoRecvBegin_(dib.guid, dib.fourcc, dib.username, dib.chidx);
                   RawData_Callback(RawData_User, 0 /*begin*/,
                                    dib.guid, dib.fourcc, dib.username,
                                    dib.chidx, NULL, 0);
+                  // Plan 21-03 Task 2 (codex Cluster 4 Phase 2+3): complete
+                  // the heavy decoder startup OUTSIDE m_video_recv_cs on the
+                  // run thread. Idempotent: early-returns if the decoder is
+                  // already installed OR the startup flag was cleared by a
+                  // racer. v1.3 fixed receive surface size 320x240 per
+                  // codex Cluster 10 LOW.
+                  completeVideoDecoderStartup_(dib.username, dib.chidx, 320, 240);
                 }
                 else if (dib.fourcc &&
                          dib.fourcc != NJ_ENCODER_FMT_TYPE &&
@@ -3520,6 +3621,123 @@ void NJClient::removeVideoStream(const char *username, int chidx)
   }
 }
 
+// Phase 21-03 Task 1: receive-side distributor pointer injection. Task 1 lands
+// the setter as a plain pointer store (no allocation, no thread start). Plan
+// 21-03 Task 2 builds the lazy-startup + four-step shutdown protocol that
+// reads m_remote_frame_distributor.
+void NJClient::SetRemoteFrameDistributor(jamwide::JamWideRemoteFrameDistributor* d) noexcept
+{
+  m_remote_frame_distributor = d;
+}
+
+void NJClient::SetVideoDistributorOps(const VideoDistributorOps& ops) noexcept
+{
+  m_video_distributor_ops = ops;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 21-03 Task 2 (codex Cluster 4): two-phase lazy decoder startup.
+//
+// Phase 1 — ensureVideoDecoderForPeerLater_ — called UNDER m_video_recv_cs
+//   from the BEGIN handler dispatch site. Microseconds; sets a flag and
+//   returns. NO allocation, NO avcodec_open2, NO thread start.
+//
+// Phase 2 — completeVideoDecoderStartup_ — called OUTSIDE m_video_recv_cs
+//   from the BEGIN handler dispatch site (after handleVideoRecvBegin_
+//   returns). Heavyweight work runs on the run thread:
+//     - brief mutex acquire to capture stable refs to vs's slot ring +
+//       index queue + producer-seq atomic
+//     - heavyweight work OUTSIDE mutex: distributor->findOrCreateSink +
+//       make_shared<Openh264Decoder> + decoder->setSink + decoder->open
+//       (these all live in the JUCE-linked distributor TU per W-2)
+//     - brief mutex re-acquire (Phase 3) to install decoder + sink pointers
+//       IF vs is still alive (peer may have left between Phase 1 and Phase 2).
+//
+// The audio thread's runVideoReceiveBlock_ no longer blocks against
+// avcodec_open2's 5-50 ms cost (codex Cluster 4 mitigation).
+// ---------------------------------------------------------------------------
+
+void NJClient::ensureVideoDecoderForPeerLater_(VideoRecvState* vs, int width, int height)
+{
+  (void) width;
+  (void) height;
+  // CALLER HOLDS m_video_recv_cs. This function MUST NOT allocate, MUST NOT
+  // call avcodec_open2, and MUST NOT start a thread. It just flags the
+  // decoder as needed — idempotent against burst BEGINs.
+  if (!vs) return;
+  if (vs->decoder) return;                  // already constructed
+  if (vs->decoder_startup_needed) return;   // already flagged; Phase 2 will run
+  vs->decoder_startup_needed = true;
+}
+
+void NJClient::completeVideoDecoderStartup_(const char *username, int chidx,
+                                             int width, int height)
+{
+  if (!m_remote_frame_distributor) return;
+  if (!m_video_distributor_ops.create_decoder) return;
+  if (!username) return;
+
+  // Step 1: brief mutex acquire to look up vs and capture stable references
+  // to its slot ring / index queue / producer-seq atomic. References stay
+  // valid as long as vs is alive in m_video_streams; user-leave Delete
+  // happens under m_video_recv_cs as well so we cannot race against it
+  // between the lookup and the install step below (Phase 3 re-acquires
+  // and validates).
+  std::array<jamwide::VideoRecvSlotSnapshot, 4>* slotRingPtr    = nullptr;
+  jamwide::SpscRing<int, 4>*                     slotIdxQPtr    = nullptr;
+  std::atomic<std::uint64_t>*                    producerSeqPtr = nullptr;
+  {
+    WDL_MutexLock lock(&m_video_recv_cs);
+    VideoRecvState* vs = findVideoStream(username, chidx);
+    if (!vs) return;
+    if (!vs->decoder_startup_needed) return;   // already completed by a racer
+    if (vs->decoder) return;                    // already installed
+    slotRingPtr    = &vs->decoderSlots;
+    slotIdxQPtr    = &vs->decoderSlotIndexQ;
+    producerSeqPtr = &vs->decoderProducerSeq;
+  }
+
+  // Step 2: heavyweight work OUTSIDE the mutex. The function-pointer table's
+  // create_decoder is the JUCE-linked TU's factory — calls
+  // distributor->findOrCreateSink + make_shared<Openh264Decoder> + setSink
+  // + open. Returns an opaque heap shared_ptr handle the .cpp owns. On
+  // failure the factory removes the sink and returns nullptr.
+  jamwide::PeerVideoSink* sinkPtr = nullptr;
+  void* opaque_decoder = m_video_distributor_ops.create_decoder(
+      m_remote_frame_distributor, username, chidx, width, height,
+      slotRingPtr, slotIdxQPtr, producerSeqPtr, &sinkPtr);
+  if (!opaque_decoder) return;
+
+  // Step 3: brief mutex re-acquire to install the pointers IF vs still
+  // exists. If the peer left between Phase 1 and now, drop the freshly-
+  // constructed decoder + remove the sink.
+  bool installed = false;
+  {
+    WDL_MutexLock lock(&m_video_recv_cs);
+    VideoRecvState* vs = findVideoStream(username, chidx);
+    if (vs && vs->decoder_startup_needed && !vs->decoder) {
+      vs->sink                  = sinkPtr;
+      if (m_video_distributor_ops.install_decoder) {
+        m_video_distributor_ops.install_decoder(opaque_decoder, vs);
+        opaque_decoder = nullptr; // ownership transferred
+      }
+      vs->decoder_startup_needed = false;
+      installed                  = true;
+    }
+  }
+
+  if (!installed) {
+    // Peer left OR a racer installed first. Destroy the decoder (which the
+    // function-pointer table owns the cleanup for) and remove the sink.
+    if (opaque_decoder && m_video_distributor_ops.destroy_decoder) {
+      m_video_distributor_ops.destroy_decoder(opaque_decoder);
+    }
+    if (m_video_distributor_ops.remove_sink) {
+      m_video_distributor_ops.remove_sink(m_remote_frame_distributor, username, chidx);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Plan 21-01 Task 2 (codex Cluster 5): single-source state-machine helpers.
 // Production BEGIN/WRITE/END dispatchers AND test dispatchers AND the
@@ -3558,6 +3776,14 @@ void NJClient::handleVideoRecvBegin_(const unsigned char guid[16], unsigned int 
   memcpy(vs->accumulating.guid, guid, 16);
   vs->accumulating.active = true;
   vs->accumulating.interval_seq = m_sync_interval_cnt;
+
+  // Phase 21-03 Task 2 (codex Cluster 4 Phase 1): flag the decoder as needed.
+  // v1.3 fixed receive surface size 320x240 (codex Cluster 10 LOW — NOT
+  // first-seen peer resolution; SwsContext recreate handles real resolution
+  // per D-07 + Pitfall 7). NO allocation, NO avcodec_open2, NO thread start
+  // here — Phase 2 runs OUTSIDE m_video_recv_cs from the caller.
+  ensureVideoDecoderForPeerLater_(vs, 320, 240);
+
   m_video_recv_cs.Leave();
 }
 

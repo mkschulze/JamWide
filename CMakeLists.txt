@@ -266,6 +266,18 @@ if(JAMWIDE_BUILD_JUCE)
         juce/video/decoder/Openh264Decoder.cpp
     )
 
+    # Plan 21-03 Task 1: JamWideRemoteFrameDistributor + PeerVideoSink.
+    # Symmetric inverse of Phase 19's JamWideFrameDistributor (camera-side).
+    # PeerVideoSink subclasses juce::AsyncUpdater (juce_events) and owns
+    # double-buffered juce::Image (juce_graphics) — both already linked
+    # transitively below. No ffmpeg dependency in the distributor itself.
+    target_sources(JamWideJuce PRIVATE
+        juce/video/distributor/JamWideRemoteFrameDistributor.h
+        juce/video/distributor/JamWideRemoteFrameDistributor.cpp
+        juce/video/distributor/PeerVideoSink.h
+        juce/video/distributor/PeerVideoSink.cpp
+    )
+
     jamwide_use_ffmpeg(JamWideJuce)
 
     target_compile_definitions(JamWideJuce PUBLIC
@@ -801,9 +813,13 @@ if(JAMWIDE_BUILD_TESTS)
     # plus njclient. WORKING_DIRECTORY at source root so the fixture
     # files (tests/fixtures/*.bin) resolve correctly via relative paths
     # in the test source.
+    # Plan 21-03 Task 3 wiring: Openh264Decoder.cpp now references
+    # PeerVideoSink::setLastObservedSenderSeqForTest (JAMWIDE_BUILD_TESTS-
+    # gated) — link PeerVideoSink.cpp into the decoder test too.
     add_executable(test_video_decoder
         tests/test_video_decoder.cpp
-        juce/video/decoder/Openh264Decoder.cpp)
+        juce/video/decoder/Openh264Decoder.cpp
+        juce/video/distributor/PeerVideoSink.cpp)
     target_compile_definitions(test_video_decoder PRIVATE JAMWIDE_BUILD_TESTS=1)
     target_include_directories(test_video_decoder PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
@@ -827,6 +843,73 @@ if(JAMWIDE_BUILD_TESTS)
     endif()
     jamwide_use_ffmpeg(test_video_decoder)
     add_test(NAME video_decoder COMMAND test_video_decoder
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Plan 21-03 Task 3 — distributor unit tests (4 sub-tests including
+    # codex Cluster 3 sink-dtor-cancels-pending). The distributor.cpp
+    # references Openh264Decoder symbols via createDecoderAndSinkForPeer
+    # and op_create_decoder, so the test must link the decoder + ffmpeg
+    # too (even though the unit tests don't invoke those paths).
+    juce_add_console_app(test_remote_frame_distributor
+                          PRODUCT_NAME "Remote Frame Distributor Test")
+    juce_generate_juce_header(test_remote_frame_distributor)
+    target_sources(test_remote_frame_distributor PRIVATE
+        tests/test_remote_frame_distributor.cpp
+        juce/video/distributor/JamWideRemoteFrameDistributor.cpp
+        juce/video/distributor/PeerVideoSink.cpp
+        juce/video/decoder/Openh264Decoder.cpp)
+    target_compile_definitions(test_remote_frame_distributor PRIVATE
+        JAMWIDE_BUILD_TESTS=1
+        JUCE_STANDALONE_APPLICATION=1
+        # runDispatchLoopUntil is gated behind this. We're a console app
+        # using AsyncUpdater dispatch in deterministic test harness.
+        JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_include_directories(test_remote_frame_distributor PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/juce)
+    target_link_libraries(test_remote_frame_distributor PRIVATE
+        njclient
+        juce::juce_core
+        juce::juce_events
+        juce::juce_graphics)
+    jamwide_use_ffmpeg(test_remote_frame_distributor)
+    add_test(NAME remote_frame_distributor
+             COMMAND test_remote_frame_distributor)
+
+    # Plan 21-03 Task 3 — 3-peer per-peer isolation + cross-plan sender_seq
+    # monotonic alignment integration test. Drives 3 DecoderBundles via the
+    # LIVE pushSlotSnapshotForTest path (Plan 21-02 W-3 regression-guarded
+    # ring) with attached PeerVideoSinks (Plan 21-03 Task 1). Each bundle
+    # is 16 MB on heap; main thread needs the same 16 MB stack bump as
+    # test_video_decoder.
+    juce_add_console_app(test_video_sync_e2e
+                          PRODUCT_NAME "Video Sync E2E Test")
+    juce_generate_juce_header(test_video_sync_e2e)
+    target_sources(test_video_sync_e2e PRIVATE
+        tests/test_video_sync_e2e.cpp
+        juce/video/decoder/Openh264Decoder.cpp
+        juce/video/distributor/JamWideRemoteFrameDistributor.cpp
+        juce/video/distributor/PeerVideoSink.cpp)
+    target_compile_definitions(test_video_sync_e2e PRIVATE
+        JAMWIDE_BUILD_TESTS=1
+        JUCE_STANDALONE_APPLICATION=1
+        JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_include_directories(test_video_sync_e2e PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/juce)
+    target_link_libraries(test_video_sync_e2e PRIVATE
+        njclient
+        juce::juce_core
+        juce::juce_events
+        juce::juce_graphics)
+    if(APPLE)
+        target_link_options(test_video_sync_e2e PRIVATE
+            "LINKER:-stack_size,0x1000000")  # 16 MB main-thread stack
+    endif()
+    jamwide_use_ffmpeg(test_video_sync_e2e)
+    add_test(NAME video_sync_e2e COMMAND test_video_sync_e2e
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
     # Plan 21-02 Task 3 (EXCLUDE_FROM_ALL): fixture-binary generator.

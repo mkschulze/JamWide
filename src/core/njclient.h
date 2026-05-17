@@ -102,6 +102,9 @@
 namespace jamwide {
 class Openh264Decoder;
 class PeerVideoSink;
+// Plan 21-03 Task 1 forward decl: receive-side distributor injected by
+// JamWideJuceProcessor.
+class JamWideRemoteFrameDistributor;
 } // namespace jamwide
 
 
@@ -932,6 +935,17 @@ public:
     std::shared_ptr<jamwide::Openh264Decoder>          decoder;               // Plan 21-03 lazy
     jamwide::PeerVideoSink*                            sink = nullptr;        // Plan 21-03 owns
 
+    // Plan 21-03 Task 2 (codex Cluster 4 two-phase lazy startup): Phase 1
+    // sets this flag under m_video_recv_cs (microseconds — no allocation,
+    // no avcodec_open2, no thread start). Phase 2 runs OUTSIDE the mutex
+    // on the run thread and completes the heavy work: construct decoder +
+    // sink + register with distributor + avcodec_open2 + start thread.
+    // Phase 3 re-acquires the mutex briefly to install decoder + sink
+    // pointers IF the VideoRecvState still exists (peer may have left
+    // between Phase 1 and Phase 2). Idempotency: helpers early-return if
+    // decoder is non-null OR decoder_startup_needed is true.
+    bool decoder_startup_needed = false;
+
     // Plan 21-02 Task 1: ctor body lives in njclient.cpp (zero-inits scalars
     // the previous inline initializer list zero-initted). The dtor is
     // declared and defaulted inline (= default below) — std::shared_ptr's
@@ -951,6 +965,59 @@ public:
   VideoRecvState *findOrCreateVideoStream(const char *username, int chidx);
   VideoRecvState *findVideoStreamByGUID(const unsigned char *guid);
   void removeVideoStream(const char *username, int chidx);
+
+  // Phase 21-03 Task 1: injection of the receive-side distributor by
+  // JamWideJuceProcessor at construction time. The pointer lifetime is
+  // managed by the processor — see ~JamWideJuceProcessor dtor order (codex
+  // Cluster 3 reversed: client.reset() runs BEFORE remoteFrameDistributor.reset()
+  // so by the time the distributor itself is destroyed all VideoRecvStates
+  // have already run the four-step shutdown protocol and removed their
+  // sinks from the distributor's map).
+  //
+  // Plan 21-03 Task 2 wires the BEGIN-handler lazy-startup path + user-leave
+  // four-step shutdown protocol that uses this pointer.
+  void SetRemoteFrameDistributor(jamwide::JamWideRemoteFrameDistributor* d) noexcept;
+
+  // Phase 21-03 Task 2: callback ops table. njclient.cpp is in the
+  // `njclient` static library which does NOT link juce_graphics /
+  // juce_events. Calling methods on JamWideRemoteFrameDistributor or
+  // Openh264Decoder directly from njclient.cpp would force those modules
+  // into njclient's link dependencies, breaking the tests that don't pull
+  // JUCE. The processor passes function pointers via this table; tests
+  // leave it null and the lazy-startup / shutdown helpers degrade to
+  // no-ops (matching the m_remote_frame_distributor==nullptr branch).
+  struct VideoDistributorOps {
+    // Lazy-startup factory: distributor->createDecoderAndSinkForPeer.
+    // Returns an opaque pointer that is a `new`-ed
+    // std::shared_ptr<Openh264Decoder> heap object on success, OR nullptr
+    // on failure. The opaque pointer is consumed by install_decoder OR
+    // destroy_decoder. Sink pointer is returned via *out_sink_ptr.
+    void* (*create_decoder)(jamwide::JamWideRemoteFrameDistributor* dist,
+                             const char* username, int chidx,
+                             int width, int height,
+                             std::array<jamwide::VideoRecvSlotSnapshot, 4>* slotRing,
+                             jamwide::SpscRing<int, 4>*                     slotIndexQ,
+                             std::atomic<std::uint64_t>*                    producerSeq,
+                             jamwide::PeerVideoSink** out_sink_ptr) = nullptr;
+    // Install decoder onto vs->decoder (move-assigns from the opaque heap
+    // shared_ptr; deletes the heap shared_ptr after move). The opaque
+    // pointer is consumed.
+    void  (*install_decoder)(void* opaque_decoder, VideoRecvState* vs) = nullptr;
+    // Destroy a decoder produced by create_decoder without installing
+    // (e.g. peer left between Phase 1 and Phase 2 completion). Deletes
+    // the heap shared_ptr.
+    void  (*destroy_decoder)(void* opaque_decoder) = nullptr;
+    // Step 4 of the shutdown protocol — distributor->removeSink.
+    void  (*remove_sink)(jamwide::JamWideRemoteFrameDistributor* dist,
+                          const char* username, int chidx) = nullptr;
+    // User-leave teardown: runs steps 1, 2, 4 (decoder->close, setSink(nullptr),
+    // removeSink). Moves the shared_ptr<Openh264Decoder> out of vs->decoder
+    // (vs->decoder is reset to null on return).
+    void  (*tear_down_decoder)(jamwide::JamWideRemoteFrameDistributor* dist,
+                                VideoRecvState* vs,
+                                const char* username, int chidx) = nullptr;
+  };
+  void SetVideoDistributorOps(const VideoDistributorOps& ops) noexcept;
 
   // ---------------------------------------------------------------------
   // Phase 20-00 + R3 MF4: queue observability surface for Plan 20-03.
@@ -1286,6 +1353,36 @@ protected:
   // No-op if vs->decoder is null (Plan 21-03 lazy-constructs the decoder
   // on first H264 BEGIN; Plan 21-02 leaves it null in production).
   void pushPlayingSnapshotToDecoder_(VideoRecvState* vs);
+
+  // Phase 21-03 Task 1: receive-side distributor pointer injected by
+  // JamWideJuceProcessor (see SetRemoteFrameDistributor in the public
+  // section). nullable — when null, Plan 21-03 Task 2's lazy-startup +
+  // user-leave shutdown blocks degrade to no-ops (the audio-thread
+  // snapshot push code already no-ops when vs->decoder is null).
+  jamwide::JamWideRemoteFrameDistributor* m_remote_frame_distributor = nullptr;
+
+  // Phase 21-03 Task 2: function-pointer table injected by JamWideJuceProcessor.
+  // Decouples njclient.cpp from juce_graphics/juce_events/libavcodec linkage
+  // (see VideoDistributorOps doc comment above). null in tests = no-op.
+  VideoDistributorOps m_video_distributor_ops{};
+
+  // Phase 21-03 Task 2 (codex Cluster 4 — two-phase lazy decoder startup):
+  // Phase 1 (under m_video_recv_cs in BEGIN): set vs->decoder_startup_needed
+  // = true. NO allocation. NO avcodec_open2. NO thread start. Microseconds.
+  // The audio thread's runVideoReceiveBlock_ no longer blocks against
+  // heavy lazy-startup work — the only mutex hold here is the flag set.
+  void ensureVideoDecoderForPeerLater_(VideoRecvState* vs, int width, int height);
+
+  // Phase 2+3 (OUTSIDE m_video_recv_cs on the run thread): does the heavy
+  // lifting — captures stable references under a brief mutex re-acquire,
+  // constructs decoder + sink + registers with distributor, calls
+  // avcodec_open2, starts the decoder thread. Phase 3 re-acquires the
+  // mutex BRIEFLY to install the pointers if the VideoRecvState still
+  // exists (peer may have left between Phase 1 and Phase 2). Idempotent
+  // against burst BEGINs (early-returns if decoder is already non-null OR
+  // the flag has been cleared by a racer).
+  void completeVideoDecoderStartup_(const char *username, int chidx,
+                                     int width, int height);
 
   WDL_HeapBuf tmpblock;
 

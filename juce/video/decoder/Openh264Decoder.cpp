@@ -56,6 +56,11 @@ extern "C" {
 #include "Openh264Decoder.h"
 #include "VideoRecvSlotSnapshot.h"
 
+// Plan 21-03 Task 3 (cross-plan codex concern): include PeerVideoSink so the
+// marker-frame branch in parseSlotAndFeed_ can forward sender_seq to the sink
+// for the e2e monotonic-alignment assertion. JAMWIDE_BUILD_TESTS-gated.
+#include "../distributor/PeerVideoSink.h"
+
 #include <juce_graphics/juce_graphics.h>
 
 #include <algorithm>
@@ -324,7 +329,25 @@ void Openh264Decoder::parseSlotAndFeed_(const VideoRecvSlotSnapshot& snapshot)
         // contract). Plan 21-02 codex Cluster 6: payload IS 20 bytes
         // (not 24 — the OUTER 4B prefix is consumed before the snapshot
         // is built).
-        if (frameSize == 20) continue;
+        //
+        // Plan 21-03 Task 3 (cross-plan codex concern): extract sender_seq
+        // from the marker frame's first 4 bytes (big-endian) and forward
+        // to the sink for the monotonic-alignment assertion in
+        // test_video_sync_e2e. JAMWIDE_BUILD_TESTS-gated — production
+        // builds skip the call.
+        if (frameSize == 20) {
+#ifdef JAMWIDE_BUILD_TESTS
+            const unsigned char* m = snapshot.bytes.data() + frameStart;
+            const std::int64_t sender_seq =
+                ((std::int64_t)m[0] << 24) | ((std::int64_t)m[1] << 16) |
+                ((std::int64_t)m[2] <<  8) |  (std::int64_t)m[3];
+            std::lock_guard<std::mutex> g(sink_lock_);
+            if (sink_ != nullptr) {
+                sink_->setLastObservedSenderSeqForTest(sender_seq);
+            }
+#endif
+            continue;
+        }
 
         const unsigned char* frame = snapshot.bytes.data() + frameStart;
 

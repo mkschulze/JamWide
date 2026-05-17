@@ -66,9 +66,11 @@
 #endif
 #include <stdio.h>
 #include <time.h>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 #include "../wdl/wdlstring.h"
@@ -85,6 +87,22 @@
 // 15.1-05 CR-05/06/07: deferred-delete SPSC infrastructure (Wave 0 finalized in 15.1-04).
 #include "../threading/spsc_ring.h"
 #include "../threading/spsc_payloads.h"
+
+// Plan 21-02 Task 1 (codex Cluster 2 Option A): VideoRecvState owns a 4-slot
+// snapshot ring. Header MUST be included here because std::array<VideoRecvSlotSnapshot, 4>
+// template instantiation in struct VideoRecvState requires the full POD definition.
+// NalChunk and Openh264Decoder are NOT included — NalChunks are decoder-thread-
+// local (codex Cluster 2) and Openh264Decoder is forward-declared below.
+#include "../../juce/video/decoder/VideoRecvSlotSnapshot.h"
+
+// Plan 21-02 Task 1: forward declarations for the decoder + sink types
+// owned by Plan 21-03's distributor. VideoRecvState carries a unique_ptr
+// to the decoder and a raw pointer to the sink; both .cpp files include
+// the full headers where needed.
+namespace jamwide {
+class Openh264Decoder;
+class PeerVideoSink;
+} // namespace jamwide
 
 
 class I_NJEncoder;
@@ -892,11 +910,36 @@ public:
     int  last_played_sender_seq; // sender_seq of the last interval we played (-1 if never)
     unsigned char last_played_audio_guid[16]; // audio_guid of the last interval we played
     int  drop_resync_count;     // diagnostic: number of force-resyncs (HOLD cap exceeded)
-    VideoRecvState() : frame_idx(0), expected_frames(0), append_active(false), append_to_next(false), append_to_pending(false), stream_chidx(0),
-                       empty_count(0), hold_count(0), synced(false), last_played_sender_seq(-1), drop_resync_count(0) {
-      memset(append_guid, 0, 16); key[0] = 0; stream_username[0] = 0; memset(prev_ds_guid, 0, 16);
-      memset(last_played_audio_guid, 0, 16);
-    }
+
+    // Plan 21-02 Task 1 (D-09 / D-10 lazy lifecycle + codex Cluster 2 Option A):
+    // VideoRecvState owns the 4-slot snapshot ring + integer-index SPSC + producer
+    // sequence counter that the per-peer decoder thread consumes. Plan 21-03 lazy-
+    // constructs `decoder` on first H264 BEGIN and registers `sink` via the
+    // distributor; Plan 21-02 leaves both null and only wires the audio-thread
+    // push path so the decoder, once instantiated, will immediately observe the
+    // first playing slot.
+    std::array<jamwide::VideoRecvSlotSnapshot, 4>     decoderSlots;          // 4× 4 MB owned
+    jamwide::SpscRing<int, 4>                          decoderSlotIndexQ;     // audio→decoder
+    std::atomic<int>                                   nextDecoderSlotFillIndex{0};
+    std::atomic<std::uint64_t>                         decoderProducerSeq{0}; // codex Cluster 1
+    // std::shared_ptr (NOT unique_ptr) so the type-erased deleter captured at
+    // make_shared time obviates the need for the full Openh264Decoder type at
+    // VideoRecvState's destruction point. njclient lib (which doesn't link
+    // juce_graphics) can still destroy VideoRecvState without seeing the
+    // decoder's full type. Plan 21-03's distributor TU (which DOES link JUCE)
+    // creates the decoder via std::make_shared<Openh264Decoder>(...); the
+    // captured deleter knows how to call ~Openh264Decoder.
+    std::shared_ptr<jamwide::Openh264Decoder>          decoder;               // Plan 21-03 lazy
+    jamwide::PeerVideoSink*                            sink = nullptr;        // Plan 21-03 owns
+
+    // Plan 21-02 Task 1: ctor body lives in njclient.cpp (zero-inits scalars
+    // the previous inline initializer list zero-initted). The dtor is
+    // declared and defaulted inline (= default below) — std::shared_ptr's
+    // type-erased deleter (W-2 resolution) handles the decoder cleanup
+    // without requiring the full Openh264Decoder type in njclient.cpp's
+    // translation unit.
+    VideoRecvState();
+    ~VideoRecvState() = default;
   };
 
   // Public accessors — production code must hold m_video_recv_cs across any

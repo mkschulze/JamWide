@@ -38,6 +38,15 @@
 #include "njclient.h"
 #include "mpb.h"
 
+// Plan 21-02 Task 1 (W-2 forward-decl resolution): VideoRecvState carries a
+// std::shared_ptr<jamwide::Openh264Decoder>. shared_ptr's type-erased deleter
+// (captured at make_shared time in Plan 21-03's JUCE-linked TU) means
+// njclient.cpp can destroy VideoRecvState without seeing Openh264Decoder's
+// full type — so no #include "../../juce/video/decoder/Openh264Decoder.h"
+// here (it would pull juce_graphics into the njclient static lib which is
+// intentionally non-JUCE). VideoRecvSlotSnapshot.h IS included via njclient.h
+// because the std::array<VideoRecvSlotSnapshot, 4> member needs the full POD.
+
 static int64_t currentMillis()
 {
     using namespace std::chrono;
@@ -3405,6 +3414,48 @@ void NJClient::SetVideoSPSPPS(const void* data, int len)
 bool NJClient::IsVideoFourcc(unsigned int fcc) const
 {
   return is_video_fourcc(fcc);
+}
+
+// ---------------------------------------------------------------------------
+// Plan 21-02 Task 1 (W-2 forward-decl resolution + codex Cluster 2 Option A):
+// VideoRecvState ctor body. Ctor zero-inits the same scalars that the
+// previous inline initializer list (Plan 21-01 Task 1) zero-inited.
+// decoderSlots default-init (each slot's `size = 0; frameCount = 0;`);
+// decoderSlotIndexQ default-init (empty); nextDecoderSlotFillIndex /
+// decoderProducerSeq default-init to 0 per the in-class default-member-
+// initializers in njclient.h; decoder (std::shared_ptr) and sink (raw
+// pointer) default-init to nullptr.
+//
+// Dtor is `= default` in the header (W-2 resolution): std::shared_ptr's
+// type-erased deleter handles Openh264Decoder cleanup without njclient.cpp
+// needing the full type. Plan 21-03 lazy-constructs `decoder` via
+// std::make_shared<Openh264Decoder>(...) inside a JUCE-linked TU where
+// the deleter is captured; the cleanup at NJClient destruction
+// (m_video_streams.Empty(true) → delete vs → ~VideoRecvState → ~shared_ptr
+// → captured deleter → Openh264Decoder::~Openh264Decoder which runs the
+// R4 H9 7-step teardown) requires no special handling here.
+//
+// Plan 21-03 owns sink teardown sequencing at the user-leave call site
+// (codex Cluster 3 — sink unwiring happens BEFORE VideoRecvState destruction).
+// ---------------------------------------------------------------------------
+NJClient::VideoRecvState::VideoRecvState()
+    : frame_idx(0)
+    , expected_frames(0)
+    , append_active(false)
+    , append_to_next(false)
+    , append_to_pending(false)
+    , stream_chidx(0)
+    , empty_count(0)
+    , hold_count(0)
+    , synced(false)
+    , last_played_sender_seq(-1)
+    , drop_resync_count(0)
+{
+  memset(append_guid, 0, 16);
+  key[0]             = 0;
+  stream_username[0] = 0;
+  memset(prev_ds_guid, 0, 16);
+  memset(last_played_audio_guid, 0, 16);
 }
 
 // ---------------------------------------------------------------------------

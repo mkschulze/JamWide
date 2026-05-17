@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Native Video
 status: executing
-stopped_at: v1.1-beta.20.6 release shipped — Phase 21 ready to execute next
-last_updated: "2026-05-17T16:54:47.979Z"
-last_activity: 2026-05-17 -- Phase 21 execution started
+stopped_at: Phase 21 Waves 1+2 complete; Plan 21-03 automated portion merged, awaiting live UAT against video.ninjamzap.com:2049
+last_updated: "2026-05-17T17:25:00Z"
+last_activity: 2026-05-17 -- Phase 21 execution paused at Plan 21-03 Task 5 UAT checkpoint
 progress:
   total_phases: 6
   completed_phases: 2
@@ -165,10 +165,20 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-05-17T16:50:00Z
-Stopped at: v1.1-beta.20.6 release shipped — Phase 21 ready to execute next
-Most recent commit on working branch: f86fc74 (wip: phase-21 planning done; v1.1-beta.20.6 release in-flight CI) — local-only, ahead of origin/quick/260515-0pc-native-video-port (tip 75e3dd3)
-Resume artifacts: HANDOFF.json DELETED (one-shot, consumed) + .planning/phases/21-h-264-decoder-receive-pipeline/.continue-here.md (stale — pre-release; supersede on next pause)
+Last session: 2026-05-17T17:25:00Z
+Stopped at: Phase 21 execution paused at Plan 21-03 Task 5 — live UAT against video.ninjamzap.com:2049 deferred (no collaborator available)
+Most recent commit on working branch: 19a1050 (chore: merge executor worktree (21-03: distributor + sink + processor wiring + UAT procedure))
+Resume artifacts: .planning/phases/21-h-264-decoder-receive-pipeline/.continue-here.md (refreshed 2026-05-17T17:25Z)
+
+### Phase 21 progress this session (2026-05-17)
+
+**All 3 plans' automated portions LANDED and merged on branch `quick/260515-0pc-native-video-port`:**
+
+- **Plan 21-01** (receive state machine + GUID-pair decision tree): merged `b0d8a9e`. `test_video_recv_state` 11/11 PASS. Codex Cluster 1 audio-thread timing instrumentation live, Cluster 5 production/test parity helpers, Cluster 10 eleven malformed-length tests, audit-allowlist envelope scoped parity-only.
+
+- **Plan 21-02** (Openh264Decoder + AVCC parser + audio-thread snapshot push): merged `da4de76`. `test_video_decoder` 8/8 PASS. All codex clusters addressed (1/2/3/6/7/8/10). W-3 back-to-back-push ordering regression PROVEN end-to-end via red→green pixel test.
+
+- **Plan 21-03** (FrameDistributor + PeerVideoSink + processor wiring + UAT procedure): merged `19a1050`. `test_remote_frame_distributor` 4/4 PASS, `test_video_sync_e2e` 1/1 PASS. Codex Cluster 4 four-step user-leave shutdown protocol + Cluster 9 destructor reorder (`client.reset()` BEFORE `remoteFrameDistributor.reset()`) implemented. Partial SUMMARY.md committed (flags UAT pending).
 
 ### Release shipped this session (2026-05-17)
 
@@ -178,6 +188,16 @@ Resume artifacts: HANDOFF.json DELETED (one-shot, consumed) + .planning/phases/2
   CI run `25996593334` green (build-macos 6m53s). Windows + Linux + universal-mac deferred to Phase 23 per workflow `if: ${{ false }}` gates.
 
 - **Per user directive, `docs/download.md` NOT updated** — beta.20.5 link remains the user-facing recommendation on the download page since v1.1-beta.20.6 is mac-arm64-only and most users want the cross-platform 20.5 build. Tag is published for testers who specifically want the Phase 20 wire-format fixes on Apple Silicon.
+
+### Phase 21 — what's left
+
+**Plan 21-03 Task 5: live UAT against video.ninjamzap.com:2049.** Procedure at `tests/uat/phase-21-receive-uat-procedure.md` (4 cells, 35-50 min). Requires (1) a coordinated collaborator broadcasting video (or 2 for Cell 4), (2) a `--tests`-enabled standalone build for the JAMWIDE_BUILD_TESTS-gated lldb counter accessors, (3) reading per-peer + audio-thread-receive-block counters via lldb.
+
+**Closure paths per codex Cluster 9 policy:**
+- State A: all 4 cells PASS → `Phase 21 closed (Cells 1-4 PASS)`.
+- State B: some cells BLOCKED → deferred-risk records in STATE.md + report status line `Phase 21 closed with deferred-risk Cells X, Y tracked in STATE.md → Phase 24`.
+
+**Defensible State B closure path (without running live UAT):** Phase 22 (native video UI tile grid) is what renders the decoded `juce::Image` into a visible per-peer tile. Without Phase 22, UAT operators can only verify via lldb counter readouts. Phase 24 BETA validation already owns macOS + Windows multi-peer testing against `video.ninjamzap.com:2049` — Cells 1-4 effectively become Phase-24 BETA-01/05/06 work. A deferred-risk close noting this milestone-structural-reality is defensible.
 
 ### Phase 20 root-cause finding (2026-05-17)
 

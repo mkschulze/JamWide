@@ -3895,6 +3895,121 @@ void NJClient::resetRunVideoReceiveBlockTimingForTest() noexcept {
   m_run_video_receive_block_max_nanos_.store(0, std::memory_order_relaxed);
   m_run_video_receive_block_last_peer_count_.store(0, std::memory_order_relaxed);
 }
+
+// ---------------------------------------------------------------------------
+// Plan 21-01 Task 3 (codex Cluster 5): test dispatchers. THIN forwarders to
+// the production helpers — no state-machine duplication. Tests build their
+// fixtures via these dispatchers; the helpers themselves are shared between
+// production and tests.
+// ---------------------------------------------------------------------------
+void NJClient::DispatchTestVideoRecvBegin(const unsigned char guid[16], unsigned int fourcc,
+                                           const char *username, int chidx)
+{
+  handleVideoRecvBegin_(guid, fourcc, username, chidx);
+}
+
+void NJClient::DispatchTestVideoRecvWrite(const unsigned char guid[16],
+                                           const void *data, int dataLen, bool isEnd)
+{
+  if (data && dataLen > 0) handleVideoRecvWrite_(guid, data, dataLen);
+  if (isEnd) handleVideoRecvEnd_(guid);
+}
+
+void NJClient::DispatchTestVideoRecvEnd(const unsigned char guid[16])
+{
+  handleVideoRecvEnd_(guid);
+}
+
+void NJClient::RunOnNewIntervalReceiveBlockForTest()
+{
+  runVideoReceiveBlock_();
+}
+
+NJClient::VideoRecvState* NJClient::GetVideoStreamForTest(const char *username, int chidx)
+{
+  return findVideoStream(username, chidx);
+}
+
+// Populate m_remoteuser_mirror[slot] with active=true + a heap-allocated
+// DecodeState whose .guid is set to the supplied 16-byte GUID. Tests use
+// this to feed the GUID-pair decision tree in runVideoReceiveBlock_.
+//
+// The DecodeState heap allocation is owned by the mirror slot until the
+// test calls ClearTestRemoteUserMirror(slot), at which point the
+// DecodeState is freed.
+//
+// Note: `username` is captured into a future test scaffold field but is
+// NOT currently stored on the mirror — the audio-thread iteration in
+// runVideoReceiveBlock_ matches via the FIRST active slot with next_ds[0]
+// non-null (Plan 21-01 simplification for single-broadcaster scenarios;
+// Plan 21-03's distributor audit widens to N peers).
+void NJClient::AddTestRemoteUserMirrorWithDs(int slot, const char *username, int channel,
+                                              const unsigned char guid[16])
+{
+  if (slot < 0 || slot >= MAX_PEERS) return;
+  if (channel < 0 || channel >= MAX_USER_CHANNELS) return;
+  auto& um = m_remoteuser_mirror[slot];
+  um.active = true;
+  um.user_index = slot;
+  um.chanpresentmask |= (1u << channel);
+  um.submask |= (1u << channel);
+  um.chans[channel].present = true;
+  // Free any previous next_ds[0] heap-owned by an earlier test call.
+  if (um.chans[channel].next_ds[0] != nullptr) {
+    delete um.chans[channel].next_ds[0];
+  }
+  ::DecodeState *ds = new ::DecodeState;
+  memcpy(ds->guid, guid, 16);
+  um.chans[channel].next_ds[0] = ds;
+  (void)username;  // reserved for the Plan 21-03 username-keyed audit
+}
+
+void NJClient::ClearTestRemoteUserMirror(int slot)
+{
+  if (slot < 0 || slot >= MAX_PEERS) return;
+  auto& um = m_remoteuser_mirror[slot];
+  for (int ch = 0; ch < MAX_USER_CHANNELS; ch++) {
+    if (um.chans[ch].next_ds[0] != nullptr) {
+      delete um.chans[ch].next_ds[0];
+      um.chans[ch].next_ds[0] = nullptr;
+    }
+    if (um.chans[ch].next_ds[1] != nullptr) {
+      delete um.chans[ch].next_ds[1];
+      um.chans[ch].next_ds[1] = nullptr;
+    }
+    if (um.chans[ch].ds != nullptr) {
+      delete um.chans[ch].ds;
+      um.chans[ch].ds = nullptr;
+    }
+    um.chans[ch].present = false;
+  }
+  um.active = false;
+  um.chanpresentmask = 0;
+  um.submask = 0;
+}
+
+// Replicate the inline user-leave reset block from Plan 21-01 Task 2's
+// m_remoteusers Delete site. Tests use this to verify
+// test_user_leave_resets_video_sync_state.
+void NJClient::DispatchTestUserLeaveForVideoReset(const char *username)
+{
+  m_video_recv_cs.Enter();
+  for (int vi = 0; vi < m_video_streams.GetSize(); vi++) {
+    VideoRecvState *vs = m_video_streams.Get(vi);
+    if (vs && !strcmp(vs->stream_username, username)) {
+      memset(vs->prev_ds_guid, 0, 16);
+      memset(vs->last_played_audio_guid, 0, 16);
+      vs->hold_count = 0;
+      vs->empty_count = 0;
+      vs->synced = false;
+      vs->last_played_sender_seq = -1;
+      vs->next.reset();
+      vs->pending.reset();
+      vs->accumulating.reset();
+    }
+  }
+  m_video_recv_cs.Leave();
+}
 #endif
 
 void NJClient::DrainRawDataSendQueueForTest(

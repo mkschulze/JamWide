@@ -255,12 +255,15 @@ if(JAMWIDE_BUILD_JUCE)
 
     # Plan 21-02 Task 1: VideoDecoder interface + NalChunk POD + VideoRecvSlotSnapshot
     # POD (codex Cluster 2 Option A) + Openh264Decoder header (Wave-2 contracts).
-    # Header-only at Task 1 — Task 2 adds Openh264Decoder.cpp.
+    # Plan 21-02 Task 2: Openh264Decoder.cpp implementation. Links libavcodec /
+    # libswscale via jamwide_use_ffmpeg() — same linkage as the Phase 20 encoder
+    # block above (already invoked on JamWideJuce a few lines below).
     target_sources(JamWideJuce PRIVATE
         juce/video/decoder/VideoDecoder.h
         juce/video/decoder/NalChunk.h
         juce/video/decoder/VideoRecvSlotSnapshot.h
         juce/video/decoder/Openh264Decoder.h
+        juce/video/decoder/Openh264Decoder.cpp
     )
 
     jamwide_use_ffmpeg(JamWideJuce)

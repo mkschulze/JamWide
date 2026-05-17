@@ -1275,6 +1275,18 @@ protected:
   void handleVideoRecvEnd_(const unsigned char guid[16]);
   void runVideoReceiveBlock_();
 
+  // Plan 21-02 Task 2 (codex Cluster 1 + Cluster 2 Option A): push the
+  // current vs->playing slot bytes into the per-peer decoder via the
+  // VideoRecvState-owned snapshot ring. Called from runVideoReceiveBlock_
+  // at THREE sites (STAGE-1 promote, PREV/NONE-match immediate-play,
+  // accumulating-fallback). Audio-thread-safe: memcpys bytes + offsets
+  // into vs->decoderSlots[fillIdx], pushes fillIdx onto the SPSC,
+  // bumps decoderProducerSeq.fetch_add(1, release). NO WaitableEvent::
+  // signal — the decoder polls producer_seq with 15 ms timed wait.
+  // No-op if vs->decoder is null (Plan 21-03 lazy-constructs the decoder
+  // on first H264 BEGIN; Plan 21-02 leaves it null in production).
+  void pushPlayingSnapshotToDecoder_(VideoRecvState* vs);
+
   WDL_HeapBuf tmpblock;
 
   // 15.1-05 CR-05/06/07: deferred-delete queue. Audio thread try_pushes

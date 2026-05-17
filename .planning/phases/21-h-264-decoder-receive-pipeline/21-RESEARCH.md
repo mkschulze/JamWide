@@ -84,7 +84,7 @@ codebase:
 | GUID-pair decision tree (DS-match → defer to pending, PREV-match → playing, no-match → HOLD with `kHoldCapDrop=4`) | Audio thread (`on_new_interval`) | — | NinjamZap-verbatim at `njclient.cpp:3116-3219`. The protocol-level fix for the "video one interval early" bug — must be byte-faithful. |
 | `m_remoteuser_mirror[s].next_ds[0]->guid` read for GUID comparison | Audio thread | — | Phase 15.1-07a HIGH-2 carve-out already accepted this access. Phase 21 reads two GUID fields per VideoRecvState per swap (current `senderDs->guid` + `vs->prev_ds_guid` cached from previous swap). |
 | Push parsed NalChunks onto decoder's SpscRing | Audio thread (after SWAP places bytes in `playing`) | — | `vs->decoderInputQ.try_push(...)` is lock-free; runs immediately after the audio-thread SWAP block decides this slot plays. **Allocation-free** — NalChunk storage uses inline buffer + heap fallback as a `std::variant<InlineNal, HeapNal>` POD; or alternatively the parser allocates run-thread heap that the SPSC moves. Planner picks. |
-| AVCC parsing (24B marker → SPS/PPS chunk → per-frame chunks) | Run thread (D-12: NOT audio thread) | — | D-12 explicitly: "AVCC parsing on run thread; decoder thread is pure libavcodec consumer." This is allocation-heavy. But note: in NinjamZap's design the WRITE handler already does the marker parsing (`njclient.cpp:1534`) so we extend that handler to also walk the SPS/PPS + frame-NAL framing once the slot is "ready" (after the audio-thread SWAP). Implementation note: the cleanest seam is to do AVCC parsing INSIDE the audio-thread SWAP block right before the SpscRing push — but that's an audio-thread allocation. Better: have the audio thread push a single `NalChunk{SlotReady, slot_index, slot_bytes_ref}` POD, and let the decoder thread do the AVCC walk. **Recommendation: planner picks; default = audio thread parses (NinjamZap-literal envelope already accepts allocations on this path) + pushes one NalChunk per item.** |
+| AVCC parsing (24B marker → SPS/PPS chunk → per-frame chunks) | **Decoder thread (D-12 revised + B-1; codex Cluster 2)** | — | Per CONTEXT.md D-12 revised + B-1 + codex Cluster 2: the AVCC parser (`Openh264Decoder::parseSlotAndFeed_`) lives on the DECODER thread, not the audio or run thread. The audio thread only memcpys the 0–4 MB playing-slot bytes into a `VideoRecvState`-owned `VideoRecvSlotSnapshot` and pushes an integer index onto `SpscRing<int, 4>` (Option-A redesign — `std::array<VideoRecvSlotSnapshot, 4>` + index-only SPSC). The decoder thread pops the index, walks the snapshot bytes (24B marker discard → SPS/PPS inner-length-prefixed chunk → per-frame AVCC chunks), wraps each NAL with Annex-B start code (`00 00 00 01`), and feeds via `avcodec_send_packet`. **The audit-allowlist envelope (D-16) explicitly does NOT cover parser work on the audio thread** — only the bounded slot-memcpy + index push. Rationale: wire-format and codec-API responsibilities co-located on the libavcodec consumer simplify the threading audit (one thread, one mutex-free SPSC pop, then pure libavcodec calls). |
 | `avcodec_send_packet` + `avcodec_receive_frame` loop | Decoder thread (per peer) | — | Pure libavcodec consumer. One thread per peer for isolation (D-09). |
 | `sws_scale` YUV420P → BGRA | Decoder thread | — | Co-located with decoder for zero-copy after `receive_frame`. SwsContext owned by decoder thread; lazy-recreated on source-resolution change (D-07). |
 | Double-buffered `juce::Image` swap | Decoder thread (writer) → UI thread (reader) | — | Brief `juce::CriticalSection` for the swap; `std::atomic<uint64_t> generation` for lock-free latest-frame-wins read. D-08. |
@@ -123,7 +123,7 @@ audit-CRITICAL or break the GUID-pair sync semantics.
 - **D-09**: One libavcodec decoder thread per peer (`juce::Thread`). Each `VideoRecvState` owns its own decoder thread + AVCodecContext + SwsContext + per-peer `SpscRing<NalChunk, 32>` populated by the run thread.
 - **D-10**: Lazy decoder lifecycle — spin-up on first H264 BEGIN per peer; tear-down on peer leave. Zero cost for peers who never broadcast video.
 - **D-11**: Per-peer per-slot soft cap of 4 MB; on exceed drop rest-of-interval. Each of the 4 `VideoRecvBuffer` slots pre-allocates a `WDL_HeapBuf` of 4 MB on creation. **No allocation in the WRITE handler** — pre-allocation at slot creation is critical for this gate to be RT-clean.
-- **D-12**: AVCC parsing on run thread; decoder thread is pure libavcodec consumer.
+- **D-12 (revised 2026-05-17 per checker B-1)**: AVCC parsing on **DECODER thread**; the audio thread only memcpys the playing-slot bytes into a `VideoRecvState`-owned `VideoRecvSlotSnapshot` and pushes an integer index onto `SpscRing<int, 4>`. Original D-12 wording said "run thread"; the practical contract (per codex Cluster 2 Option A) is that the parser lives where the libavcodec consumer lives — the decoder thread — keeping wire-format and codec-API responsibilities co-located on a single non-realtime thread. Authoritative locked text in `21-CONTEXT.md` D-12.
 - **D-13**: SPS/PPS fed as Annex-B packets via same code path as frame NALs (no avcC extradata). Run thread wraps SPS/PPS NALs with Annex-B start code (`00 00 00 01`) and pushes as a `NalChunk{kind: ParamSet}` on the decoder SPSC.
 
 **4-Stage Pipeline Ownership + Phase 15.1-07a Mirror Interaction:**
@@ -197,7 +197,7 @@ audit-CRITICAL or break the GUID-pair sync semantics.
 | libavcodec H.264 decoder | Direct openh264 ISVCDecoder API | Direct API has lower wrapper overhead but is decode-only for the Cisco openh264 binary, which means a separate `libopenh264.dylib` symbol load. libavcodec wraps `libopenh264` for encode but uses its OWN built-in C-language H.264 decoder for decode (faster than openh264's decoder by ~20-30% per FFmpeg's own benchmarks). Stick with libavcodec wrapper — Phase 21 uses the BUILT-IN H.264 decoder (`avcodec_find_decoder(AV_CODEC_ID_H264)` returns the in-tree codec, NOT a libopenh264 wrapper). [CITED: ffmpeg/libavcodec/h264dec.c] |
 | One decoder thread per peer | Single decoder thread, multiplex peers via context switch | Single-thread multiplex saves N threads but adds head-of-line blocking — one slow peer freezes everyone else. D-09 locks one-per-peer for isolation. At 8 peers = 8 decoder threads, fine on modern desktop (cf. Chrome runs 30+ threads per video tab). |
 | Double-buffered juce::Image | Triple-buffered (writer / staging / reader) | Triple-buffering eliminates writer-side stalls if reader is mid-paint, but adds 1.5× memory (10.5 MB at HD per peer vs 7 MB). At our paint cadence (vsync-driven, ~16 ms) and decoder cadence (~33-100 ms), the double-buffer never stalls — the writer is always done well before the next paint. |
-| AVCC parsing on run thread (D-12) | AVCC parsing on decoder thread | Moving the parse to decoder thread isolates the run thread from wire-format details. But D-12 puts it on the run thread because the audio-thread SWAP needs to push parsed NalChunks (audio thread can't allocate, decoder thread doesn't see the slot bytes until they're already parsed). Practical default in this research: **audio thread is allowed allocations under D-16 envelope, so the cleanest implementation has the audio-thread SWAP block do the AVCC walk + SPSC push as a single NinjamZap-literal step**. CONTEXT.md D-12 wording says "run thread" but the natural seam after the SWAP is the audio thread — planner picks which thread parses; both are envelope-accepted. |
+| AVCC parsing on decoder thread (D-12 revised) | AVCC parsing on audio or run thread | Per CONTEXT.md D-12 revised + B-1 + codex Cluster 2: the parser MUST live on the decoder thread. Audio-thread parsing would expand the Phase 15.1 audit-allowlist envelope to cover non-bounded work (full NAL walk + Annex-B wrap allocations); run-thread parsing is envelope-allowed but separates the parser from its libavcodec consumer (one extra cross-thread handoff for no benefit). Decoder-thread parsing co-locates wire-format and codec-API responsibilities on a single non-realtime thread, simplifies the threading audit, and matches the codex review's Option A index-only SPSC redesign (`std::array<VideoRecvSlotSnapshot, 4>` + `SpscRing<int, 4>`). |
 | `unordered_map<std::string, std::unique_ptr<PeerVideoSink>>` for distributor | `WDL_PtrList<PeerVideoSink*>` + linear scan by key | Matches the rest of upstream's WDL_PtrList style but std::unordered_map has O(1) lookup. At 3-8 peers the linear scan is fine either way; std::unordered_map is more idiomatic C++. **Default: std::unordered_map.** |
 | Annex-B SPS/PPS (D-13) via same path as frames | `extradata` field on `AVCodecContext` | extradata path needs avcC format (length-prefixed) which is what we already have on the wire — BUT it must be set BEFORE `avcodec_open2()` and never changed. Mid-stream SPS/PPS updates (peer preset change) can't reset extradata cleanly. Annex-B + same-path-as-frame-NALs handles mid-stream updates by construction. D-13 locks this. |
 
@@ -1191,7 +1191,7 @@ they were verified by direct file:line read against `ninjamzap-core/njclient.h` 
 throughout are real source references. The 8 assumptions above are the libavcodec /
 JUCE / WDL behavioral claims that are based on web search or training data.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Where exactly does AVCC parsing live — run thread or audio thread?**
    - What we know: CONTEXT.md D-12 says "run thread"; D-16 envelope ALLOWS audio-thread
@@ -1207,6 +1207,7 @@ JUCE / WDL behavioral claims that are based on web search or training data.
      literal more closely (upstream's web viewer probably parses on the receive side,
      not in a separate thread). The decoder thread is left as a pure libavcodec consumer.
      Document the audio-thread AVCC walk explicitly in the audit-allowlist envelope.
+   - **RESOLVED:** AVCC parsing lives on the DECODER thread per CONTEXT.md D-12 revised + B-1 (see `21-CONTEXT.md` L55). The audio thread only memcpys the 0–4 MB slot bytes into a `VideoRecvState`-owned `VideoRecvSlotSnapshot` and pushes an integer index into `SpscRing<int, 4>` — no parsing happens on the audio thread. The Architectural Responsibility Map at L87 is updated to reflect this in the same change. Original recommendation above (audio-thread parser) is **superseded**; this resolution overrides it and is what Plans 21-01 and 21-02 implement (codex Cluster 2 Option A redesign).
 
 2. **Subscribe-before-peer-exists race in JamWideRemoteFrameDistributor.**
    - What we know: Phase 22 tile may instantiate before the corresponding peer has
@@ -1219,6 +1220,7 @@ JUCE / WDL behavioral claims that are based on web search or training data.
      (lazy lifecycle in D-10), it flushes any deferred listeners onto the sink's
      listener-vector. Eager-placeholder is simpler but wastes ~30 MB of pre-allocated
      juce::Image bits per peer who never broadcasts. Default to deferred.
+   - **RESOLVED:** Defer the listener-add, per Plan 21-03's distributor design. Distributor maintains a `deferred_listeners_[key]` queue keyed by `"username:chidx"` (D-05); when the run thread lazily creates the PeerVideoSink on first H264 BEGIN (D-10), it flushes any deferred listeners onto the sink's listener-vector under the listener `juce::CriticalSection` (D-06). No eager placeholder sinks. Locked in `21-CONTEXT.md` Discretion section ("empty-peer reaping policy" + D-10 lazy lifecycle).
 
 3. **Sink dimensions when the peer's first frame arrives — are they configurable?**
    - What we know: D-07 fixes sink dims at first-seen peer resolution. So if peer
@@ -1229,6 +1231,7 @@ JUCE / WDL behavioral claims that are based on web search or training data.
    - Recommendation: **No upscaling**. Sink dims = first-seen dims. Phase 22 tiles
      scale the image at paint time anyway (`drawImage` with target rect). Upscaling
      in sws_ would waste decoder thread CPU.
+   - **RESOLVED:** No sws_-side upscaling; sink dims fixed at first-seen peer resolution per CONTEXT.md D-07. Phase 22 tiles handle final display scaling at paint time via `juce::Graphics::drawImage(...)` with the target rect. Decoder thread's `sws_scale` only downscales (or 1:1 copies) to the fixed sink dims; no decoder CPU spent on upscaling.
 
 4. **What does the audit-allowlist envelope for Phase 21 look like in detail?**
    - What we know: D-16 lists the carve-out categories.
@@ -1237,6 +1240,7 @@ JUCE / WDL behavioral claims that are based on web search or training data.
    - Recommendation: Plan 21-01 lands the entries with `<line-placeholder>` tokens
      symmetric to Phase 20-00's pattern, then Plan 21-01's last task re-grep-refreshes
      the actual line numbers (R4 M13 closure pattern from Phase 20).
+   - **RESOLVED:** Plan 21-01 lands the carve-out entries (per CONTEXT.md D-16, revised to reflect D-12 revised: `m_video_recv_cs.Enter/Leave`, `WDL_PtrList<VideoRecvState>` iteration, scalar reads on VideoRecvBuffer, `VideoRecvBuffer::copyFrom`, **decoder-owned memcpy + `SpscRing<int, 4>::try_push` of a slot index** — replaces the earlier `SpscRing<NalChunk, 32>::try_push` envelope entry since NalChunks no longer cross the audio-thread boundary, `m_remoteuser_mirror[s].next_ds[0]->guid` access, **explicit non-coverage of parser work on the audio thread**, no `writeLog`). Implementation uses `<line-placeholder>` tokens written in Plan 21-01 Task N and re-grep-refreshed in Plan 21-01's last task (R4 M13 closure pattern from Phase 20).
 
 5. **Is there a security consideration for accepting untrusted H.264 from peers?**
    - What we know: NINJAM servers are user-operated; a malicious peer could send
@@ -1249,6 +1253,7 @@ JUCE / WDL behavioral claims that are based on web search or training data.
      check the CVE list for ffmpeg 7.1.2 vs current; if a critical decoder CVE is
      unfixed, Phase 23 picks up a newer ffmpeg point release. Document as a Phase 24
      review item.
+   - **RESOLVED:** Out of scope for v1.3 / Phase 21. Phase 21 inherits Phase 14.3-01's vendored ffmpeg 7.1.2 threat surface; the decode-error counter + drop-frame recovery (D-18) covers malformed/truncated NALs at the JamWide layer (recorded as threat T-21-10 in Plan 21-02's STRIDE register). Phase 24 (beta validation) reviews the ffmpeg 7.1.2 CVE list; if a critical H.264 decoder CVE is unfixed, Phase 23 picks up a newer point release. Tracked as a Phase 24 review item.
 
 ## Environment Availability
 

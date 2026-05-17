@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Native Video
-status: executing
-stopped_at: Phase 20 (H.264 Encoder & Send Pipeline) COMPLETE — visually validated against canonical NinjamZap web viewer on `video.ninjamzap.com:2049` (2026-05-17). Plan 20-03 Task 4 PASS recorded at `tests/uat/phase-20-broadcast-uat-report.md`. Six wire-format / encoder fixes landed across one diagnostic session (commits 9df97f8 → 8d17498) resolving chidx=1 collision (canonical flags&0x10 skip), lazy sws_ rescaler, Annex-B → AVCC NAL split, 24-byte marker outer length prefix, and SPS/PPS outer length wrapper. Cross-peer interop with NinjamZap mobile validated alongside in the same room. Formal R3 MF4 perf counters + TSan dual-scope + R4 M11 teardown wire observation deferred to Plan 24-01. Next action: `/gsd-discuss-phase 21` to start the H.264 Decoder + Receive Pipeline (the symmetric inverse of Phase 20 — 4-stage receive accumulating→next→pending→playing + GUID-pairing decision tree). Public-anon-server 2-channel cap remains a documented v1.3-beta limitation (`.planning/debug/phase-20-anon-channel-cap.md` + remediation outline at `phase-20-anon-channel-cap-remediation-plan.md`); not P0.
-last_updated: "2026-05-17T13:00:00.000Z"
-last_activity: 2026-05-17 -- Phase 20 closed PASS; canonical web viewer rendered JamWide tile live alongside NinjamZap mobile peer; fix #6 (commit 8d17498) restored upstream-canonical 24B marker + SPS/PPS outer length wrapper after docs-driven 6d23b5c regression
+status: "Visually validated against canonical NinjamZap web viewer on `video.ninjamzap.com:2049` with NinjamZap mobile peer present in same room. Plan 20-03 Tasks 1/2/3/4/5 all PASS. Six wire-format fixes landed during the diagnostic UAT loop (commits 9df97f8 → 8d17498). UAT report at `tests/uat/phase-20-broadcast-uat-report.md`. Build #337 is the validated artifact."
+stopped_at: Phase 21 context gathered
+last_updated: "2026-05-17T12:59:59.699Z"
+last_activity: "2026-05-17 -- Phase 20 closed PASS; fix #6 (commit 8d17498) restored upstream-canonical 24B marker + SPS/PPS outer length wrapper after docs-driven 6d23b5c regression"
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 16
+  total_plans: 7
   completed_plans: 7
   percent: 33
 ---
@@ -164,14 +164,15 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-05-17 (resumed; 6th wire-format fix landed)
-Stopped at: Phase 20 Plan 20-03 Task 4 — awaiting user UAT replay #6 on build #337 against video.ninjamzap.com:2049 after restoring 24-byte marker with outer [4B BE 20] length prefix + wrapping SPS/PPS with outer [4B BE inner_len] prefix per ninjamzap-core canonical wire (verified against tests/video-sync/harness/TestClient.cpp). All 4 affected unit tests green (test_video_state_machine 8/8, test_video_encoder 5/5, test_processor_video_lifecycle 7/7, test_rawdata_send 8/8).
+Last session: 2026-05-17T12:59:59.685Z
+Stopped at: Phase 21 context gathered
 Most recent commit on working branch: 8e5fa6c (wip) + uncommitted fix at HEAD+1
 Resume artifacts: .planning/HANDOFF.json (stale — pre-#337 context) + .planning/phases/20-h-264-encoder-send-pipeline/.continue-here.md (refreshed)
 
 ### Phase 20 root-cause finding (2026-05-17)
 
 Commit 6d23b5c "fix(20-02,20-01): wire-format compliance — 20B marker, [2B BE len]+SPS/PPS" introduced TWO regressions by reading docs without source verification:
+
 - Marker shrunk from 24 → 20 bytes by removing the outer `[4B BE 20]` length prefix that the receiver's chunk reassembler requires (per upstream njclient.cpp:3050-3070 comment: "The 4-byte length prefix is REQUIRED so the receiver's reassembler can identify logical frame boundaries").
 - SPS/PPS emitted as `[2B sps_len][SPS][2B pps_len][PPS]` without the outer `[4B BE inner_len]` wrapper that upstream's TestClient::sendFakeSPSPPS demonstrates the receiver expects.
 

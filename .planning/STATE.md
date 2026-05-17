@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Native Video
-status: "Visually validated against canonical NinjamZap web viewer on `video.ninjamzap.com:2049` with NinjamZap mobile peer present in same room. Plan 20-03 Tasks 1/2/3/4/5 all PASS. Six wire-format fixes landed during the diagnostic UAT loop (commits 9df97f8 → 8d17498). UAT report at `tests/uat/phase-20-broadcast-uat-report.md`. Build #337 is the validated artifact."
+status: executing
 stopped_at: Phase 21 context gathered
-last_updated: "2026-05-17T12:59:59.699Z"
-last_activity: "2026-05-17 -- Phase 20 closed PASS; fix #6 (commit 8d17498) restored upstream-canonical 24B marker + SPS/PPS outer length wrapper after docs-driven 6d23b5c regression"
+last_updated: "2026-05-17T15:37:12.660Z"
+last_activity: 2026-05-17 -- Phase 21 planning complete
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 7
+  total_plans: 10
   completed_plans: 7
   percent: 33
 ---
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 ## Current Position
 
 Phase: 20 (h-264-encoder-send-pipeline) — **COMPLETE 2026-05-17**
-Status: Visually validated against canonical NinjamZap web viewer on `video.ninjamzap.com:2049` with NinjamZap mobile peer present in same room. Plan 20-03 Tasks 1/2/3/4/5 all PASS. Six wire-format fixes landed during the diagnostic UAT loop (commits 9df97f8 → 8d17498). UAT report at `tests/uat/phase-20-broadcast-uat-report.md`. Build #337 is the validated artifact.
+Status: Ready to execute
 Next phase: Phase 21 (H.264 Decoder & Receive Pipeline) — about to invoke `/gsd-discuss-phase 21` to gather context before planning. Phase 21 implements the symmetric inverse of Phase 20: 4-stage receive (`accumulating → next → pending → playing`) + GUID-pairing decision tree (DS / PREV / no-match with `kHoldCapDrop = 4`) + libavcodec H264 decode per peer + per-user `juce::Image` delivery to the UI layer (which Phase 22 will render).
-Last activity: 2026-05-17 -- Phase 20 closed PASS; fix #6 (commit 8d17498) restored upstream-canonical 24B marker + SPS/PPS outer length wrapper after docs-driven 6d23b5c regression
+Last activity: 2026-05-17 -- Phase 21 planning complete
 Milestone scope (v1.3 = macOS + Windows testable beta on upstream ninjamzap-server, `video.ninjamzap.com:2049` documented as the recommended public instance — JamWide's existing NINJAM server browser UI is untouched):
 
 - Phase 19 — Camera Capture & Permission UX (3 plans) — CAM-01, CAM-02, CAM-03, PKG-04 (entitlements). Cross-platform via JUCE `juce_CameraDevice_{mac,windows}.h`; REAPER fallback is macOS-only (SPARTA #82).

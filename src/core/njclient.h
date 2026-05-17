@@ -102,6 +102,9 @@
 namespace jamwide {
 class Openh264Decoder;
 class PeerVideoSink;
+// Plan 21-03 Task 1 forward decl: receive-side distributor injected by
+// JamWideJuceProcessor.
+class JamWideRemoteFrameDistributor;
 } // namespace jamwide
 
 
@@ -952,6 +955,18 @@ public:
   VideoRecvState *findVideoStreamByGUID(const unsigned char *guid);
   void removeVideoStream(const char *username, int chidx);
 
+  // Phase 21-03 Task 1: injection of the receive-side distributor by
+  // JamWideJuceProcessor at construction time. The pointer lifetime is
+  // managed by the processor — see ~JamWideJuceProcessor dtor order (codex
+  // Cluster 3 reversed: client.reset() runs BEFORE remoteFrameDistributor.reset()
+  // so by the time the distributor itself is destroyed all VideoRecvStates
+  // have already run the four-step shutdown protocol and removed their
+  // sinks from the distributor's map).
+  //
+  // Plan 21-03 Task 2 wires the BEGIN-handler lazy-startup path + user-leave
+  // four-step shutdown protocol that uses this pointer.
+  void SetRemoteFrameDistributor(jamwide::JamWideRemoteFrameDistributor* d) noexcept;
+
   // ---------------------------------------------------------------------
   // Phase 20-00 + R3 MF4: queue observability surface for Plan 20-03.
   //
@@ -1286,6 +1301,13 @@ protected:
   // No-op if vs->decoder is null (Plan 21-03 lazy-constructs the decoder
   // on first H264 BEGIN; Plan 21-02 leaves it null in production).
   void pushPlayingSnapshotToDecoder_(VideoRecvState* vs);
+
+  // Phase 21-03 Task 1: receive-side distributor pointer injected by
+  // JamWideJuceProcessor (see SetRemoteFrameDistributor in the public
+  // section). nullable — when null, Plan 21-03 Task 2's lazy-startup +
+  // user-leave shutdown blocks degrade to no-ops (the audio-thread
+  // snapshot push code already no-ops when vs->decoder is null).
+  jamwide::JamWideRemoteFrameDistributor* m_remote_frame_distributor = nullptr;
 
   WDL_HeapBuf tmpblock;
 

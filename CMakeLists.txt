@@ -266,6 +266,18 @@ if(JAMWIDE_BUILD_JUCE)
         juce/video/decoder/Openh264Decoder.cpp
     )
 
+    # Plan 21-03 Task 1: JamWideRemoteFrameDistributor + PeerVideoSink.
+    # Symmetric inverse of Phase 19's JamWideFrameDistributor (camera-side).
+    # PeerVideoSink subclasses juce::AsyncUpdater (juce_events) and owns
+    # double-buffered juce::Image (juce_graphics) — both already linked
+    # transitively below. No ffmpeg dependency in the distributor itself.
+    target_sources(JamWideJuce PRIVATE
+        juce/video/distributor/JamWideRemoteFrameDistributor.h
+        juce/video/distributor/JamWideRemoteFrameDistributor.cpp
+        juce/video/distributor/PeerVideoSink.h
+        juce/video/distributor/PeerVideoSink.cpp
+    )
+
     jamwide_use_ffmpeg(JamWideJuce)
 
     target_compile_definitions(JamWideJuce PUBLIC

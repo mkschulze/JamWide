@@ -16,6 +16,7 @@
 #include "video/VideoCompanion.h"
 #include "video/native/JamWideFrameDistributor.h"
 #include "video/native/JamWideCameraDevice.h"
+#include "video/distributor/JamWideRemoteFrameDistributor.h"
 #include "video/encoder/VideoEncoder.h"
 #include "video/encoder/VideoEncoderConfig.h"
 #include "video/encoder/VideoEncoderListener.h"
@@ -132,6 +133,17 @@ public:
     std::unique_ptr<jamwide::JamWideFrameDistributor> frameDistributor;
     std::unique_ptr<jamwide::JamWideCameraDevice> nativeCamera;
 
+    // Phase 21-03 Task 1: receive-side decoded-frame fan-out distributor.
+    // Symmetric inverse of the camera-side frameDistributor — owns one
+    // PeerVideoSink per (username, chidx); Phase 22 grid tile + popout
+    // subscribe via subscribeToPeer. NJClient lazy-creates a sink when a
+    // peer's first H.264 BEGIN arrives (Plan 21-03 Task 2 two-phase
+    // startup); removes via four-step shutdown protocol on user-leave
+    // (codex Cluster 3). MUST outlive NJClient — see ~JamWideJuceProcessor
+    // dtor order (client.reset() BEFORE remoteFrameDistributor.reset()
+    // per codex Cluster 3 reversed order).
+    std::unique_ptr<jamwide::JamWideRemoteFrameDistributor> remoteFrameDistributor;
+
     // Phase 20-03 — H.264 encoder owned by the processor. Constructed when
     // the camera reaches Capturing (onCameraStateChangedFromEditor); reset
     // when the camera goes Idle/Failed/Unavailable. The encoder THREAD
@@ -168,6 +180,12 @@ public:
 
     jamwide::JamWideCameraDevice* getNativeCamera() { return nativeCamera.get(); }
     jamwide::JamWideFrameDistributor* getFrameDistributor() { return frameDistributor.get(); }
+
+    // Phase 21-03 Task 1: Phase 22 tiles get a reference to the receive-side
+    // distributor via this accessor.
+    jamwide::JamWideRemoteFrameDistributor* getRemoteFrameDistributor() {
+        return remoteFrameDistributor.get();
+    }
 
     // ─── Phase 20-03 — H.264 broadcast surface ──────────────────────────────
     // The processor owns the Openh264Encoder; the editor's FallbackListener

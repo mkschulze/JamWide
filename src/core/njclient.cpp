@@ -3520,6 +3520,15 @@ void NJClient::removeVideoStream(const char *username, int chidx)
   }
 }
 
+// Phase 21-03 Task 1: receive-side distributor pointer injection. Task 1 lands
+// the setter as a plain pointer store (no allocation, no thread start). Plan
+// 21-03 Task 2 builds the lazy-startup + four-step shutdown protocol that
+// reads m_remote_frame_distributor.
+void NJClient::SetRemoteFrameDistributor(jamwide::JamWideRemoteFrameDistributor* d) noexcept
+{
+  m_remote_frame_distributor = d;
+}
+
 // ---------------------------------------------------------------------------
 // Plan 21-01 Task 2 (codex Cluster 5): single-source state-machine helpers.
 // Production BEGIN/WRITE/END dispatchers AND test dispatchers AND the

@@ -5265,28 +5265,35 @@ void NJClient::on_new_interval()
       RawDataSendBegin(m_video_guid, m_video_fourcc, m_video_chidx, 0); // BEGIN new
       m_video_interval_open = true;
 
-      // 24-byte marker on stack: [00 00 00 14][BE u32 swap_count][16B audio_ch0_guid].
-      // Default audio_ch0_guid to 16 zeros (NONE-match) — readGuidSeqlock
-      // below either fills with the seqlock-read bytes or leaves the zeros
-      // on retry-cap exhaustion.
-      unsigned char marker[24];
-      marker[0] = 0; marker[1] = 0; marker[2] = 0; marker[3] = 20;
-      marker[4] = (unsigned char)((m_sync_interval_cnt >> 24) & 0xFF);
-      marker[5] = (unsigned char)((m_sync_interval_cnt >> 16) & 0xFF);
-      marker[6] = (unsigned char)((m_sync_interval_cnt >> 8)  & 0xFF);
-      marker[7] = (unsigned char)( m_sync_interval_cnt        & 0xFF);
-      std::memset(marker + 8, 0, 16);
-
+      // 20-byte sync marker per NinjamZap VIDEO_SYNC.md §6:
+      //   Bytes 0–3 : BE uint32 interval counter
+      //   Bytes 4–19: audio channel-0 GUID (the GUID of the audio interval
+      //               recorded at the same instant)
+      // The reassembled byte stream's FIRST chunk is exactly these 20 bytes.
+      // There is NO 4-byte BE length prefix on the marker — that was Plan
+      // 20-02's misread of the spec and broke wire-compat with the NinjamZap
+      // web decoder (it parses bytes 0-3 as the interval counter; a length
+      // prefix shifted everything by 4 bytes and made the decoder reject
+      // the chunk).
+      //
       // Phase 15.1-06 HIGH-2 carve-out per D-20 + R4 H8: audio thread reads
       // the canonical audio_ch0_guid via atomic two-uint64_t halves seqlock
-      // on Local_Channel — NO non-atomic byte read.
+      // on Local_Channel — NO non-atomic byte read. Default to 16 zeros
+      // (NONE-match) if no local channel 0 exists or seqlock retries cap.
+      unsigned char marker[20];
+      marker[0] = (unsigned char)((m_sync_interval_cnt >> 24) & 0xFF);
+      marker[1] = (unsigned char)((m_sync_interval_cnt >> 16) & 0xFF);
+      marker[2] = (unsigned char)((m_sync_interval_cnt >> 8)  & 0xFF);
+      marker[3] = (unsigned char)( m_sync_interval_cnt        & 0xFF);
+      std::memset(marker + 4, 0, 16);
+
       if (m_locchannels.GetSize() > 0) {
         Local_Channel *lc = m_locchannels.Get(0);
         if (lc && lc->channel_idx == 0) {
-          readGuidSeqlock(*lc, marker + 8);   // atomic-halves load; zeros stay on retry-cap
+          readGuidSeqlock(*lc, marker + 4);   // atomic-halves load; zeros stay on retry-cap
         }
       }
-      RawDataSendWrite(m_video_guid, marker, 24, false);
+      RawDataSendWrite(m_video_guid, marker, 20, false);
 
       // SPS/PPS as chunk #2 — only if published. NESTED m_video_spspps_cs
       // inside the outer m_video_cs critical section (D-03 + D-13).

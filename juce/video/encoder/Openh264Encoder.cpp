@@ -776,11 +776,43 @@ void Openh264Encoder::scanAndPublishSpsPps_(const unsigned char* nal_stream,
     if (sps_start < 0 || pps_start < 0) {
         return;
     }
+
+    // NinjamZap VIDEO_SYNC.md §7 wire format for the SPS/PPS block:
+    //
+    //   [2B BE SPS len][SPS NAL bytes (no start code)]
+    //   [2B BE PPS len][PPS NAL bytes (no start code)]
+    //
+    // The annex-B start code (0x00 0x00 0x00 0x01) is 4 bytes; we strip it
+    // from each NAL by starting at sps_start+4 / pps_start+4. The 2-byte
+    // big-endian length prefix tells the receiver how many NAL bytes
+    // follow. Plan 20-02's original "raw [SPS-NAL][PPS-NAL] concatenation,
+    // no per-NAL length prefix" was a misread of the spec — the web
+    // decoder could not parse it and rejected the entire video stream.
+    const int sps_payload_len = (sps_end - sps_start) - 4;
+    const int pps_payload_len = (pps_end - pps_start) - 4;
+    if (sps_payload_len <= 0 || pps_payload_len <= 0 ||
+        sps_payload_len > 0xFFFF || pps_payload_len > 0xFFFF) {
+        return;
+    }
+
     std::vector<unsigned char> buf;
-    buf.reserve(static_cast<std::size_t>((sps_end - sps_start) +
-                                          (pps_end - pps_start)));
-    buf.insert(buf.end(), nal_stream + sps_start, nal_stream + sps_end);
-    buf.insert(buf.end(), nal_stream + pps_start, nal_stream + pps_end);
+    buf.reserve(2 + static_cast<std::size_t>(sps_payload_len) +
+                2 + static_cast<std::size_t>(pps_payload_len));
+
+    // [2B BE SPS len][SPS NAL bytes without start code]
+    buf.push_back(static_cast<unsigned char>((sps_payload_len >> 8) & 0xFF));
+    buf.push_back(static_cast<unsigned char>( sps_payload_len       & 0xFF));
+    buf.insert(buf.end(),
+               nal_stream + sps_start + 4,   // skip 4-byte annex-B start code
+               nal_stream + sps_end);
+
+    // [2B BE PPS len][PPS NAL bytes without start code]
+    buf.push_back(static_cast<unsigned char>((pps_payload_len >> 8) & 0xFF));
+    buf.push_back(static_cast<unsigned char>( pps_payload_len       & 0xFF));
+    buf.insert(buf.end(),
+               nal_stream + pps_start + 4,
+               nal_stream + pps_end);
+
     publishSpsPps_(buf.data(), static_cast<int>(buf.size()));
     if (listener_ != nullptr) {
         listener_->onSpsPpsPublished(static_cast<int>(buf.size()));

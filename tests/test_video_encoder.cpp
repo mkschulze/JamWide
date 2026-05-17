@@ -129,11 +129,16 @@ bool waitFor(Pred predicate, int timeout_ms) {
     return predicate();
 }
 
-// Inspect a published NAL stream and check if it contains an IDR
-// (nal_unit_type == 5). The stream is in annex-B form with
-// [0x00 0x00 0x00 0x01] start codes.
+// Inspect a published NAL and check if it is an IDR
+// (nal_unit_type == 5). As of Plan 20-XX wire-format fix, the encoder
+// publishes one NAL per callback with RAW NAL bytes (no 4-byte annex-B
+// start code) per NinjamZap VIDEO_SYNC.md §7 AVCC framing. The first byte
+// is the NAL header; low 5 bits = nal_unit_type. We retain the legacy
+// annex-B scan as a fallback in case any caller still concatenates
+// multiple NALs (e.g. an SPS/PPS pre-pended IDR packet from libopenh264).
 bool nalStreamContainsIdr(const unsigned char* data, int len) {
-    if (len < 5) return false;
+    if (len < 1) return false;
+    if ((data[0] & 0x1f) == 5) return true;
     for (int i = 0; i + 4 < len; ++i) {
         if (data[i] == 0x00 && data[i + 1] == 0x00 &&
             data[i + 2] == 0x00 && data[i + 3] == 0x01) {

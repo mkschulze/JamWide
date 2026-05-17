@@ -570,7 +570,36 @@ void Openh264Encoder::drainEncoder_() {
             scanAndPublishSpsPps_(packet_->data, packet_->size);
         }
         if (publishEncodedNal_) {
-            publishEncodedNal_(packet_->data, packet_->size);
+            // libopenh264 / libavcodec H.264 baseline emits Annex-B byte
+            // streams: [00 00 00 01 NAL_header NAL_data 00 00 00 01 ...].
+            // The NinjamZap wire format (VIDEO_SYNC.md §7) expects AVCC
+            // framing: each NAL prefixed by a 4-byte BE length, NO start
+            // code. Plan 20-02's QueueVideoFrame already adds the 4-byte
+            // length prefix — but it expects ONE NAL per call with raw
+            // NAL bytes only (no start code, no multi-NAL packing).
+            //
+            // Walk the Annex-B packet, split on start codes, strip them,
+            // and call publishEncodedNal_ once per NAL with the raw NAL
+            // bytes. (SPS / PPS NALs inside the same packet are emitted
+            // too — the receiver tolerates duplicate parameter sets
+            // alongside the dedicated SPS/PPS chunk; CONTEXT.md notes
+            // libopenh264 baseline inlines them in IDR packets and the
+            // NinjamZap web decoder uses whichever arrives first.)
+            const unsigned char* data = packet_->data;
+            const int size = packet_->size;
+            int pos = 0;
+            while (pos < size) {
+                int sc = findNalStart(data, size, pos);
+                if (sc < 0) break;
+                int sc_next = findNalStart(data, size, sc + 4);
+                int nal_start = sc + 4;          // skip 4-byte annex-B start code
+                int nal_end   = (sc_next < 0) ? size : sc_next;
+                int nal_len   = nal_end - nal_start;
+                if (nal_len > 0) {
+                    publishEncodedNal_(data + nal_start, nal_len);
+                }
+                pos = nal_end;
+            }
         }
         m_frame_output_count.fetch_add(1, std::memory_order_relaxed);
         av_packet_unref(packet_);

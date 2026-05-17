@@ -1319,6 +1319,13 @@ NJClient::~NJClient()
   // and reaps). Empty(true) deletes every tracked entry.
   m_rawdata_downloads.Empty(true);
 
+  // Phase 21 Plan 21-01 Task 1: tear down the per-peer video receive state
+  // list. Empty(true) deletes every VideoRecvState (and its four
+  // VideoRecvBuffer slots, each with up to 4 MB pre-allocated WDL_HeapBuf).
+  // No mutex acquisition needed — destructor runs single-threaded by the
+  // time we reach this point (producers stopped, audio thread joined).
+  m_video_streams.Empty(true);
+
   // Phase 20-00 (D-19): free residual queued RawData send items so the
   // inner WDL_HeapBufs are released on shutdown. NinjamZap-literal:
   // WDL_PtrList::Empty(true) deletes every owned pointer; ~RawDataQueueItem
@@ -3348,6 +3355,68 @@ void NJClient::SetVideoSPSPPS(const void* data, int len)
 bool NJClient::IsVideoFourcc(unsigned int fcc) const
 {
   return is_video_fourcc(fcc);
+}
+
+// ---------------------------------------------------------------------------
+// Plan 21-01 Task 1 (D-14): VideoRecvState lookup/create/remove helpers.
+// Verbatim port of ninjamzap-core/njclient.cpp:2124-2173. JamWide deviation:
+// none. The strchr-'@' branch in findOrCreateVideoStream is preserved
+// defensively even though JamWide's m_remoteusers[].name is bare-username
+// (no `@host` form) — it just never fires here.
+//
+// All four helpers iterate m_video_streams WITHOUT taking m_video_recv_cs.
+// Callers (handleVideoRecvBegin_/Write_/End_, the user-leave reset block,
+// production BEGIN/WRITE/END dispatchers) hold the lock at outer scope.
+// ---------------------------------------------------------------------------
+NJClient::VideoRecvState *NJClient::findVideoStream(const char *username, int chidx)
+{
+  for (int i = 0; i < m_video_streams.GetSize(); i++) {
+    VideoRecvState *vs = m_video_streams.Get(i);
+    if (vs && vs->stream_chidx == chidx && !strcmp(vs->stream_username, username))
+      return vs;
+  }
+  return NULL;
+}
+
+NJClient::VideoRecvState *NJClient::findOrCreateVideoStream(const char *username, int chidx)
+{
+  VideoRecvState *vs = findVideoStream(username, chidx);
+  if (!vs) {
+    vs = new VideoRecvState;
+    const char *atSign = strchr(username, '@');
+    int nameLen = atSign ? (int)(atSign - username) : (int)strlen(username);
+    snprintf(vs->key, sizeof(vs->key), "%.*s:%d", nameLen, username, chidx);
+    lstrcpyn_safe(vs->stream_username, username, sizeof(vs->stream_username));
+    vs->stream_chidx = chidx;
+    lstrcpyn_safe(vs->accumulating.username, username, sizeof(vs->accumulating.username));
+    vs->accumulating.chidx = chidx;
+    m_video_streams.Add(vs);
+  }
+  return vs;
+}
+
+NJClient::VideoRecvState *NJClient::findVideoStreamByGUID(const unsigned char *guid)
+{
+  for (int i = 0; i < m_video_streams.GetSize(); i++) {
+    VideoRecvState *vs = m_video_streams.Get(i);
+    if (vs) {
+      if (!memcmp(vs->accumulating.guid, guid, 16)) return vs;
+      if (vs->append_active && !memcmp(vs->append_guid, guid, 16)) return vs;
+    }
+  }
+  return NULL;
+}
+
+void NJClient::removeVideoStream(const char *username, int chidx)
+{
+  for (int i = 0; i < m_video_streams.GetSize(); i++) {
+    VideoRecvState *vs = m_video_streams.Get(i);
+    if (vs && vs->stream_chidx == chidx && !strcmp(vs->stream_username, username)) {
+      delete vs;
+      m_video_streams.Delete(i);
+      return;
+    }
+  }
 }
 
 void NJClient::DrainRawDataSendQueueForTest(

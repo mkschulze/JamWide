@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Native Video
 status: executing
-stopped_at: Phase 20 Plan 20-03 Task 4 UAT FAILED — chidx=1 collision (audio Ch2 vs. video H264) prevents web-viewer decoding. Root cause: JamWide sets `SetLocalChannelInfo(1, "video", flags=0x10)` but does not implement the NinjamZap canonical `flags & 0x10` skip in its own `on_new_interval()` + `process_samples()` audio pipeline (per upstream VIDEO_SYNC.md §7), so the Local_Channel audio encoder for chidx=1 keeps producing OGGv chunks in parallel with the H264 video stream. Public-anon-server 2-channel cap is a separate but related finding (Ch3/Ch4/Instatalk silently truncated). Diagnosis in .planning/debug/phase-20-anon-channel-cap.md. Remediation outline in .planning/debug/phase-20-anon-channel-cap-remediation-plan.md (proposed Plan 20-04 — Task 0 = canonical skip = ~10-line hot-fix; Tasks 1-8 = auth-reply-aware layout selector for full robustness).
-last_updated: "2026-05-17T00:55:00.000Z"
-last_activity: 2026-05-17 -- Plan 20-03 Task 4 UAT FAIL diagnosed via wire capture + ninjamzap-server source audit; finding affects v1.3 SRV-01 + BETA-01/05/06 scope, not just Phase 20
+stopped_at: Phase 20 (H.264 Encoder & Send Pipeline) COMPLETE — visually validated against canonical NinjamZap web viewer on `video.ninjamzap.com:2049` (2026-05-17). Plan 20-03 Task 4 PASS recorded at `tests/uat/phase-20-broadcast-uat-report.md`. Six wire-format / encoder fixes landed across one diagnostic session (commits 9df97f8 → 8d17498) resolving chidx=1 collision (canonical flags&0x10 skip), lazy sws_ rescaler, Annex-B → AVCC NAL split, 24-byte marker outer length prefix, and SPS/PPS outer length wrapper. Cross-peer interop with NinjamZap mobile validated alongside in the same room. Formal R3 MF4 perf counters + TSan dual-scope + R4 M11 teardown wire observation deferred to Plan 24-01. Next action: `/gsd-discuss-phase 21` to start the H.264 Decoder + Receive Pipeline (the symmetric inverse of Phase 20 — 4-stage receive accumulating→next→pending→playing + GUID-pairing decision tree). Public-anon-server 2-channel cap remains a documented v1.3-beta limitation (`.planning/debug/phase-20-anon-channel-cap.md` + remediation outline at `phase-20-anon-channel-cap-remediation-plan.md`); not P0.
+last_updated: "2026-05-17T13:00:00.000Z"
+last_activity: 2026-05-17 -- Phase 20 closed PASS; canonical web viewer rendered JamWide tile live alongside NinjamZap mobile peer; fix #6 (commit 8d17498) restored upstream-canonical 24B marker + SPS/PPS outer length wrapper after docs-driven 6d23b5c regression
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 7
-  completed_plans: 3
-  percent: 17
+  completed_phases: 2
+  total_plans: 16
+  completed_plans: 7
+  percent: 33
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-05)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Phase 20 — h-264-encoder-send-pipeline
+**Current focus:** Phase 21 — h-264-decoder-and-receive-pipeline (about to start via discuss-phase)
 
 ## Current Position
 
-Phase: 20 (h-264-encoder-send-pipeline) — Plan 20-03 Task 4 UAT FAIL
-Plan: 4 of 4 — Plan 20-03 Tasks 1/2/3/5 PASS, Task 4 (5-min populated-server UAT) **FAIL**
-Status: Wire-capture diagnosis complete. Public-anon-server `MaxChannels 32 2` config caps anonymous peers at 2 channels; JamWide registers 5 (Ch1-4 + Instatalk) → server silently truncates to 2 records; Plan 20-03 overlays video on chidx=1 which collides with audio Ch2 → web viewer cannot decode interleaved OGGv+H264 → black tile. Phase 20 unit-tests still green (6/6) — the bug is in the integration with NinjamRunThread's channel-registration block, not in the per-plan code itself. Next: review the remediation outline (.planning/debug/phase-20-anon-channel-cap-remediation-plan.md — proposed Plan 20-04) and decide whether to slot it as a Phase 20 follow-up or roll into Phase 24 BETA hardening.
-Last activity: 2026-05-17 -- Plan 20-03 Task 4 UAT FAIL diagnosed; debug + remediation docs landed under .planning/debug/
+Phase: 20 (h-264-encoder-send-pipeline) — **COMPLETE 2026-05-17**
+Status: Visually validated against canonical NinjamZap web viewer on `video.ninjamzap.com:2049` with NinjamZap mobile peer present in same room. Plan 20-03 Tasks 1/2/3/4/5 all PASS. Six wire-format fixes landed during the diagnostic UAT loop (commits 9df97f8 → 8d17498). UAT report at `tests/uat/phase-20-broadcast-uat-report.md`. Build #337 is the validated artifact.
+Next phase: Phase 21 (H.264 Decoder & Receive Pipeline) — about to invoke `/gsd-discuss-phase 21` to gather context before planning. Phase 21 implements the symmetric inverse of Phase 20: 4-stage receive (`accumulating → next → pending → playing`) + GUID-pairing decision tree (DS / PREV / no-match with `kHoldCapDrop = 4`) + libavcodec H264 decode per peer + per-user `juce::Image` delivery to the UI layer (which Phase 22 will render).
+Last activity: 2026-05-17 -- Phase 20 closed PASS; fix #6 (commit 8d17498) restored upstream-canonical 24B marker + SPS/PPS outer length wrapper after docs-driven 6d23b5c regression
 Milestone scope (v1.3 = macOS + Windows testable beta on upstream ninjamzap-server, `video.ninjamzap.com:2049` documented as the recommended public instance — JamWide's existing NINJAM server browser UI is untouched):
 
 - Phase 19 — Camera Capture & Permission UX (3 plans) — CAM-01, CAM-02, CAM-03, PKG-04 (entitlements). Cross-platform via JUCE `juce_CameraDevice_{mac,windows}.h`; REAPER fallback is macOS-only (SPARTA #82).
@@ -164,9 +164,18 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-05-16T16:59:16.757Z
-Stopped at: Phase 20 CONTEXT.md + RESEARCH.md revised post-codex (substrate revision locked, ready for re-review or plan)
-Most recent commit on working branch: 4e44a02 (wip: phase-19-uat paused at machine-side complete)
+Last session: 2026-05-17 (resumed; 6th wire-format fix landed)
+Stopped at: Phase 20 Plan 20-03 Task 4 — awaiting user UAT replay #6 on build #337 against video.ninjamzap.com:2049 after restoring 24-byte marker with outer [4B BE 20] length prefix + wrapping SPS/PPS with outer [4B BE inner_len] prefix per ninjamzap-core canonical wire (verified against tests/video-sync/harness/TestClient.cpp). All 4 affected unit tests green (test_video_state_machine 8/8, test_video_encoder 5/5, test_processor_video_lifecycle 7/7, test_rawdata_send 8/8).
+Most recent commit on working branch: 8e5fa6c (wip) + uncommitted fix at HEAD+1
+Resume artifacts: .planning/HANDOFF.json (stale — pre-#337 context) + .planning/phases/20-h-264-encoder-send-pipeline/.continue-here.md (refreshed)
+
+### Phase 20 root-cause finding (2026-05-17)
+
+Commit 6d23b5c "fix(20-02,20-01): wire-format compliance — 20B marker, [2B BE len]+SPS/PPS" introduced TWO regressions by reading docs without source verification:
+- Marker shrunk from 24 → 20 bytes by removing the outer `[4B BE 20]` length prefix that the receiver's chunk reassembler requires (per upstream njclient.cpp:3050-3070 comment: "The 4-byte length prefix is REQUIRED so the receiver's reassembler can identify logical frame boundaries").
+- SPS/PPS emitted as `[2B sps_len][SPS][2B pps_len][PPS]` without the outer `[4B BE inner_len]` wrapper that upstream's TestClient::sendFakeSPSPPS demonstrates the receiver expects.
+
+Fix restored both outer wrappers byte-for-byte against `/Users/cell/dev/ninjamzap-core/core/ninjamclient/libninjamcore/njclient.cpp:3055-3076` (marker) and `/Users/cell/dev/ninjamzap-core/tests/video-sync/harness/TestClient.cpp:156-176` (SPS/PPS). Files changed: src/core/njclient.cpp:5283-5296, juce/video/encoder/Openh264Encoder.cpp:scanAndPublishSpsPps_, tests/test_video_state_machine.cpp (4 byte-count assertions: 20→24, byte offsets 4→8).
 
 ### Phase 19 UAT — actual outcome (machine-side, macOS x86_64)
 

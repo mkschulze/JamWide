@@ -1,6 +1,8 @@
-# Phase 20 — HUMAN-PENDING UAT
+# Phase 20 — HUMAN UAT
 
-**Status:** ⏸ AWAITING HUMAN UAT (Plan 20-03 Task 4 — `checkpoint:human-verify`, gate="blocking")
+**Status:** ✅ **PASS** (2026-05-17) — Plan 20-03 Task 4 closed; report at `tests/uat/phase-20-broadcast-uat-report.md`. The visual + canonical-receiver gates passed; formal perf/TSan/teardown re-runs scheduled into Plan 24-01.
+
+**Original status:** ⏸ AWAITING HUMAN UAT (Plan 20-03 Task 4 — `checkpoint:human-verify`, gate="blocking")
 **Plan:** `.planning/phases/20-h-264-encoder-send-pipeline/20-03-processor-wiring-and-uat-PLAN.md`
 **Procedure:** `tests/uat/phase-20-broadcast-uat-procedure.md`
 **Harness:** `tests/uat/phase-20-broadcast-uat.sh`

@@ -64,7 +64,7 @@ jobs:
         run: |
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_ARCHITECTURES="arm64" \
             -DJAMWIDE_BUILD_JUCE=ON \
             -DJAMWIDE_BUILD_CLAP=OFF \
             -DJAMWIDE_DEV_BUILD=OFF \
@@ -172,6 +172,11 @@ jobs:
           retention-days: 30
 
   build-windows:
+    # Disabled for v1.3 betas — Phase 23 owns Windows codesign + ffmpeg
+    # vendoring on MSYS2. The job's MSYS2/ffmpeg-vendoring/pluginval/staging
+    # steps are kept as-is so re-enabling is a single `if: ${{ true }}` flip
+    # once Phase 23 is ready.
+    if: ${{ false }}
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -346,7 +351,8 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-macos, build-windows, build-linux]
+    # build-windows deferred to Phase 23 (universal-mac + windows codesign).
+    needs: [build-macos, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -355,11 +361,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-
-      - name: Package Windows artifacts
-        run: |
-          cd artifacts/JamWide-Windows
-          zip -r ../../JamWide-Windows.zip .
 
       - name: Prepare macOS and Linux artifacts
         run: |
@@ -376,13 +377,13 @@ jobs:
           if echo "$TAG_NAME" | grep -qE "beta|alpha|rc"; then
             PRERELEASE_FLAG="--prerelease"
           fi
+          # Phase 23 will re-add JamWide-Windows.zip once build-windows is back.
           if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             echo "Release $TAG_NAME already exists — uploading assets"
             gh release upload "$TAG_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber \
               JamWide-macOS.tar.gz \
-              JamWide-Windows.zip \
               JamWide-Linux.tar.gz
           else
             gh release create "$TAG_NAME" \
@@ -391,6 +392,5 @@ jobs:
               --generate-notes \
               $PRERELEASE_FLAG \
               JamWide-macOS.tar.gz \
-              JamWide-Windows.zip \
               JamWide-Linux.tar.gz
           fi

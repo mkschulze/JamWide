@@ -454,16 +454,48 @@ void Openh264Encoder::run() {
 // ───────────────────────────────────────────────────────────────────────
 
 void Openh264Encoder::processFrameSlot_(Slot& slot) {
-    if (codecContext_ == nullptr || frame_ == nullptr || sws_ == nullptr) {
+    if (codecContext_ == nullptr || frame_ == nullptr) {
+        return;
+    }
+    if (slot.width <= 0 || slot.height <= 0) {
         return;
     }
 
-    // Resolution check — slot may be sized for a different cfg than the
-    // current libavcodec context (reconfigure path during a swap). Drop
-    // the frame in that case.
-    if (slot.width  != current_cfg_.width ||
-        slot.height != current_cfg_.height) {
-        return;
+    // Phase 20 Task 1: (re)create sws_ when the camera-frame source dimensions
+    // differ from what sws_ was last configured for. The encoder cfg
+    // (current_cfg_.width × current_cfg_.height) is the OUTPUT dimension;
+    // the camera-frame slot dims are the SOURCE dimension. They almost
+    // never match — webcams capture at fixed native resolutions like 640×480
+    // or 1280×720, while the encoder targets 320×240 / 640×480 / 1280×720
+    // per the Low/Medium/High preset. sws_scale handles the BGRA→YUV420P
+    // conversion AND the downscale in one pass.
+    //
+    // The original allocateLibavcodecResources_ call seeded sws_ with
+    // source = cfg dims (identity scaling), which dropped every production
+    // frame because the resolution-check below rejected non-cfg slots. This
+    // lazy/on-change recreate path is the canonical FFmpeg pattern when the
+    // source dims are not known until the first frame arrives.
+    if (sws_ == nullptr ||
+        sws_src_width_  != slot.width ||
+        sws_src_height_ != slot.height) {
+        if (sws_ != nullptr) {
+            sws_freeContext(sws_);
+            sws_ = nullptr;
+        }
+        sws_ = sws_getContext(slot.width, slot.height, AV_PIX_FMT_BGRA,
+                              current_cfg_.width, current_cfg_.height,
+                              AV_PIX_FMT_YUV420P,
+                              SWS_BILINEAR, nullptr, nullptr, nullptr);
+        if (sws_ == nullptr) {
+            if (listener_ != nullptr) {
+                listener_->onEncoderFatalError(
+                    "sws_getContext failed in processFrameSlot_ "
+                    "(camera-to-encoder rescale)");
+            }
+            return;
+        }
+        sws_src_width_  = slot.width;
+        sws_src_height_ = slot.height;
     }
 
     const unsigned char* src_planes[1]   = { slot.bgra.data() };

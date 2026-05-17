@@ -151,6 +151,15 @@ private:
     AVPacket*        packet_       = nullptr;
     SwsContext*      sws_          = nullptr;
 
+    // Phase 20 Task 1: camera frames arrive at the camera's native capture
+    // resolution (typically 640×480 or 1280×720 on macOS), NOT at the encoder
+    // cfg dimensions. sws_ must scale from the actual source dims to the
+    // encoder cfg dims. These track the source dims sws_ is currently
+    // configured for, so processFrameSlot_ can detect a mismatch and
+    // recreate sws_ on the encoder thread.
+    int                                      sws_src_width_  = 0;
+    int                                      sws_src_height_ = 0;
+
     VideoEncoderConfig                       current_cfg_{};
     std::uint64_t                            last_observed_interval_seq_ = 0;
     // Tracks whether SPS/PPS has been published for the CURRENT

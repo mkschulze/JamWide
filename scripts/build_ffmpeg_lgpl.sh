@@ -202,7 +202,30 @@ cp "$OPENH264_SO_NAME" "$WORK/openh264-prefix/lib/$OPENH264_SO_NAME"
 case "$LIB_EXT" in
   dylib) ln -sf "$OPENH264_SO_NAME" "$WORK/openh264-prefix/lib/libopenh264.dylib" ;;
   so)    ln -sf "$OPENH264_SO_NAME" "$WORK/openh264-prefix/lib/libopenh264.so" ;;
-  dll)   : ;;  # Windows: no symlinks; consumer references the canonical name
+  dll)
+    # Windows: Cisco's prebuilt ships only the DLL — no MinGW import library
+    # (libopenh264.dll.a) or MSVC import library (openh264.lib). ffmpeg's
+    # configure tries to link-test `-lopenh264` and fails with
+    # "openh264 >= 1.3.0 not found using pkg-config" even though the .pc file
+    # is correct. Generate libopenh264.dll.a from the DLL using gendef +
+    # dlltool (both ship with MSYS2 binutils via base-devel).
+    if command -v gendef >/dev/null 2>&1 && command -v dlltool >/dev/null 2>&1; then
+      (
+        cd "$WORK/openh264-prefix/lib"
+        gendef "$OPENH264_SO_NAME" >/dev/null 2>&1
+        DEF_FILE="${OPENH264_SO_NAME%.dll}.def"
+        if [ -f "$DEF_FILE" ]; then
+          dlltool --dllname "$OPENH264_SO_NAME" --def "$DEF_FILE" \
+            --output-lib libopenh264.dll.a
+          echo "    generated libopenh264.dll.a from $OPENH264_SO_NAME"
+        else
+          echo "WARNING: gendef did not produce $DEF_FILE — ffmpeg link-test may fail" >&2
+        fi
+      )
+    else
+      echo "WARNING: gendef/dlltool not on PATH — Windows ffmpeg link-test will fail" >&2
+    fi
+    ;;
 esac
 
 cat > "$WORK/openh264-prefix/lib/pkgconfig/openh264.pc" <<PKG

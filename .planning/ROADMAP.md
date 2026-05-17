@@ -361,6 +361,9 @@ Plans:
   3. User on a session where one remote peer's audio stops while video continues sees video freeze gracefully after `kHoldCapDrop=4` consecutive mismatches, then resume cleanly when the peer's audio returns
   4. User running JamWide with 3+ remote peers broadcasting video simultaneously sees each peer's video decoded independently with one decoder + one 4-stage pipeline per peer
 **Plans**: 3 plans
+  - Plan 21-01: receive-side state machine + WRITE-handler accumulation + audio-thread on_new_interval SWAP + GUID-pair decision tree (DS/PREV/HOLD with kHoldCapDrop=4) + Phase 21 audit-allowlist envelope (WIRE-02)
+  - Plan 21-02: VideoDecoder interface + Openh264Decoder (per-peer juce::Thread + libavcodec H.264 + libswscale BGRA + R4 H9 7-step destructor + drop-frame-and-continue error recovery) + AVCC parser wired into audio-thread SWAP via parsePlayingSlotAndEnqueue_ (COD-03)
+  - Plan 21-03: JamWideRemoteFrameDistributor + PeerVideoSink (double-buffered juce::Image + atomic generation + AsyncUpdater + listener vector + atomic status fields) + lazy decoder/sink lifecycle wiring + JamWideJuceProcessor integration + 3-peer per-peer isolation integration test + UAT against video.ninjamzap.com:2049 (WIRE-02, COD-03)
 
 ### Phase 22: Native Video UI (Grid + Popouts)
 **Goal**: Users see remote peers' video in an in-plugin grid and can pop out individual peers to separate `juce::DocumentWindow`s, with grid and popouts active simultaneously and survivable across grid toggles

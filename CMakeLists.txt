@@ -301,6 +301,17 @@ if(JAMWIDE_BUILD_JUCE)
         juce/ui/video/VideoGridBand.cpp
     )
 
+    # Plan 22-03 Task 1: per-peer popout DocumentWindow + detached-grid
+    # DocumentWindow (M7 codex closure — inner band constructed with
+    # Mode::DetachedBand; getGridBand accessor for editor-driven dual-band
+    # placeholder sync). T-22-MM multi-monitor clamp inside both ctors.
+    target_sources(JamWideJuce PRIVATE
+        juce/ui/video/RemotePeerPopoutWindow.h
+        juce/ui/video/RemotePeerPopoutWindow.cpp
+        juce/ui/video/DetachedGridWindow.h
+        juce/ui/video/DetachedGridWindow.cpp
+    )
+
     jamwide_use_ffmpeg(JamWideJuce)
 
     target_compile_definitions(JamWideJuce PUBLIC

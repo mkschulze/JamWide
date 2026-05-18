@@ -185,6 +185,8 @@ if(JAMWIDE_BUILD_JUCE)
         juce/ui/BeatBar.cpp
         juce/ui/SessionInfoStrip.cpp
         juce/ui/ChannelStripArea.cpp
+        juce/ui/BotFilter.h
+        juce/ui/BotFilter.cpp
         juce/ui/ServerBrowserOverlay.cpp
         juce/ui/LicenseDialog.cpp
         juce/osc/OscAddressMap.cpp
@@ -289,6 +291,14 @@ if(JAMWIDE_BUILD_JUCE)
         juce/ui/video/SelfVideoTile.cpp
         juce/ui/video/RemotePeerTile.h
         juce/ui/video/RemotePeerTile.cpp
+    )
+
+    # Plan 22-02 Task 1: VideoGridBand container (hosts the Plan 22-01 tile
+    # substrate; 30 Hz Timer poll for D-13 sink-poll + D-07 self-broadcast
+    # gating; M7 Mode-conditional paint for main vs detached band).
+    target_sources(JamWideJuce PRIVATE
+        juce/ui/video/VideoGridBand.h
+        juce/ui/video/VideoGridBand.cpp
     )
 
     jamwide_use_ffmpeg(JamWideJuce)

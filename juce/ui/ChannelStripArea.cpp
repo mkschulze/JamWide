@@ -1,4 +1,5 @@
 #include "ChannelStripArea.h"
+#include "BotFilter.h"
 #include "JamWideLookAndFeel.h"
 #include "../JamWideJuceProcessor.h"
 #include "threading/ui_command.h"
@@ -7,26 +8,16 @@
 
 namespace {
 
-bool isBot(const juce::String& name)
-{
-    int atIdx = name.lastIndexOfChar('@');
-    juce::String cleanName = (atIdx > 0) ? name.substring(0, atIdx) : name;
-    return cleanName.startsWithIgnoreCase("ninbot")
-        || cleanName.startsWithIgnoreCase("jambot")
-        || cleanName.startsWithIgnoreCase("ninjam");
-}
+// Phase 22 codex H1 — `isBot` and `stripAtSuffix` were extracted from this
+// anonymous namespace into `juce/ui/BotFilter.{h,cpp}` (namespace `jamwide`,
+// external linkage) so VideoGridBand.cpp and JamWideJuceEditor.cpp can call
+// them. `codecFourccToString` stays here — it is TU-local.
 
 juce::String codecFourccToString(unsigned int fourcc)
 {
     if (fourcc == 0x43414C46) return "FLAC";       // 'FLAC'
     if (fourcc == 0x7647474F) return "Vorbis";      // 'OGGv'
     return {};
-}
-
-juce::String stripAtSuffix(const juce::String& name)
-{
-    int atIdx = name.lastIndexOfChar('@');
-    return (atIdx > 0) ? name.substring(0, atIdx) : name;
 }
 
 } // anonymous namespace
@@ -413,7 +404,7 @@ void ChannelStripArea::updateVuLevels()
     for (const auto& user : users)
     {
         // Skip bots — must mirror the filter in refreshFromUsers
-        if (isBot(juce::String(user.name)))
+        if (jamwide::isBot(juce::String(user.name)))
             continue;
 
         bool isMultiChannel = user.channels.size() > 1;
@@ -565,10 +556,10 @@ void ChannelStripArea::refreshFromUsers(const std::vector<NJClient::RemoteUserIn
         juce::String rawName(user.name);
 
         // Hide known bot users from the mixer
-        if (isBot(rawName))
+        if (jamwide::isBot(rawName))
             continue;
 
-        juce::String userName = stripAtSuffix(rawName);
+        juce::String userName = jamwide::stripAtSuffix(rawName);
 
         // Map visible APVTS slot to NJClient user_index (for MidiMapper::timerCallback)
         if (visibleSlot < 16)

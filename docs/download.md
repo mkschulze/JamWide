@@ -7,14 +7,33 @@ title: Download
 
 ---
 
-## v1.1 Beta — JUCE Rewrite
+## Latest macOS Beta — v1.1-beta.20.7 (Universal: Apple Silicon + Intel)
 
-The new JUCE-based version of JamWide is available as a beta. This is a complete rewrite with multichannel output routing, DAW transport sync, standalone mode, and Linux support. (FLAC lossless support is in development; this beta uses OGG/Vorbis.)
+**First public beta of the native H.264 video stack.** Replaces VDO.Ninja browser companion with an in-app/in-plugin video stack compatible with the NinjamZap mobile/web clients via `video.ninjamzap.com:2049`. Single universal binary runs natively on both Apple Silicon and Intel Macs.
 
-**This is beta software** — it may contain bugs. Please report issues on [GitHub](https://github.com/mkschulze/JamWide/issues).
+**Highlights:**
+- Native webcam capture + H.264 broadcast/receive in standalone and DAW-hosted plugin
+- Per-user video tile grid + detachable popout windows (multi-monitor)
+- HD broadcast preset (1280×720 @ 30fps); Medium/Low presets for bandwidth-constrained sessions
+- iOS NinjamZap-mobile receiver compat (cross-AI encoder review by Javier @ NinjamZap)
+
+**This is beta software** — report issues on [GitHub](https://github.com/mkschulze/JamWide/issues).
 
 <div class="download-section">
-  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.5" class="btn btn-primary btn-large">
+  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.7" class="btn btn-primary btn-large">
+    Download v1.1-beta.20.7 (macOS Universal)
+  </a>
+  <p class="version-info">macOS Universal (Apple Silicon + Intel) — Windows + Linux next beta</p>
+</div>
+
+---
+
+## Last Cross-Platform Beta — v1.1-beta.20.5
+
+If you're on Windows or Linux, use this older beta until the next cross-platform tag lands. macOS users — prefer v1.1-beta.20.7 above; it has the new native video stack + variant-C freeze fix + Javier's encoder fixes.
+
+<div class="download-section">
+  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.5" class="btn btn-large">
     Download v1.1-beta.20.5
   </a>
   <p class="version-info">macOS (Universal) / Windows (x64) / Linux (x64)</p>

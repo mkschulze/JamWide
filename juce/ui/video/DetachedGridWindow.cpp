@@ -34,7 +34,7 @@ DetachedGridWindow::DetachedGridWindow(JamWideJuceProcessor&            processo
                                        JamWideRemoteFrameDistributor*   remoteDistributor,
                                        juce::LookAndFeel*               lookAndFeel,
                                        juce::Rectangle<int>             initialBounds)
-    : juce::DocumentWindow("JamWide \xE2\x80\x94 Video Grid",   // D-16 fixed title; U+2014 EM DASH
+    : juce::DocumentWindow(juce::String::fromUTF8("JamWide \xE2\x80\x94 Video Grid"),   // D-16 fixed title; U+2014 EM DASH
                            juce::Colour(JamWideLookAndFeel::kSurfaceStrip),
                            juce::DocumentWindow::closeButton
                              | juce::DocumentWindow::minimiseButton)

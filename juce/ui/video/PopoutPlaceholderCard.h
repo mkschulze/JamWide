@@ -43,7 +43,7 @@ public:
     std::function<void()> onBringBack;
 
 private:
-    juce::String label_ = "Popped out \xE2\x86\x92";   // U+2192 RIGHTWARDS ARROW
+    juce::String label_ = juce::String::fromUTF8("Popped out \xE2\x86\x92");   // U+2192 RIGHTWARDS ARROW
 };
 
 } // namespace jamwide

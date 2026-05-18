@@ -33,7 +33,7 @@ public:
     std::function<void()> onBringBack;
 
 private:
-    juce::String label_ = "Grid is in detached window \xE2\x86\x92";   // U+2192 RIGHTWARDS ARROW
+    juce::String label_ = juce::String::fromUTF8("Grid is in detached window \xE2\x86\x92");   // U+2192 RIGHTWARDS ARROW
 };
 
 } // namespace jamwide

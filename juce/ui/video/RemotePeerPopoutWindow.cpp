@@ -42,7 +42,7 @@ RemotePeerPopoutWindow::RemotePeerPopoutWindow(JamWideRemoteFrameDistributor& di
                                                 const juce::String&            username,
                                                 juce::LookAndFeel*             lookAndFeel,
                                                 juce::Rectangle<int>           initialBounds)
-    : juce::DocumentWindow(juce::String("JamWide \xE2\x80\x94 ") + username,    // U+2014 EM DASH
+    : juce::DocumentWindow(juce::String::fromUTF8("JamWide \xE2\x80\x94 ") + username,    // U+2014 EM DASH
                            juce::Colour(JamWideLookAndFeel::kSurfaceStrip),
                            juce::DocumentWindow::closeButton
                              | juce::DocumentWindow::minimiseButton)

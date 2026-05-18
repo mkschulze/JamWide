@@ -410,7 +410,7 @@ void VideoGridBand::setPeerPoppedOut(const juce::String& username,
         if (peerPlaceholders_.find(username) == peerPlaceholders_.end())
         {
             auto ph = std::make_unique<jamwide::PopoutPlaceholderCard>();
-            ph->setLabel("Popped out \xE2\x86\x92");   // U+2192 RIGHTWARDS ARROW
+            ph->setLabel(juce::String::fromUTF8("Popped out \xE2\x86\x92"));   // U+2192 RIGHTWARDS ARROW
             // codex H3 — placeholder click is the EXCLUSIVE destroy path.
             // Editor's wired onPlaceholderBringBack lambda routes the
             // non-empty username to bringBackRemotePopout.
@@ -440,7 +440,7 @@ void VideoGridBand::setDetachedActive(bool active)
     if (active && ! detachedPlaceholder_)
     {
         detachedPlaceholder_ = std::make_unique<jamwide::DetachedGridPlaceholderCard>();
-        detachedPlaceholder_->setLabel("Grid is in detached window \xE2\x86\x92");
+        detachedPlaceholder_->setLabel(juce::String::fromUTF8("Grid is in detached window \xE2\x86\x92"));
         // Empty-string username signals "reattach grid" in the editor's
         // onPlaceholderBringBack dispatch (vs. non-empty = bringBackRemotePopout).
         detachedPlaceholder_->onBringBack = [this]() {

@@ -278,6 +278,19 @@ if(JAMWIDE_BUILD_JUCE)
         juce/video/distributor/PeerVideoSink.cpp
     )
 
+    # Plan 22-01 Task 2: tile substrate (VideoTileBase + SelfVideoTile +
+    # RemotePeerTile). Pure UI consumer of the Phase 19 / Phase 21 distributor
+    # surfaces. No ffmpeg dependency; juce_video / juce_graphics / juce_events
+    # already linked on JamWideJuce.
+    target_sources(JamWideJuce PRIVATE
+        juce/ui/video/VideoTileBase.h
+        juce/ui/video/VideoTileBase.cpp
+        juce/ui/video/SelfVideoTile.h
+        juce/ui/video/SelfVideoTile.cpp
+        juce/ui/video/RemotePeerTile.h
+        juce/ui/video/RemotePeerTile.cpp
+    )
+
     jamwide_use_ffmpeg(JamWideJuce)
 
     target_compile_definitions(JamWideJuce PUBLIC

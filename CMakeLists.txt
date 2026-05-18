@@ -301,6 +301,28 @@ if(JAMWIDE_BUILD_JUCE)
         juce/ui/video/VideoGridBand.cpp
     )
 
+    # Plan 22-03 Task 1: per-peer popout DocumentWindow + detached-grid
+    # DocumentWindow (M7 codex closure — inner band constructed with
+    # Mode::DetachedBand; getGridBand accessor for editor-driven dual-band
+    # placeholder sync). T-22-MM multi-monitor clamp inside both ctors.
+    target_sources(JamWideJuce PRIVATE
+        juce/ui/video/RemotePeerPopoutWindow.h
+        juce/ui/video/RemotePeerPopoutWindow.cpp
+        juce/ui/video/DetachedGridWindow.h
+        juce/ui/video/DetachedGridWindow.cpp
+    )
+
+    # Plan 22-03 Task 2: placeholder cards swap in for live tiles when a
+    # peer is popped out (PopoutPlaceholderCard) or the whole grid is
+    # detached (DetachedGridPlaceholderCard). codex H3 EXCLUSIVE destroy
+    # path — clicking either card destroys the corresponding popout/window.
+    target_sources(JamWideJuce PRIVATE
+        juce/ui/video/PopoutPlaceholderCard.h
+        juce/ui/video/PopoutPlaceholderCard.cpp
+        juce/ui/video/DetachedGridPlaceholderCard.h
+        juce/ui/video/DetachedGridPlaceholderCard.cpp
+    )
+
     jamwide_use_ffmpeg(JamWideJuce)
 
     target_compile_definitions(JamWideJuce PUBLIC
@@ -951,6 +973,43 @@ if(JAMWIDE_BUILD_TESTS)
     jamwide_use_ffmpeg(test_video_tile_member_order)
     add_test(NAME video_tile_member_order
              COMMAND test_video_tile_member_order)
+
+    # ─── Plan 22-03 Task 3 wiring ────────────────────────────────────────
+    # RemotePeerPopoutWindow lifetime test — exercises the codex H3 4-state
+    # truth table (A→B→C→B→C→D), DISP-03 multi-listener guarantee
+    # (two popouts on one peer with independent Subscriptions), T-22-MM
+    # multi-monitor clamp fallback, and Subscription RAII teardown ordering.
+    # Console-app variant mirroring test_video_tile_member_order; needs full
+    # juce_gui_basics for the DocumentWindow base + Desktop::getDisplays.
+    juce_add_console_app(test_remote_peer_popout_lifetime
+                          PRODUCT_NAME "Remote Peer Popout Lifetime Test")
+    juce_generate_juce_header(test_remote_peer_popout_lifetime)
+    target_sources(test_remote_peer_popout_lifetime PRIVATE
+        tests/test_remote_peer_popout_lifetime.cpp
+        juce/ui/video/RemotePeerPopoutWindow.cpp
+        juce/ui/video/VideoTileBase.cpp
+        juce/ui/video/RemotePeerTile.cpp
+        juce/ui/JamWideLookAndFeel.cpp
+        juce/video/distributor/JamWideRemoteFrameDistributor.cpp
+        juce/video/distributor/PeerVideoSink.cpp
+        juce/video/decoder/Openh264Decoder.cpp)
+    target_compile_definitions(test_remote_peer_popout_lifetime PRIVATE
+        JAMWIDE_BUILD_TESTS=1
+        JUCE_STANDALONE_APPLICATION=1
+        JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_include_directories(test_remote_peer_popout_lifetime PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/juce)
+    target_link_libraries(test_remote_peer_popout_lifetime PRIVATE
+        njclient
+        juce::juce_core
+        juce::juce_events
+        juce::juce_graphics
+        juce::juce_gui_basics)
+    jamwide_use_ffmpeg(test_remote_peer_popout_lifetime)
+    add_test(NAME remote_peer_popout_lifetime
+             COMMAND test_remote_peer_popout_lifetime)
 
     # Plan 21-03 Task 3 — 3-peer per-peer isolation + cross-plan sender_seq
     # monotonic alignment integration test. Drives 3 DecoderBundles via the

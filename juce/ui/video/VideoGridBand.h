@@ -44,8 +44,11 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "VideoTileBase.h"  // For jamwide::VideoPopoutTarget
+#include "PopoutPlaceholderCard.h"
+#include "DetachedGridPlaceholderCard.h"
 
 class JamWideJuceProcessor;
 class ConnectionBar;
@@ -93,6 +96,12 @@ public:
     std::function<void(jamwide::VideoPopoutTarget)> onPeerPopoutRequested;
     std::function<void(int)>                       onHeightChangeRequested;
 
+    // Placeholder bring-back forwarder (Plan 22-03 Task 2). The editor's
+    // wired lambda dispatches: empty username → reattachGrid(), non-empty
+    // username → bringBackRemotePopout(username). Both paths are the
+    // codex H3 EXCLUSIVE destroy path for popouts / detached-grid.
+    std::function<void(const juce::String& username)> onPlaceholderBringBack;
+
     // M7 plumbing — Plan 22-03 implements the bodies (swap tile for
     // placeholder card); declared here so the editor can call into BOTH
     // the main band and the detached band's inner VideoGridBand.
@@ -122,6 +131,18 @@ private:
     // H2 NARROWED iter-2 — std::unordered_map (NOT juce::HashMap) so the
     // move-only `std::unique_ptr<RemotePeerTile>` value type compiles.
     std::unordered_map<juce::String, std::unique_ptr<RemotePeerTile>>         peerTiles_;
+
+    // Plan 22-03 Task 2 — placeholder cards swap in for tiles when a peer
+    // is popped out OR the whole-grid is detached. Cards are children of
+    // the band; they live alongside the tiles and are toggled by
+    // setPeerPoppedOut / setDetachedActive + resized().
+    //
+    // H2 NARROWED — std::unordered_map for the per-peer placeholders too
+    // (move-only unique_ptr value type; juce::HashMap::set copy-assigns).
+    std::unordered_set<juce::String>                                            poppedOutPeers_;
+    bool                                                                        detachedActive_ = false;
+    std::unordered_map<juce::String, std::unique_ptr<jamwide::PopoutPlaceholderCard>> peerPlaceholders_;
+    std::unique_ptr<jamwide::DetachedGridPlaceholderCard>                            detachedPlaceholder_;
 
     bool                             selfBroadcastingLast_ = false;
     int                              currentBandHeight_    = 280;

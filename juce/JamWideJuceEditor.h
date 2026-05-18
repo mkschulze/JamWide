@@ -14,6 +14,11 @@
 #include "video/native/CameraFallbackCause.h"
 #include "video/native/CameraStatusDialog.h"
 #include "ui/video/VideoGridBand.h"
+#include "ui/video/VideoTileBase.h"   // jamwide::VideoPopoutTarget (codex M5)
+#include "ui/video/RemotePeerPopoutWindow.h"
+#include "ui/video/DetachedGridWindow.h"
+
+#include <unordered_map>
 
 namespace jamwide {
     class CameraPreviewWindow;
@@ -55,6 +60,25 @@ private:
     // latch in timerCallback. DISP-04 hard requirement — this method's
     // body MUST NOT touch NJClient (audio session continues across toggle).
     void toggleGridBand(bool visible);
+
+    // Plan 22-03 Task 2 — per-peer popout + detached-grid controllers.
+    // codex M5 — typed VideoPopoutTarget dispatch; switches on `t.kind`,
+    // NO magic-string sentinel.
+    // codex H3 — explicit 4-state truth table inside openOrToggleRemotePopout:
+    //   (A) absent          → CREATE+SHOW (insert into remotePopouts_)
+    //   (B) visible         → HIDE (setVisible(false))
+    //   (C) hidden          → RE-SHOW (setVisible(true))  ← critical: NOT destroy
+    //   (D) destroyed       → same as (A)
+    // codex M7 — open/close paths sync setPeerPoppedOut on BOTH gridBand_
+    // AND detachedGrid_->getGridBand() (when non-null) so placeholder state
+    // stays consistent across surfaces.
+    void openOrToggleRemotePopout(jamwide::VideoPopoutTarget target);
+    void bringBackRemotePopout(const juce::String& username);
+    void openOrToggleDetachedGrid();
+    void reattachGrid();
+    juce::Rectangle<int> getInitialPopoutBounds(const juce::String& username) const;
+    juce::Rectangle<int> getInitialDetachedGridBounds() const;
+
     void drainEvents();
     void pollStatus();
     void showServerBrowser();
@@ -104,6 +128,15 @@ private:
     // peer first-frames do not re-open the band even if the user explicitly
     // closed it.
     std::atomic<bool>                       gridAutoOpenLatchFired_{false};
+
+    // Plan 22-03 Task 2 — popout window registry. codex H2 NARROWED — must
+    // be std::unordered_map (NOT juce::HashMap) because the value type is
+    // move-only std::unique_ptr; juce::HashMap::set() copy-assigns (see
+    // juce_HashMap.h:244). The juce/midi/MidiMapper.h:105 precedent proves
+    // std::unordered_map<juce::String, V> compiles cleanly in this codebase
+    // (JUCE 8 ships std::hash<juce::String>).
+    std::unordered_map<juce::String, std::unique_ptr<jamwide::RemotePeerPopoutWindow>> remotePopouts_;
+    std::unique_ptr<jamwide::DetachedGridWindow>                                        detachedGrid_;
 
     // Phase 19-03 — cause-aware fallback dialog (D-13..D-16). Owns the
     // suppress-after-first-show state. onCameraFallback delegates here.

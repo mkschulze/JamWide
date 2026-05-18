@@ -277,8 +277,20 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
                 gridBandHeight_ = juce::jlimit(140, 800, h);
                 resized();
             };
-            // gridBand_->onDetachRequested + onPeerPopoutRequested left
-            // UNSET in Plan 22-02 — Plan 22-03 wires them.
+            // Plan 22-03 Task 2 — wire detach + popout + placeholder bring-back.
+            gridBand_->onDetachRequested = [this]() {
+                openOrToggleDetachedGrid();
+            };
+            // codex M5 — typed VideoPopoutTarget callback (no magic string).
+            gridBand_->onPeerPopoutRequested = [this](jamwide::VideoPopoutTarget t) {
+                openOrToggleRemotePopout(std::move(t));
+            };
+            gridBand_->onPlaceholderBringBack = [this](const juce::String& username) {
+                if (username.isEmpty())
+                    reattachGrid();
+                else
+                    bringBackRemotePopout(username);
+            };
             addChildComponent(*gridBand_);   // starts hidden (D-14 mirror)
         }
     }
@@ -329,6 +341,25 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
 
 JamWideJuceEditor::~JamWideJuceEditor()
 {
+    // Plan 22-03 Task 2 / RESEARCH Pitfall 3 — popouts (RemotePeerPopoutWindow
+    // + DetachedGridWindow) hold a raw LookAndFeel pointer. Their destructors
+    // detach it before returning, but the editor's lookAndFeel member must
+    // still be alive at that moment. The grid band similarly holds children
+    // that reference the editor's look-and-feel.
+    //
+    // Pitfall 3 POSITIONAL ordering invariant — clear all three BEFORE the
+    // existing Phase 19 teardown body. The final lookAndFeel detach call
+    // below MUST be the last line of this destructor.
+    //
+    // std::unordered_map::clear (H2 NARROWED). The map's value-type
+    // ~RemotePeerPopoutWindow runs for each entry; Phase 21 D-06's listener
+    // teardown (in RemotePeerTile dtor, via the inner subscription_) waits
+    // for in-flight handleAsyncUpdate per the HIGH-2 mirror.
+    remotePopouts_.clear();
+    detachedGrid_.reset();
+    gridBand_.reset();
+
+    // ── existing Phase 19 dtor body preserved verbatim below ──────────────
     removeMouseListener(this);
     stopTimer();
     // Phase 19-02 — unregister as FallbackListener BEFORE the editor goes
@@ -461,6 +492,189 @@ void JamWideJuceEditor::toggleGridBand(bool visible)
     gridBand_->setVisible(visible);
     connectionBar.setGridVisible(visible);
     resized();
+}
+
+// ─── Plan 22-03 Task 2 — popout + detached-grid controllers ────────────────
+// codex M5 — typed VideoPopoutTarget dispatch (NO magic-string sentinel).
+// codex H3 — explicit 4-state truth table for tile ↗ semantics.
+// codex M7 — sync setPeerPoppedOut on BOTH gridBand_ AND detachedGrid_->
+//            getGridBand() (when non-null) so placeholder state stays
+//            consistent across surfaces.
+
+void JamWideJuceEditor::openOrToggleRemotePopout(jamwide::VideoPopoutTarget t)
+{
+    // codex M5 closure — typed-target dispatch. Switching on `kind` is the
+    // single source of truth; NO magic-string comparison anywhere in this
+    // function. A peer whose NINJAM username happens to collide with any
+    // literal cannot spoof the Self branch.
+    if (t.kind == jamwide::VideoPopoutTargetKind::Self)
+    {
+        // D-09 — self-tile popout reuses Phase 19's CameraPreviewWindow.
+        // No second self-popout window is ever created (that would
+        // double-subscribe to the camera and violate the Phase 19 subscriber
+        // MEMBER-ORDER assumption).
+        drivePreviewWindowVisibility(jamwide::CameraState::Capturing);
+        return;
+    }
+
+    // RemotePeer branch — codex H3 4-state truth table.
+    const juce::String& username = t.username;
+    if (username.isEmpty()) return;   // defensive — typed-target invariant
+
+    auto it = remotePopouts_.find(username);   // std::unordered_map::find (H2 NARROWED)
+    if (it != remotePopouts_.end())
+    {
+        auto& popout = it->second;
+        if (popout)
+        {
+            if (popout->isVisible())
+            {
+                // State (B) — visible → HIDE. Placeholder stays mounted
+                // because poppedOutPeers_.contains(username) is true. The
+                // window's own × also lands here.
+                popout->setVisible(false);
+            }
+            else
+            {
+                // State (C) — hidden → RE-SHOW. codex H3 disambiguation:
+                // hitting ↗ on a tile whose popout is hidden brings it back
+                // to visible WITHOUT destroying. Bounds + the underlying
+                // RemotePeerTile + Subscription are preserved.
+                // The destroy path is EXCLUSIVELY via placeholder click
+                // (bringBackRemotePopout below).
+                popout->setVisible(true);
+            }
+            // Placeholder remains in either case — band rendering rule is
+            // poppedOutPeers_.contains(username) → show placeholder,
+            // independent of popout's visible state.
+            return;
+        }
+        // Fall through to state (A)/(D) construction if the slot is null
+        // (which can happen if a prior reset() left an empty unique_ptr
+        // without erasing the key — defensive).
+    }
+
+    // State (A) or (D) — popout absent → CREATE+SHOW.
+    if (auto* dist = processorRef.getRemoteFrameDistributor())
+    {
+        auto popout = std::make_unique<jamwide::RemotePeerPopoutWindow>(
+            *dist, username, &lookAndFeel, getInitialPopoutBounds(username));
+
+        // onCloseRequested fires AFTER closeButtonPressed has already done
+        // setVisible(false) → state B→C transition. The placeholder stays
+        // mounted (poppedOutPeers_ membership unchanged). The user can
+        // re-show via tile ↗ (state C→B) OR destroy via placeholder click
+        // (state C→D — bringBackRemotePopout).
+        const juce::String capturedUsername = username;
+        popout->onCloseRequested = [capturedUsername]() {
+            juce::ignoreUnused(capturedUsername);
+        };
+        popout->onBoundsChanged = [](juce::Rectangle<int> r) {
+            // Plan 22-04 swaps this for processorRef.setRemotePopoutBounds.
+            juce::ignoreUnused(r);
+        };
+        popout->setVisible(true);
+        remotePopouts_.emplace(username, std::move(popout));   // std::unordered_map::emplace (H2 NARROWED — accepts move-only value)
+
+        // codex M7 dual-band sync — drive setPeerPoppedOut on BOTH the main
+        // band AND the detached band's inner band (when the detached grid
+        // is open). Without this, popping out a peer while the detached
+        // grid is open would only update the main band's placeholder,
+        // leaving the detached band showing the live tile (broken UX).
+        if (gridBand_) gridBand_->setPeerPoppedOut(username, true);
+        if (detachedGrid_ && detachedGrid_->getGridBand())
+            detachedGrid_->getGridBand()->setPeerPoppedOut(username, true);
+    }
+}
+
+void JamWideJuceEditor::bringBackRemotePopout(const juce::String& username)
+{
+    // codex H3 — bring-back is the EXCLUSIVE destroy path. After this, the
+    // popout is in state (D); next ↗ click creates a fresh one at the
+    // last-persisted bounds (Plan 22-04 wires bounds persistence).
+
+    // codex M7 dual-band sync — clear placeholder on BOTH bands before the
+    // destroy so both surfaces rebind the live tile simultaneously.
+    if (gridBand_) gridBand_->setPeerPoppedOut(username, false);
+    if (detachedGrid_ && detachedGrid_->getGridBand())
+        detachedGrid_->getGridBand()->setPeerPoppedOut(username, false);
+
+    // std::unordered_map erase (H2 NARROWED — was juce::HashMap::remove in iter-1).
+    auto it = remotePopouts_.find(username);
+    if (it != remotePopouts_.end())
+    {
+        it->second.reset();    // Subscription dtor blocks for in-flight (Phase 21 D-06).
+        remotePopouts_.erase(it);
+    }
+}
+
+void JamWideJuceEditor::openOrToggleDetachedGrid()
+{
+    if (detachedGrid_)
+    {
+        // Already open — toggle = bring back (destroy).
+        reattachGrid();
+        return;
+    }
+    auto* selfDist = processorRef.getFrameDistributor();
+    auto* remoteDist = processorRef.getRemoteFrameDistributor();
+    if (selfDist && remoteDist)
+    {
+        detachedGrid_ = std::make_unique<jamwide::DetachedGridWindow>(
+            processorRef, connectionBar, selfDist, remoteDist, &lookAndFeel,
+            getInitialDetachedGridBounds());
+
+        detachedGrid_->onCloseRequested = [this]() {
+            // closeButtonPressed already setVisible(false). Editor's policy
+            // per D-18 default is FULL DESTROY on close.
+            reattachGrid();
+        };
+        detachedGrid_->onBoundsChanged = [](juce::Rectangle<int>) {
+            // Plan 22-04 swap.
+        };
+
+        // codex M7 closure — replay existing popout state into the new
+        // detached band so it starts up consistent with the main band.
+        // Without this, opening the detached grid while popouts are already
+        // open would leave the detached band showing live tiles for
+        // popped-out peers (broken UX).
+        if (auto* detachedBand = detachedGrid_->getGridBand())
+        {
+            // H2 NARROWED — C++17 structured-binding range-for over the
+            // std::unordered_map; the original iter-1 plan called for a
+            // HashMap iterator but H2-NARROWED proved std::unordered_map
+            // compiles cleanly for the move-only unique_ptr value type.
+            for (auto const& [username, window] : remotePopouts_)
+            {
+                if (window)
+                    detachedBand->setPeerPoppedOut(username, true);
+            }
+        }
+
+        detachedGrid_->setVisible(true);
+        if (gridBand_) gridBand_->setDetachedActive(true);
+    }
+}
+
+void JamWideJuceEditor::reattachGrid()
+{
+    if (gridBand_) gridBand_->setDetachedActive(false);
+    detachedGrid_.reset();
+}
+
+juce::Rectangle<int> JamWideJuceEditor::getInitialPopoutBounds(const juce::String& /*username*/) const
+{
+    // Plan 22-03 stub — Plan 22-04 swaps for
+    // processorRef.getRemotePopoutBounds(username). The default is
+    // intentionally NOT display-aware here; RemotePeerPopoutWindow's
+    // constructor performs the Desktop::getDisplays() clamp at window-open
+    // time (T-22-MM mitigation).
+    return juce::Rectangle<int>{100, 100, 320, 240};
+}
+
+juce::Rectangle<int> JamWideJuceEditor::getInitialDetachedGridBounds() const
+{
+    return juce::Rectangle<int>{200, 200, 800, 450};
 }
 
 void JamWideJuceEditor::timerCallback()

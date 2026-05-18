@@ -131,8 +131,15 @@ elseif(UNIX AND NOT APPLE)
     set(_have_symlinks TRUE)
 elseif(WIN32)
     set(_ffmpeg_dir "${CMAKE_CURRENT_LIST_DIR}/../libs/ffmpeg/windows-x86_64")
-    set(_lib_glob "*.dll")
+    # MSVC links against .lib import libraries, not .dll directly.
+    # build_ffmpeg_lgpl.sh's Windows post-process generates these via
+    # gendef + dlltool so $PREFIX/lib has both .dll (runtime) and .lib
+    # (link-time). ffmpeg's MinGW autotools convention drops the `lib`
+    # prefix on Windows (e.g. avcodec-61.dll, avcodec-61.lib) — handle
+    # that below by globbing both `lib${name}.*` and `${name}-*.lib`.
+    set(_lib_glob "lib")
     set(_have_symlinks FALSE)
+    set(_win32_no_libprefix TRUE)
 else()
     message(FATAL_ERROR "ffmpeg::lgpl: unsupported platform")
 endif()
@@ -147,11 +154,22 @@ endif()
 
 # Resolve library paths. The version suffixes track the ffmpeg release vendored
 # by scripts/build_ffmpeg_lgpl.sh (currently ffmpeg 7.1.2 + openh264 2.1.1).
-file(GLOB _avcodec_lib  "${_ffmpeg_dir}/lib/libavcodec.${_lib_glob}")
-file(GLOB _avformat_lib "${_ffmpeg_dir}/lib/libavformat.${_lib_glob}")
-file(GLOB _swscale_lib  "${_ffmpeg_dir}/lib/libswscale.${_lib_glob}")
-file(GLOB _avutil_lib   "${_ffmpeg_dir}/lib/libavutil.${_lib_glob}")
-file(GLOB _openh264_lib "${_ffmpeg_dir}/lib/libopenh264.${_lib_glob}")
+if(_win32_no_libprefix)
+    # Windows: ffmpeg DLLs/libs lack the `lib` prefix (avcodec-61.lib) and
+    # are versioned (-61, -7, -8 etc.). Glob both `lib${name}*.lib`
+    # (openh264 keeps the prefix) and `${name}-*.lib` (ffmpeg drops it).
+    file(GLOB _avcodec_lib  "${_ffmpeg_dir}/lib/avcodec-*.lib"  "${_ffmpeg_dir}/lib/libavcodec.lib")
+    file(GLOB _avformat_lib "${_ffmpeg_dir}/lib/avformat-*.lib" "${_ffmpeg_dir}/lib/libavformat.lib")
+    file(GLOB _swscale_lib  "${_ffmpeg_dir}/lib/swscale-*.lib"  "${_ffmpeg_dir}/lib/libswscale.lib")
+    file(GLOB _avutil_lib   "${_ffmpeg_dir}/lib/avutil-*.lib"   "${_ffmpeg_dir}/lib/libavutil.lib")
+    file(GLOB _openh264_lib "${_ffmpeg_dir}/lib/libopenh264*.lib")
+else()
+    file(GLOB _avcodec_lib  "${_ffmpeg_dir}/lib/libavcodec.${_lib_glob}")
+    file(GLOB _avformat_lib "${_ffmpeg_dir}/lib/libavformat.${_lib_glob}")
+    file(GLOB _swscale_lib  "${_ffmpeg_dir}/lib/libswscale.${_lib_glob}")
+    file(GLOB _avutil_lib   "${_ffmpeg_dir}/lib/libavutil.${_lib_glob}")
+    file(GLOB _openh264_lib "${_ffmpeg_dir}/lib/libopenh264.${_lib_glob}")
+endif()
 
 # Filter out symlinks — keep only the versioned canonical files. On Windows
 # (.dll) there are no symlinks, so this is a no-op; on macOS/Linux it

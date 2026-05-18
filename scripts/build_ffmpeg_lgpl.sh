@@ -371,9 +371,60 @@ case "$OS" in
     ;;
 
   MINGW64_NT-*|MSYS_NT-*|CYGWIN_NT-*)
-    # Windows: .dll discovery is via consumer-adjacent path / %PATH%.
-    # No install-name rewriting needed. Just verify the .dll files are present.
-    echo "    (Windows: .dll files in $PREFIX/lib — consumers discover via PATH)"
+    # Windows: two-step post-process.
+    #
+    # 1. ffmpeg's MinGW autotools install puts DLLs in $PREFIX/bin/ (no `lib`
+    #    prefix on Windows by convention — e.g. avcodec-61.dll). Consolidate
+    #    into $PREFIX/lib/ so cmake/ffmpeg.cmake finds DLLs + import libs in
+    #    one place.
+    #
+    # 2. JamWide is built with MSVC, but ffmpeg's MinGW build produces
+    #    .dll.a MinGW-format import libraries — MSVC's link.exe rejects
+    #    those for any non-trivial decoration. Generate MSVC-consumable
+    #    .lib import libraries from each DLL via gendef + dlltool. dlltool
+    #    --output-lib emits COFF that MSVC accepts for the C symbols
+    #    ffmpeg exposes.
+    #    Same fix pattern as the openh264 .lib generation we already do
+    #    further up in this script.
+
+    # Step 1: consolidate DLLs from bin/ into lib/.
+    if [ -d "$PREFIX/bin" ]; then
+        find "$PREFIX/bin" -maxdepth 1 -name "*.dll" -exec mv {} "$PREFIX/lib/" \;
+        # Empty bin/ left over — remove if no other content.
+        rmdir "$PREFIX/bin" 2>/dev/null || true
+    fi
+
+    # Step 2: generate MSVC .lib for every ffmpeg DLL.
+    if ! command -v gendef >/dev/null 2>&1 || ! command -v dlltool >/dev/null 2>&1; then
+        echo "ERROR: gendef + dlltool required for Windows MSVC .lib generation" >&2
+        echo "       install via MSYS2 mingw-w64-x86_64-tools-git + mingw-w64-x86_64-binutils" >&2
+        exit 1
+    fi
+
+    ( cd "$PREFIX/lib" && \
+      for dll in *.dll; do
+        [ -f "$dll" ] || continue
+        # Already converted? skip.
+        stem="${dll%.dll}"
+        if [ -f "${stem}.lib" ]; then continue; fi
+        gendef "$dll" >/dev/null 2>&1
+        if [ -f "${stem}.def" ]; then
+            dlltool --dllname "$dll" --def "${stem}.def" \
+                --output-lib "${stem}.lib"
+            echo "    generated ${stem}.lib from $dll"
+            rm -f "${stem}.def"
+        else
+            echo "WARNING: gendef did not produce ${stem}.def — MSVC link may fail" >&2
+        fi
+      done
+    )
+
+    # Strip MinGW-format .dll.a files — they confuse cmake/ffmpeg.cmake's
+    # file(GLOB) (it'd pick the wrong one) and MSVC doesn't consume them
+    # anyway. The .lib files we just generated supersede.
+    find "$PREFIX/lib" -maxdepth 1 -name "*.dll.a" -delete
+
+    echo "    Windows: $PREFIX/lib has DLLs + MSVC .lib import libraries"
     ;;
 esac
 

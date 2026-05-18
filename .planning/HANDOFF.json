@@ -1,49 +1,58 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-17T16:40:22.812Z",
-  "phase": "21",
-  "phase_name": "h-264-decoder-receive-pipeline",
-  "phase_dir": ".planning/phases/21-h-264-decoder-receive-pipeline",
-  "plan": null,
-  "task": null,
-  "total_tasks": null,
-  "status": "paused",
+  "timestamp": "2026-05-18T19:59:35.276Z",
+  "phase": "22",
+  "phase_name": "native-video-ui-grid-popouts",
+  "phase_dir": ".planning/phases/22-native-video-ui-grid-popouts",
+  "plan": 4,
+  "task": "UAT live with peers",
+  "total_tasks": 13,
+  "status": "paused-uat-debug",
   "completed_tasks": [
-    {"id": "21-review", "name": "Cross-AI review of phase 21 plans (codex)", "status": "done", "commit": "8842f4f"},
-    {"id": "21-replan", "name": "Replan phase 21 incorporating codex review (10 HIGH + 7 MEDIUM + 2 LOW)", "status": "done", "commit": "feafa73"},
-    {"id": "21-checker-fixes", "name": "Plan-checker B-1 + W-1 + W-3 fixes", "status": "done", "commit": "7a3d4db"},
-    {"id": "21-state", "name": "STATE.md marked Ready to execute", "status": "done", "commit": "1ac8ab2"},
-    {"id": "release-attempt-1", "name": "v1.1-beta.20.6 release create + push", "status": "done", "commit": "73c957a"},
-    {"id": "release-rollback", "name": "Roll back v1.1-beta.20.6 release+tag (CI infra broken)", "status": "done", "commit": "228e2a1"},
-    {"id": "ci-fix-1", "name": "Wire ffmpeg vendoring on Linux + Windows; fix macOS openh264 OS arg", "status": "done", "commit": "d760cb1"},
-    {"id": "ci-fix-2", "name": "Fix verify_ffmpeg_lgpl on Linux + add Windows openh264 import library", "status": "done", "commit": "6c21ec6"},
-    {"id": "ci-defer-windows", "name": "Defer build-windows + universal-macOS to Phase 23", "status": "done", "commit": "4463542"},
-    {"id": "ci-defer-linux", "name": "Defer build-linux too (camera code needs Linux V4L2 wrapper)", "status": "done", "commit": "30ee519"},
-    {"id": "ci-drop-tests", "name": "Drop JAMWIDE_BUILD_TESTS + VIDEO_SPIKE from mac CI", "status": "done", "commit": "75e3dd3"},
-    {"id": "branch-rename", "name": "Rename branch to quick/260515-0pc-native-video-port + push to origin", "status": "done"}
+    {"id": "22-01", "name": "tile substrate", "status": "done", "commit": "86ede3b"},
+    {"id": "22-02", "name": "grid band container", "status": "done", "commit": "1c26d51"},
+    {"id": "22-03", "name": "popout windows", "status": "done", "commit": "1cd52e5"},
+    {"id": "22-04", "name": "state persistence + UAT", "status": "done", "commit": "91f8b71"},
+    {"id": "uat-fixes", "name": "10 UAT-discovered fixes (5 Phase-22 + 3 Phase-21 + 2 from Javier)", "status": "in_progress (uncommitted)", "progress": "applied + tested live; freeze regression open"}
   ],
   "remaining_tasks": [
-    {"id": "ci-mac-success-check", "name": "Verify CI run 25996593334 (commit 75e3dd3) passes on macOS arm64", "status": "in_progress", "note": "Background watcher b554si149 active"},
-    {"id": "release-create", "name": "Create v1.1-beta.20.6 release with mac binary once CI green", "status": "blocked_on_ci", "note": "Run: gh release create v1.1-beta.20.6 --target 75e3dd3 --notes-file /tmp/release-notes-v1.1-beta.20.6.md --prerelease JamWide-macOS.tar.gz (download artifact first, OR push tag to trigger CI release job)"},
-    {"id": "docs-download", "name": "Update docs/download.md to point at v1.1-beta.20.6", "status": "not_started"},
-    {"id": "phase-21-execute", "name": "Execute Phase 21 plans (/gsd-execute-phase 21)", "status": "not_started", "note": "Plans verified, all 10 codex clusters + B-1/W-1/W-3 addressed; ready to execute"}
+    {"id": "freeze-investigate", "name": "Decide variant A/B/C for freeze regression", "status": "awaiting_user_input"},
+    {"id": "strip-diag", "name": "Strip diagnostic fprintfs (REMOVE BEFORE MERGE markers)", "status": "not_started"},
+    {"id": "commit-chain", "name": "Commit UAT fix chain atomically", "status": "not_started"},
+    {"id": "uat-cells", "name": "Resume UAT cells 2/3/4/6/7/10/11/12/13", "status": "not_started"}
   ],
   "blockers": [
-    {"description": "CI run 25996593334 still in_progress; mac arm64-only build with all fixes applied. Background watcher b554si149 will notify on completion.", "type": "external", "workaround": "Wait for watcher notification, then check job conclusion"}
+    {"description": "Image freezes intermittently after dst=640x480 bump", "type": "technical", "workaround": "User to choose variant A (dst=480x360), B (24fps pacing), or C (bump kHoldCapDrop)"},
+    {"description": "Diagnostic fprintfs still in source code", "type": "technical", "workaround": "Strip before commit — marked 'REMOVE BEFORE MERGE'"},
+    {"description": "Phase 21 multi-broadcaster matching limit (m_remoteuser_mirror lacks username)", "type": "technical", "workaround": "Empirically tolerable — sometimes matches via NONE path; file as Phase-21 followup"},
+    {"description": "Phase 21 latency inherent (~7s+ from interval architecture)", "type": "external", "workaround": "Cannot fix without redesigning wire protocol; document as design constraint"},
+    {"description": "A/V sync not yet verified after smooth playback achieved", "type": "human_action", "workaround": "User to test next session"}
   ],
-  "human_actions_pending": [],
+  "human_actions_pending": [
+    {"action": "Choose freeze investigation variant A/B/C", "context": "freeze regression after dst=640x480 bump; three hypotheses to test", "blocking": true},
+    {"action": "Test A/V sync with live peers", "context": "30fps pacing decoupled from audio clock; may drift", "blocking": false},
+    {"action": "Run ffmpeg-copy sanity test on captured outgoing stream", "context": "Verify Javier's fixes worked (no -12909 from VT receivers)", "blocking": false}
+  ],
   "decisions": [
-    {"decision": "Defer Windows build to Phase 23", "rationale": "Cisco openh264 prebuilt has no MinGW import library; gendef not in MSYS2 base-devel. Phase 23 owns Windows codesign+build.", "phase": "23"},
-    {"decision": "Defer Linux build to post-v1.3", "rationale": "Phase 19 camera code uses juce::CameraDevice unconditionally; JUCE has no juce_CameraDevice_linux.h. Memory project_jamtaba_video_port locks 'Linux capture as Item K post-v1'.", "phase": "post-v1.3"},
-    {"decision": "Defer universal-binary macOS to Phase 23", "rationale": "cmake/ffmpeg.cmake explicitly notes 'Universal-binary stitching is a Phase 14.3 follow-up' — only loads one per-arch ffmpeg tree, breaks x86_64 slice. Phase 23 owns universal+codesign.", "phase": "23"},
-    {"decision": "Drop JAMWIDE_BUILD_TESTS from mac CI for v1.3 betas", "rationale": "test_flac_codec has pre-existing CMake-vs-header gap: WDL_VORBIS_INTERFACE_ONLY compile-def set but wdl/vorbisencdec.h has no guard. Matches beta.20.5 surface (no BUILD_TESTS).", "phase": "23"},
-    {"decision": "Open Questions Q1 (AVCC parser tier) resolution: decoder thread, NOT audio thread", "rationale": "CONTEXT.md D-12 revised + B-1 + codex Cluster 2 Option A; audio thread only memcpys slot + pushes index into SpscRing<int, 4>", "phase": "21"},
-    {"decision": "Option A owned-snapshot queue for slot handoff", "rationale": "VideoRecvState owns std::array<VideoRecvSlotSnapshot, 4> + SpscRing<int, 4> indices; structurally prevents back-to-back-push frame corruption from the original SpscRing<VideoRecvBufferView, 4> design", "phase": "21"},
-    {"decision": "4-step user-leave shutdown protocol in Plan 21-03", "rationale": "decoder->close() → decoder->setSink(nullptr) → vs->sink=nullptr → distributor->removeSink — guards against dangling sink_ during decoder's last triggerAsyncUpdate()", "phase": "21"}
+    {"decision": "30fps frame pacing in decoder drainReceiveFrameLoop_", "rationale": "Source peers send 15-30fps; 15fps pacing fell behind on 30fps peers; 30fps keeps 1:1 and lower-fps peers just decode faster"},
+    {"decision": "Receive surface bumped 320x240 → 640x480", "rationale": "Peers send 640x480+; downscale-then-upscale caused double-scaling blur on tiles"},
+    {"decision": "Javier Fix #1 — skip NAL types 7/8 in per-frame walk", "rationale": "iOS VT receivers built CMVideoFormatDescription from dedicated SPS/PPS chunk; inline SPS/PPS in IDR caused -12909"},
+    {"decision": "Javier Fix #2 — allow_skip_frames=0 (option a)", "rationale": "Simpler than option (b) IDR-after-skip-detection; openh264 maintains temporal consistency at cost of bitrate-control (warning emitted)"},
+    {"decision": "Bypass jamwide::stripAtSuffix before findSink in VideoGridBand polling", "rationale": "Wire usernames carry @<peer-ip> suffix (e.g. Mark-Ninjamzap@172.16.30.x); Phase 21 keys sinks by raw wire name; strip only for display"},
+    {"decision": "Register no-op RawData_Callback in JamWideJuceProcessor", "rationale": "njclient.cpp:2498 dispatch requires RawData_Callback non-null to route video; Phase 21 tests registered their own callback but production code never did — entire receive branch was unreachable"}
   ],
   "uncommitted_files": [
-    ".planning/config.json"
+    "CMakeLists.txt",
+    "juce/JamWideJuceProcessor.cpp",
+    "juce/ui/video/RemotePeerTile.cpp",
+    "juce/ui/video/VideoGridBand.cpp",
+    "juce/ui/video/VideoGridBand.h",
+    "juce/video/decoder/Openh264Decoder.cpp",
+    "juce/video/decoder/Openh264Decoder.h",
+    "juce/video/distributor/JamWideRemoteFrameDistributor.cpp",
+    "juce/video/encoder/Openh264Encoder.cpp",
+    "src/core/njclient.cpp"
   ],
-  "next_action": "Check status of background watcher b554si149 (CI run 25996593334). If macOS arm64 build passed: download JamWide-macOS.tar.gz from the run, then `gh release create v1.1-beta.20.6 --target 75e3dd3 --notes-file /tmp/release-notes-v1.1-beta.20.6.md --prerelease JamWide-macOS.tar.gz`, then edit docs/download.md to point at v1.1-beta.20.6 and push.",
-  "context_notes": "We're in two parallel threads on branch quick/260515-0pc-native-video-port (pushed to origin). Thread A: Phase 21 (H.264 decoder + receive pipeline) plans are fully revised per codex cross-AI review + checker pass; ready to /gsd-execute-phase 21. Thread B: v1.1-beta.20.6 release — first attempt rolled back because CI was broken (pre-existing Phase 14.3 ffmpeg-gate vs incomplete CI wiring). Six CI commits later, mac-only build should work. Once macOS CI is green, attach the artifact to a fresh v1.1-beta.20.6 release. Phase 23 owns Windows + universal-mac + Linux V4L2 work. Release notes draft at /tmp/release-notes-v1.1-beta.20.6.md credits NinjamZap (jacinside/ninjamzap-core + ninjamzap-server) properly per user's request, and explicitly does NOT mention 'jamtaba'."
+  "next_action": "Ask user to choose freeze investigation variant A (dst back to 480x360), B (24fps pacing for sws_scale headroom), or C (bump kHoldCapDrop=4 → 32 to keep Phase-21 multi-broadcaster matching from dropping snapshots). Then strip diag fprintfs and commit the UAT fix chain.",
+  "context_notes": "Phase 22 UAT surfaced 10 fixes across Phase 22, Phase 21, and Phase 20. Two architectural pieces of Phase 21 work were never finished: (a) Phase 21-03 left an empty placeholder in Openh264Decoder.cpp:676 where the production sink-delivery code was supposed to land — the comment 'Plan 21-03 will replace this comment with...' shipped verbatim, causing every decoded frame to be silently dropped before reaching the tile; (b) Phase 21-03 was also supposed to widen m_remoteuser_mirror to carry username for multi-broadcaster matching but didn't, leaving the kHoldCapDrop=4 hammer to drop video snapshots when N≥2 peers have audio activity. JamWide's Phase 22 UAT was the first time the production receive path got end-to-end live testing (Phase 21 UAT used the JAMWIDE_BUILD_TESTS path which registered its own RawData_Callback, so this bug stayed hidden). External cross-AI review (Javier @ NinjamZap) caught two additional encoder-side issues (inline SPS/PPS in IDR breaking VT receivers, allow_skip_frames=1 causing silent frame drops that VT can't recover from)."
 }

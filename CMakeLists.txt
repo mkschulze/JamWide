@@ -904,6 +904,44 @@ if(JAMWIDE_BUILD_TESTS)
     add_test(NAME remote_frame_distributor
              COMMAND test_remote_frame_distributor)
 
+    # ─── Plan 22-01 Task 3 wiring ────────────────────────────────────────
+    # MEMBER-ORDER CONTRACT runtime offset-comparison test for both tile
+    # classes (T-22-MO-1 mitigation). Console-app variant for JUCE message
+    # thread; links the tile sources + Phase 19/21 distributors + decoder
+    # (transitively required by JamWideRemoteFrameDistributor.cpp's
+    # createDecoderAndSinkForPeer codepath, even though the test doesn't
+    # exercise it).
+    juce_add_console_app(test_video_tile_member_order
+                          PRODUCT_NAME "Video Tile Member Order Test")
+    juce_generate_juce_header(test_video_tile_member_order)
+    target_sources(test_video_tile_member_order PRIVATE
+        tests/test_video_tile_member_order.cpp
+        juce/ui/video/VideoTileBase.cpp
+        juce/ui/video/SelfVideoTile.cpp
+        juce/ui/video/RemotePeerTile.cpp
+        juce/ui/JamWideLookAndFeel.cpp
+        juce/video/native/JamWideFrameDistributor.cpp
+        juce/video/distributor/JamWideRemoteFrameDistributor.cpp
+        juce/video/distributor/PeerVideoSink.cpp
+        juce/video/decoder/Openh264Decoder.cpp)
+    target_compile_definitions(test_video_tile_member_order PRIVATE
+        JAMWIDE_BUILD_TESTS=1
+        JUCE_STANDALONE_APPLICATION=1
+        JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_include_directories(test_video_tile_member_order PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/juce)
+    target_link_libraries(test_video_tile_member_order PRIVATE
+        njclient
+        juce::juce_core
+        juce::juce_events
+        juce::juce_graphics
+        juce::juce_gui_basics)
+    jamwide_use_ffmpeg(test_video_tile_member_order)
+    add_test(NAME video_tile_member_order
+             COMMAND test_video_tile_member_order)
+
     # Plan 21-03 Task 3 — 3-peer per-peer isolation + cross-plan sender_seq
     # monotonic alignment integration test. Drives 3 DecoderBundles via the
     # LIVE pushSlotSnapshotForTest path (Plan 21-02 W-3 regression-guarded

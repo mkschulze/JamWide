@@ -14,7 +14,7 @@ void drawOverlay_(juce::Graphics& g, juce::Rectangle<int> bounds, const juce::St
     g.fillRoundedRectangle(bounds.toFloat().reduced(8.0f), 4.0f);
 
     g.setColour(juce::Colour(JamWideLookAndFeel::kTextPrimary).withAlpha(0.70f));
-    g.setFont(juce::Font(12.0f));
+    g.setFont(juce::Font(juce::FontOptions(12.0f)));
     g.drawFittedText(text, bounds, juce::Justification::centred, 1);
 }
 
@@ -62,7 +62,7 @@ void VideoTileBase::paintCommon(juce::Graphics& g,
         g.fillRect(stripBounds);
 
         g.setColour(juce::Colour(JamWideLookAndFeel::kTextPrimary).withAlpha(0.70f));
-        g.setFont(juce::Font(11.0f));
+        g.setFont(juce::Font(juce::FontOptions(11.0f)));
         g.drawFittedText(username,
                          stripBounds.reduced(4, 0),
                          juce::Justification::centredLeft,

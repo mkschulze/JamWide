@@ -775,6 +775,20 @@ if(JAMWIDE_BUILD_TESTS)
     target_link_libraries(test_camera_frame_stall PRIVATE juce::juce_core)
     add_test(NAME camera_frame_stall COMMAND test_camera_frame_stall)
 
+    # ─── Plan 22-01 Task 1 wiring ────────────────────────────────────────
+    # Pure-C++ unit test for jamwide::computeGridLayout. The helper is a
+    # single-header inline function (juce/ui/video/computeGridLayout.h), so
+    # this test executable has no source-file dependency beyond the test
+    # source itself. Links juce::juce_core for juce::jlimit only.
+    add_executable(test_video_grid_layout
+        tests/test_video_grid_layout.cpp)
+    target_compile_definitions(test_video_grid_layout PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_include_directories(test_video_grid_layout PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(test_video_grid_layout PRIVATE juce::juce_core)
+    add_test(NAME video_grid_layout COMMAND test_video_grid_layout)
+
     add_executable(test_camera_cause_mapping
         tests/test_camera_cause_mapping.cpp
         juce/video/native/CameraStatusDialog.cpp)

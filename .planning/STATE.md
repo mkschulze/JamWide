@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: Native Video
 status: executing
 stopped_at: Phase 22 context gathered
-last_updated: "2026-05-17T22:17:26.720Z"
-last_activity: 2026-05-17 -- Phase 22 planning complete
+last_updated: "2026-05-17T23:55:54.117Z"
+last_activity: 2026-05-17 -- Phase 22 execution started
 progress:
   total_phases: 6
   completed_phases: 3
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-05)
 
 **Core value:** Musicians can jam together online with lossless audio quality and per-user mixing -- in any DAW or standalone.
-**Current focus:** Phase 21 — h-264-decoder-receive-pipeline
+**Current focus:** Phase 22 — native-video-ui-grid-popouts
 
 ## Current Position
 
-Phase: 21 (h-264-decoder-receive-pipeline) — EXECUTING
-Plan: 1 of 3
-Status: Ready to execute
+Phase: 22 (native-video-ui-grid-popouts) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 22
 Next phase: Phase 21 (H.264 Decoder & Receive Pipeline) — about to invoke `/gsd-discuss-phase 21` to gather context before planning. Phase 21 implements the symmetric inverse of Phase 20: 4-stage receive (`accumulating → next → pending → playing`) + GUID-pairing decision tree (DS / PREV / no-match with `kHoldCapDrop = 4`) + libavcodec H264 decode per peer + per-user `juce::Image` delivery to the UI layer (which Phase 22 will render).
-Last activity: 2026-05-17 -- Phase 22 planning complete
+Last activity: 2026-05-17 -- Phase 22 execution started
 Milestone scope (v1.3 = macOS + Windows testable beta on upstream ninjamzap-server, `video.ninjamzap.com:2049` documented as the recommended public instance — JamWide's existing NINJAM server browser UI is untouched):
 
 - Phase 19 — Camera Capture & Permission UX (3 plans) — CAM-01, CAM-02, CAM-03, PKG-04 (entitlements). Cross-platform via JUCE `juce_CameraDevice_{mac,windows}.h`; REAPER fallback is macOS-only (SPARTA #82).

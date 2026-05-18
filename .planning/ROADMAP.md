@@ -463,7 +463,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 22-01-PLAN.md — Tile substrate: `computeGridLayout` pure helper + `VideoTileBase`/`SelfVideoTile`/`RemotePeerTile` (MEMBER-ORDER CONTRACT verbatim) + Wave 0 unit tests (test_video_grid_layout, test_video_tile_member_order)
+- [x] 22-01-PLAN.md — Tile substrate: `computeGridLayout` pure helper + `VideoTileBase`/`SelfVideoTile`/`RemotePeerTile` (MEMBER-ORDER CONTRACT verbatim) + Wave 0 unit tests (test_video_grid_layout, test_video_tile_member_order)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -566,7 +566,7 @@ v1.3 execution order: 19 -> 20 -> 21 -> 22 -> 23 -> 24 (strict dependency chain 
 | 19. Camera Capture & Permission UX | v1.3 | 3/3 | Complete   | 2026-05-16 |
 | 20. H.264 Encoder & Send Pipeline | v1.3 | 3/4 | In Progress|  |
 | 21. H.264 Decoder & Receive Pipeline | v1.3 | 2/3 | In Progress|  |
-| 22. Native Video UI (Grid + Popouts) | v1.3 | 0/2 | Not started | - |
+| 22. Native Video UI (Grid + Popouts) | v1.3 | 1/4 | In Progress|  |
 | 23. macOS Universal + Windows Build & Codesign | v1.3 | 0/3 | Not started | - |
 | 24. Beta Validation, Server Docs & Per-DAW UAT | v1.3 | 0/2 | Not started | - |
 

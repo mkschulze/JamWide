@@ -47,44 +47,32 @@ jobs:
                -output "$GITHUB_WORKSPACE/openssl-universal/lib/libssl.a"
           lipo -info "$GITHUB_WORKSPACE/openssl-universal/lib/libcrypto.a"
 
-      - name: Vendor LGPL ffmpeg
-        # Phase 14.3-01: produce libs/ffmpeg/<platform>/ on the CI runner via
-        # scripts/build_ffmpeg_lgpl.sh. macos-14 = arm64 runner; the script's
-        # OS+ARCH dispatch picks the Darwin-arm64 leg (Cisco openh264 from
-        # source — MPEG-LA royalty deviation documented in script header).
-        run: bash scripts/build_ffmpeg_lgpl.sh
-
-      - name: Verify LGPL discipline
-        # Phase 14.3-01: iterate every populated libs/ffmpeg/<platform>/ tree
-        # and assert no libx264 strings + clean otool/ldd linkage. Exits 1
-        # on any contamination.
+      - name: Verify LGPL discipline (vendored trees in libs/ffmpeg/)
+        # Iterate every populated libs/ffmpeg/<platform>/ tree (both arches
+        # of macOS are now committed) and assert no libx264 strings + clean
+        # otool/ldd linkage. Exits 1 on any contamination.
+        # The "Vendor LGPL ffmpeg" rebuild-from-source step that used to run
+        # here was removed 2026-05-19 — libs/ffmpeg/macos-arm64/ and
+        # libs/ffmpeg/macos-x86_64/ are both bundled in the repo, so a
+        # 15-25 min CI rebuild on every push became a no-op git checkout.
+        # Run scripts/build_ffmpeg_lgpl.sh manually when bumping ffmpeg or
+        # openh264 version and commit the refreshed trees.
         run: bash scripts/verify_ffmpeg_lgpl.sh
 
-      - name: Upload vendored macos-arm64 ffmpeg tree (one-shot for bundling)
-        # Phase 23 (regression-fix scope) iteration: capture the arm64 ffmpeg
-        # vendored tree built on the macos-14 runner so we can commit it to
-        # libs/ffmpeg/macos-arm64/ locally, then skip the from-source rebuild
-        # entirely on subsequent CI runs and unlock universal-mac builds. This
-        # step is intentionally one-shot — once libs/ffmpeg/macos-arm64/ lands
-        # in the repo, both this upload step AND the Vendor/Verify steps above
-        # can be deleted (replaced by a no-op git checkout).
-        uses: actions/upload-artifact@v4
-        with:
-          name: libs-ffmpeg-macos-arm64
-          path: libs/ffmpeg/macos-arm64/
-          retention-days: 7
-
-      - name: Configure CMake
-        # Production-target-only config for v1.3 betas — matches beta.20.5
-        # surface. JAMWIDE_BUILD_TESTS + JAMWIDE_VIDEO_SPIKE pulled the test
-        # executables (incl. test_flac_codec which has a pre-existing
-        # WDL_VORBIS_INTERFACE_ONLY guard gap in wdl/vorbisencdec.h that
-        # caused the compile to fail). Phase 23+ will re-enable the test
-        # surface once the test-target wiring is cleaned up.
+      - name: Configure CMake (universal — arm64 + x86_64)
+        # Universal mac build: cmake/ffmpeg.cmake detects the multi-arch
+        # CMAKE_OSX_ARCHITECTURES and lipo's libs/ffmpeg/macos-{arm64,x86_64}/
+        # dylibs into a universal tree at ${CMAKE_BINARY_DIR}/ffmpeg-universal/
+        # at configure time. JUCE/CMake compiles each .o twice + the linker
+        # produces fat artifacts. Output runs natively on Apple Silicon AND
+        # Intel Macs.
+        # JAMWIDE_BUILD_TESTS + JAMWIDE_VIDEO_SPIKE pulled the test executables
+        # (incl. test_flac_codec which has a pre-existing WDL_VORBIS_INTERFACE_ONLY
+        # guard gap in wdl/vorbisencdec.h that caused the compile to fail).
         run: |
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES="arm64" \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
             -DJAMWIDE_BUILD_JUCE=ON \
             -DJAMWIDE_BUILD_CLAP=OFF \
             -DJAMWIDE_DEV_BUILD=OFF \

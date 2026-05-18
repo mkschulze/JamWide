@@ -20,13 +20,11 @@ endif()
 
 if(APPLE)
     # Detect arch from CMAKE_HOST_SYSTEM_PROCESSOR or CMAKE_OSX_ARCHITECTURES.
+    set(_universal_build FALSE)
     if(CMAKE_OSX_ARCHITECTURES AND NOT "${CMAKE_OSX_ARCHITECTURES}" STREQUAL "")
         list(LENGTH CMAKE_OSX_ARCHITECTURES _arch_count)
         if(_arch_count GREATER 1)
-            message(WARNING "ffmpeg::lgpl: requested universal build (${CMAKE_OSX_ARCHITECTURES}) "
-                            "but vendored trees are per-arch — falling back to host arch. "
-                            "Universal-binary stitching is a Phase 14.3 follow-up.")
-            set(_ffmpeg_arch "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+            set(_universal_build TRUE)
         else()
             set(_ffmpeg_arch "${CMAKE_OSX_ARCHITECTURES}")
         endif()
@@ -34,15 +32,99 @@ if(APPLE)
         set(_ffmpeg_arch "${CMAKE_HOST_SYSTEM_PROCESSOR}")
     endif()
 
-    if(_ffmpeg_arch STREQUAL "arm64")
-        set(_ffmpeg_dir "${CMAKE_CURRENT_LIST_DIR}/../libs/ffmpeg/macos-arm64")
-    elseif(_ffmpeg_arch STREQUAL "x86_64" OR _ffmpeg_arch STREQUAL "AMD64")
-        set(_ffmpeg_dir "${CMAKE_CURRENT_LIST_DIR}/../libs/ffmpeg/macos-x86_64")
+    if(_universal_build)
+        # ───── Universal mac build ─────
+        # CMAKE_OSX_ARCHITECTURES is a list (typically "arm64;x86_64") so the
+        # JUCE/CMake build will compile each .o twice and the linker will
+        # produce fat binaries. ffmpeg/openh264 dylibs must also be fat — lipo
+        # the per-arch canonical files into universal dylibs in the build
+        # tree, then point ffmpeg::lgpl at that build-tree directory.
+        #
+        # We DON'T commit the lipo'd universal tree to libs/ffmpeg/ —
+        # CMAKE_BINARY_DIR is the right home for arch-combined artifacts that
+        # the per-arch trees imply. Regenerated whenever the build dir is
+        # wiped or whenever per-arch sources mtime newer than universal.
+        set(_arm64_dir "${CMAKE_CURRENT_LIST_DIR}/../libs/ffmpeg/macos-arm64")
+        set(_x86_dir   "${CMAKE_CURRENT_LIST_DIR}/../libs/ffmpeg/macos-x86_64")
+        set(_ffmpeg_dir "${CMAKE_BINARY_DIR}/ffmpeg-universal")
+
+        if(NOT EXISTS "${_arm64_dir}/lib" OR NOT EXISTS "${_x86_dir}/lib")
+            message(FATAL_ERROR
+                "ffmpeg::lgpl: universal build (${CMAKE_OSX_ARCHITECTURES}) "
+                "requires BOTH libs/ffmpeg/macos-arm64/ and "
+                "libs/ffmpeg/macos-x86_64/ to be vendored. Found:\n"
+                "  arm64:   ${_arm64_dir}/lib (exists: $<IF:EXISTS,YES,NO>)\n"
+                "  x86_64:  ${_x86_dir}/lib (exists: $<IF:EXISTS,YES,NO>)")
+        endif()
+
+        if(NOT EXISTS "${_ffmpeg_dir}/lib/libavcodec.dylib")
+            message(STATUS "ffmpeg::lgpl: building universal tree at ${_ffmpeg_dir}")
+            file(MAKE_DIRECTORY "${_ffmpeg_dir}/lib")
+            # Headers are identical between arches — copy arm64's set.
+            file(COPY "${_arm64_dir}/include" DESTINATION "${_ffmpeg_dir}")
+
+            # lipo each canonical versioned dylib (skip symlinks; we recreate
+            # them after).
+            file(GLOB _src_libs "${_arm64_dir}/lib/lib*.dylib")
+            foreach(_arm64_lib ${_src_libs})
+                if(IS_SYMLINK "${_arm64_lib}")
+                    continue()
+                endif()
+                get_filename_component(_libname "${_arm64_lib}" NAME)
+                set(_x86_lib "${_x86_dir}/lib/${_libname}")
+                set(_uni_lib "${_ffmpeg_dir}/lib/${_libname}")
+                if(NOT EXISTS "${_x86_lib}")
+                    message(FATAL_ERROR
+                        "ffmpeg::lgpl: macos-arm64 has ${_libname} but "
+                        "macos-x86_64 doesn't — version mismatch between trees")
+                endif()
+                execute_process(
+                    COMMAND lipo -create "${_arm64_lib}" "${_x86_lib}"
+                                  -output "${_uni_lib}"
+                    RESULT_VARIABLE _lipo_rc
+                    ERROR_VARIABLE  _lipo_err
+                )
+                if(NOT _lipo_rc EQUAL 0)
+                    message(FATAL_ERROR
+                        "lipo failed for ${_libname}: ${_lipo_err}")
+                endif()
+                message(STATUS "  lipo'd ${_libname}")
+            endforeach()
+
+            # Recreate the symlink aliases (e.g. libavcodec.61.dylib →
+            # libavcodec.61.19.101.dylib) so @rpath/libavcodec.61.dylib
+            # resolves at runtime. Read symlink targets from the arm64 tree
+            # (the structure is identical to x86_64 by construction).
+            file(GLOB _all_libs "${_arm64_dir}/lib/lib*.dylib")
+            foreach(_src ${_all_libs})
+                if(IS_SYMLINK "${_src}")
+                    get_filename_component(_linkname "${_src}" NAME)
+                    execute_process(
+                        COMMAND readlink "${_src}"
+                        OUTPUT_VARIABLE _target
+                        OUTPUT_STRIP_TRAILING_WHITESPACE
+                    )
+                    execute_process(
+                        COMMAND ln -sf "${_target}"
+                                       "${_ffmpeg_dir}/lib/${_linkname}"
+                    )
+                endif()
+            endforeach()
+        endif()
+        set(_lib_glob "*.dylib")
+        set(_have_symlinks TRUE)
     else()
-        message(FATAL_ERROR "ffmpeg::lgpl: unsupported macOS arch '${_ffmpeg_arch}' (expected arm64 or x86_64)")
+        # ───── Single-arch mac build (host or explicit) ─────
+        if(_ffmpeg_arch STREQUAL "arm64")
+            set(_ffmpeg_dir "${CMAKE_CURRENT_LIST_DIR}/../libs/ffmpeg/macos-arm64")
+        elseif(_ffmpeg_arch STREQUAL "x86_64" OR _ffmpeg_arch STREQUAL "AMD64")
+            set(_ffmpeg_dir "${CMAKE_CURRENT_LIST_DIR}/../libs/ffmpeg/macos-x86_64")
+        else()
+            message(FATAL_ERROR "ffmpeg::lgpl: unsupported macOS arch '${_ffmpeg_arch}' (expected arm64 or x86_64)")
+        endif()
+        set(_lib_glob "*.dylib")
+        set(_have_symlinks TRUE)
     endif()
-    set(_lib_glob "*.dylib")
-    set(_have_symlinks TRUE)
 elseif(UNIX AND NOT APPLE)
     set(_ffmpeg_dir "${CMAKE_CURRENT_LIST_DIR}/../libs/ffmpeg/linux-x86_64")
     set(_lib_glob "*.so*")

@@ -60,6 +60,20 @@ jobs:
         # on any contamination.
         run: bash scripts/verify_ffmpeg_lgpl.sh
 
+      - name: Upload vendored macos-arm64 ffmpeg tree (one-shot for bundling)
+        # Phase 23 (regression-fix scope) iteration: capture the arm64 ffmpeg
+        # vendored tree built on the macos-14 runner so we can commit it to
+        # libs/ffmpeg/macos-arm64/ locally, then skip the from-source rebuild
+        # entirely on subsequent CI runs and unlock universal-mac builds. This
+        # step is intentionally one-shot — once libs/ffmpeg/macos-arm64/ lands
+        # in the repo, both this upload step AND the Vendor/Verify steps above
+        # can be deleted (replaced by a no-op git checkout).
+        uses: actions/upload-artifact@v4
+        with:
+          name: libs-ffmpeg-macos-arm64
+          path: libs/ffmpeg/macos-arm64/
+          retention-days: 7
+
       - name: Configure CMake
         # Production-target-only config for v1.3 betas — matches beta.20.5
         # surface. JAMWIDE_BUILD_TESTS + JAMWIDE_VIDEO_SPIKE pulled the test

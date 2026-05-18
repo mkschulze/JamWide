@@ -218,6 +218,18 @@ jobs:
         shell: msys2 {0}
         run: bash scripts/verify_ffmpeg_lgpl.sh
 
+      - name: Upload vendored windows-x86_64 ffmpeg tree (one-shot for bundling)
+        # Mirror of the mac-arm64 one-shot capture. Once libs/ffmpeg/windows-x86_64/
+        # lands in the repo, the MSYS2 setup + Vendor LGPL ffmpeg + Verify
+        # steps can be deleted from the Windows job entirely (saves 15-25 min
+        # per CI run and eliminates the gendef/dlltool/lib generation
+        # toolchain-rot surface that took multiple iterations to get green).
+        uses: actions/upload-artifact@v4
+        with:
+          name: libs-ffmpeg-windows-x86_64
+          path: libs/ffmpeg/windows-x86_64/
+          retention-days: 7
+
       - name: Configure CMake
         run: |
           cmake -B build `

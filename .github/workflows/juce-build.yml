@@ -167,11 +167,11 @@ jobs:
           retention-days: 30
 
   build-windows:
-    # Disabled for v1.3 betas — Phase 23 owns Windows codesign + ffmpeg
-    # vendoring on MSYS2. The job's MSYS2/ffmpeg-vendoring/pluginval/staging
-    # steps are kept as-is so re-enabling is a single `if: ${{ true }}` flip
-    # once Phase 23 is ready.
-    if: ${{ false }}
+    # Enabled 2026-05-18 (Phase 22 UAT exit ramp): the MSYS2 ffmpeg-vendoring
+    # script + windows-x86_64 leg has been written since Phase 14.3 but never
+    # exercised on a real CI run. This is the first attempt; Phase 23's full
+    # signtool + dumpbin /dependents gate is still owed but we ship an
+    # unsigned Windows-x86_64 beta artifact for early testers in the meantime.
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -252,12 +252,28 @@ jobs:
           Copy-Item "build/JamWideJuce_artefacts/Release/CLAP/JamWide.clap" "staging/JamWide.clap"
           # Standalone
           Copy-Item "build/JamWideJuce_artefacts/Release/Standalone/JamWide.exe" "staging/JamWide.exe"
+          # Vendored ffmpeg DLLs (LGPL) — required runtime deps for video
+          # encode/decode. Phase 23-02 owns proper Windows install layout;
+          # for the beta we just colocate the DLLs with the standalone +
+          # plugins so DLL search finds them. Per memory
+          # `project_release_packaging`: Windows uses zip (not tar.gz).
+          if (Test-Path "libs/ffmpeg/windows-x86_64/bin") {
+              Copy-Item "libs/ffmpeg/windows-x86_64/bin/*.dll" "staging/"
+          }
+
+      - name: Package Windows zip
+        shell: pwsh
+        run: |
+          # Per memory `project_release_packaging`: Windows uses zip (not
+          # tar.gz). PowerShell's Compress-Archive is native and preserves
+          # the flat layout the staging step produced.
+          Compress-Archive -Path "staging/*" -DestinationPath "JamWide-Windows.zip" -Force
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: JamWide-Windows
-          path: staging/
+          path: JamWide-Windows.zip
           retention-days: 30
 
   build-linux:
@@ -354,10 +370,11 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    # build-windows + build-linux deferred — Phase 23 (universal-mac +
-    # Windows codesign) AND Linux V4L2 capture wrapper (memory: 'Linux
-    # capture as Item K post-v1'). Mac arm64-only for v1.3 betas.
-    needs: [build-macos]
+    # build-windows enabled 2026-05-18 (first Windows beta artifact).
+    # build-linux still deferred (Linux V4L2 capture is Item K post-v1).
+    # Phase 23 will add universal-mac stitching + Windows codesign;
+    # current Windows artifact is unsigned x86_64.
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -367,10 +384,12 @@ jobs:
         with:
           path: artifacts
 
-      - name: Prepare macOS artifacts
+      - name: Prepare release artifacts
         run: |
-          # macOS is already tar.gz (preserves Unix permissions)
+          # macOS uses tar.gz (preserves Unix permissions per memory
+          # `project_release_packaging`); Windows uses zip.
           cp artifacts/JamWide-macOS/JamWide-macOS.tar.gz .
+          cp artifacts/JamWide-Windows/JamWide-Windows.zip .
 
       - name: Create or update release
         env:
@@ -381,19 +400,20 @@ jobs:
           if echo "$TAG_NAME" | grep -qE "beta|alpha|rc"; then
             PRERELEASE_FLAG="--prerelease"
           fi
-          # Phase 23 will re-add JamWide-Windows.zip + JamWide-Linux.tar.gz
-          # once build-windows + build-linux are back online.
+          # Linux still deferred (Item K post-v1 — V4L2 capture wrapper).
           if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             echo "Release $TAG_NAME already exists — uploading assets"
             gh release upload "$TAG_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber \
-              JamWide-macOS.tar.gz
+              JamWide-macOS.tar.gz \
+              JamWide-Windows.zip
           else
             gh release create "$TAG_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --title "$TAG_NAME" \
               --generate-notes \
               $PRERELEASE_FLAG \
-              JamWide-macOS.tar.gz
+              JamWide-macOS.tar.gz \
+              JamWide-Windows.zip
           fi

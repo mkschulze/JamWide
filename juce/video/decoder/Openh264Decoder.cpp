@@ -418,7 +418,53 @@ void Openh264Decoder::parseSlotAndFeed_(const VideoRecvSlotSnapshot& snapshot)
         }
 
         // Default: per-frame NAL chunk.
-        sendAnnexB_(frame, frameSize);
+        //
+        // Format probe (Phase 22 UAT 2026-05-18): peer apps that use
+        // VTCompressionSession (NinjamZap mobile/iOS) emit AVCC packets
+        // where each NAL inside the packet is itself prefixed by a 4-byte
+        // BE length. JamWide's own QueueVideoFrame emits one bare NAL per
+        // chunk (no inner length prefix). Detect AVCC by attempting to
+        // parse frame[0..3] as a NAL length that fits inside the frame:
+        //   - If frame[0] == 0 (high byte of small length) AND the parsed
+        //     length + 4 <= frameSize AND the byte at offset 4 looks like a
+        //     valid NAL header (forbidden_zero_bit == 0, nal_unit_type
+        //     in {1..31}, NOT 0): treat as AVCC and walk the chunk.
+        //   - Otherwise: treat as bare NAL (JamWide-native format).
+        bool walked_avcc = false;
+        if (frameSize >= 5 && frame[0] == 0) {
+            const std::uint32_t nal_len =
+                  ((std::uint32_t)frame[0] << 24)
+                | ((std::uint32_t)frame[1] << 16)
+                | ((std::uint32_t)frame[2] <<  8)
+                |  (std::uint32_t)frame[3];
+            const unsigned char header = frame[4];
+            const unsigned int nal_type = header & 0x1f;
+            const bool forbidden_zero  = (header & 0x80) != 0;
+            if (nal_len > 0
+                && nal_len <= (std::uint32_t)(frameSize - 4)
+                && !forbidden_zero
+                && nal_type >= 1
+                && nal_type <= 31) {
+                // Walk the chunk as AVCC: [4B BE len][NAL]...
+                int pos = 0;
+                while (pos + 4 <= frameSize) {
+                    const std::uint32_t nl =
+                          ((std::uint32_t)frame[pos    ] << 24)
+                        | ((std::uint32_t)frame[pos + 1] << 16)
+                        | ((std::uint32_t)frame[pos + 2] <<  8)
+                        |  (std::uint32_t)frame[pos + 3];
+                    if (nl == 0 || nl > (std::uint32_t)(frameSize - pos - 4)) {
+                        break;
+                    }
+                    sendAnnexB_(frame + pos + 4, (int)nl);
+                    pos += 4 + (int)nl;
+                }
+                walked_avcc = true;
+            }
+        }
+        if (!walked_avcc) {
+            sendAnnexB_(frame, frameSize);
+        }
     }
 
     // After all packets sent for this snapshot, drain receive_frame.
@@ -431,14 +477,43 @@ void Openh264Decoder::sendAnnexB_(const unsigned char* nal, int nalLen)
         return;
     }
 
-    // Build the Annex-B framed packet ([00 00 00 01][NAL]) into the
-    // reusable scratch buffer. Resize if needed; never shrinks.
-    const std::size_t needed = 4 + (std::size_t)nalLen;
-    if (annexBScratch_.size() < needed) {
-        annexBScratch_.resize(needed);
+    // Peer interop: some senders (NinjamZap mobile, NinjamZap web) emit
+    // per-frame chunks that are ALREADY Annex-B framed
+    // ([4B BE length][00 00 00 01 NAL]), while JamWide's own sender emits
+    // bare NAL bytes ([4B BE length][NAL]). The accumulator consumes the
+    // outer 4B prefix in both cases; we have to detect which form the
+    // payload is in and avoid double-prepending the start code.
+    //
+    // Double-prepend symptom (Phase 22 UAT 2026-05-18):
+    //   libavcodec sees `00 00 00 01 00 00 00 01 <NAL_header>` and parses
+    //   the first start code as ending a NAL whose first byte is 0x00 →
+    //   "Invalid NAL unit 0, skipping" + decoder never produces a frame.
+    //
+    // Detection:
+    //   - 4-byte: `00 00 00 01` prefix
+    //   - 3-byte: `00 00 01`     prefix (rarer but valid Annex-B per spec)
+    const bool hasStart4 = nalLen >= 4
+        && nal[0] == 0 && nal[1] == 0 && nal[2] == 0 && nal[3] == 1;
+    const bool hasStart3 = !hasStart4 && nalLen >= 3
+        && nal[0] == 0 && nal[1] == 0 && nal[2] == 1;
+
+    std::size_t needed;
+    if (hasStart4 || hasStart3) {
+        // Already Annex-B framed. Pass through verbatim.
+        needed = (std::size_t)nalLen;
+        if (annexBScratch_.size() < needed) {
+            annexBScratch_.resize(needed);
+        }
+        std::memcpy(annexBScratch_.data(), nal, needed);
+    } else {
+        // Bare NAL bytes — prepend our 4-byte start code.
+        needed = 4 + (std::size_t)nalLen;
+        if (annexBScratch_.size() < needed) {
+            annexBScratch_.resize(needed);
+        }
+        std::memcpy(annexBScratch_.data(),       kAnnexBStartCode, 4);
+        std::memcpy(annexBScratch_.data() + 4,   nal,             (std::size_t)nalLen);
     }
-    std::memcpy(annexBScratch_.data(),       kAnnexBStartCode, 4);
-    std::memcpy(annexBScratch_.data() + 4,   nal,             (std::size_t)nalLen);
 
     // Use a stack-allocated AVPacket with raw data pointer into our
     // scratch buffer. After each successful send, drain receive_frame
@@ -500,6 +575,18 @@ void Openh264Decoder::drainReceiveFrameLoop_()
         return;
     }
 
+    // Frame-pacing constants. NinjamZap peers run at variable framerates
+    // (Phase 22 UAT 2026-05-18 observation: one peer at ~15fps with
+    // ~105 NALs per ~7-second interval, another at ~30fps with ~228
+    // NALs per interval). Without pacing the decoder thread blasts the
+    // whole burst into image_front + repeated triggerAsyncUpdate calls
+    // in ~100ms, and JUCE's AsyncUpdater coalesces them so only the
+    // LAST frame is painted — user-visible symptom: video updates only
+    // at interval boundaries ("interval-pulse"). Pace at 30fps so the
+    // higher-framerate peers stay 1:1 and lower-framerate peers just
+    // wait between successful receive_frame returns.
+    constexpr auto kTargetFramePeriod = std::chrono::microseconds(33333); // ~30fps
+
     // Pitfall 1: drain receive_frame loop. EAGAIN means "need more
     // packets"; EOF means flushed. Any other negative is a decode error
     // — drop the frame and continue (D-18).
@@ -517,6 +604,20 @@ void Openh264Decoder::drainReceiveFrameLoop_()
         scaleAndSwapImage_(frame_);
         first_frame_seen_.store(true, std::memory_order_release);
         av_frame_unref(frame_);
+
+        // Pace presentation to ~15fps. The decoder thread is dedicated
+        // per-peer; sleeping here only blocks this peer's decode loop, not
+        // the audio thread or the message thread. Subsequent snapshots
+        // queue in the slot ring (4 deep) and the producer drops oldest
+        // if we fall behind, which is the right behaviour for live video.
+        const auto now = std::chrono::steady_clock::now();
+        if (last_frame_present_time_ != std::chrono::steady_clock::time_point{}) {
+            const auto since_last = now - last_frame_present_time_;
+            if (since_last < kTargetFramePeriod) {
+                std::this_thread::sleep_for(kTargetFramePeriod - since_last);
+            }
+        }
+        last_frame_present_time_ = std::chrono::steady_clock::now();
     }
 }
 
@@ -568,21 +669,31 @@ void Openh264Decoder::scaleAndSwapImage_(const AVFrame* frame)
     {
         std::lock_guard<std::mutex> g(sink_lock_);
         if (sink_ != nullptr) {
-            // Plan 21-03 will define the sink->image_front + bufferLock +
-            // generation atomic + triggerAsyncUpdate protocol. For Plan
-            // 21-02 we hold the sink pointer but defer the actual wiring
-            // — the sink will exist only after Plan 21-03 lands. In
-            // production at Plan 21-02 time, sink_ is null (Plan 21-03
-            // wires it). If a future bug-fix calls setSink BEFORE Plan
-            // 21-03 lands, this branch will be hit; for safety we just
-            // don't dereference any sink members here.
+            // Plan 21-02 left this as a placeholder for Plan 21-03 to fill
+            // with the production sink-delivery protocol. The placeholder
+            // shipped empty (Phase 22 UAT 2026-05-18 root-cause): the
+            // decoder ran cleanly, image_back_ held valid BGRA pixels every
+            // tick, but the production tile never got them — "video
+            // starting..." overlay stayed pinned because PeerVideoSink::
+            // image_front never updated and triggerAsyncUpdate never fired.
             //
-            // Plan 21-03 will replace this comment with:
-            //   juce::ScopedLock sl(sink_->bufferLock);
-            //   std::swap(sink_->image_front, image_back_);
-            //   sink_->generation.fetch_add(1, std::memory_order_release);
-            //   sink_->triggerAsyncUpdate();
-            // For Plan 21-02, the sink is guaranteed null in production.
+            // Production sink-delivery protocol (matches the inline comment
+            // Plan 21-03 was supposed to materialise):
+            //   1. Hold sink->bufferLock briefly.
+            //   2. swap image_front <-> image_back_ (juce::Image is
+            //      ref-counted; swap is O(1) — no pixel copy).
+            //   3. Bump generation atomic with release semantics.
+            //   4. Mark first_frame_seen so the tile's "video starting..."
+            //      overlay clears.
+            //   5. Release the lock, then triggerAsyncUpdate so the message
+            //      thread repaints from image_front.
+            {
+                juce::ScopedLock sl(sink_->bufferLock);
+                std::swap(sink_->image_front, image_back_);
+            }
+            sink_->generation.fetch_add(1, std::memory_order_release);
+            sink_->first_frame_seen.store(true, std::memory_order_release);
+            sink_->triggerAsyncUpdate();
         } else {
 #ifdef JAMWIDE_BUILD_TESTS
             // Codex Cluster 8 — lock-protected TestFrameResult write.

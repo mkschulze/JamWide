@@ -220,13 +220,14 @@ JamWideRemoteFrameDistributor::subscribeToPeer(const char*           username,
     // For SIMPLICITY of correctness, we collapse (a) and (b) using the
     // following idea: PeerVideoSink::addListener is the ONLY place ids come
     // from. If the sink does not exist, we lazily create one with the
-    // default v1.3 fixed receive surface size (320x240). The decoder will
-    // never write to it (because no peer is broadcasting yet), but
+    // default v1.3 receive surface size 640x480 (bumped from 320x240 in
+    // Phase 22 UAT 2026-05-18 for sharper tiles). The decoder will never
+    // write to it (because no peer is broadcasting yet), but
     // PeerVideoSink::addListener now has a stable id namespace.
     //
     // The downside: we allocate a PeerVideoSink for a Phase 22 tile that
-    // subscribes to a peer who never broadcasts. Cost is ~2 * 320*240*4
-    // bytes = ~600 KB per never-broadcasting peer. Acceptable for v1.3
+    // subscribes to a peer who never broadcasts. Cost is ~2 * 640*480*4
+    // bytes = ~2.4 MB per never-broadcasting peer. Acceptable for v1.3
     // (mitigated by Phase 22 only subscribing to peers in the remote-users
     // roster).
 
@@ -235,10 +236,11 @@ JamWideRemoteFrameDistributor::subscribeToPeer(const char*           username,
         std::lock_guard<std::mutex> g(mu_);
         auto it = sinks_.find(key);
         if (it == sinks_.end()) {
-            // Codex Cluster 10 LOW: v1.3 fixed receive surface size 320x240.
-            // First-seen peer resolution is impossible to know at subscribe
-            // time; the decoder rescales via SwsContext recreate per D-07.
-            auto newSink = std::make_unique<PeerVideoSink>(320, 240);
+            // Codex Cluster 10 LOW: v1.3 receive surface size 640x480
+            // (bumped from 320x240 in Phase 22 UAT 2026-05-18). First-seen
+            // peer resolution is impossible to know at subscribe time; the
+            // decoder rescales via SwsContext recreate per D-07.
+            auto newSink = std::make_unique<PeerVideoSink>(640, 480);
             sink = newSink.get();
             sinks_.emplace(key, std::move(newSink));
             // Track deferredListeners_ for parity with the "subscribe-before-

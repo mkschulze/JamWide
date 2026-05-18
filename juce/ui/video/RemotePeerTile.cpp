@@ -1,5 +1,6 @@
 #include "RemotePeerTile.h"
 #include "../../video/distributor/PeerVideoSink.h"
+#include "../BotFilter.h"
 
 namespace jamwide {
 
@@ -54,12 +55,15 @@ void RemotePeerTile::paint(juce::Graphics& g)
     if (sink == nullptr) {
         // No sink yet (subscribe-before-peer-exists, or peer just left).
         // Render the username strip + "video starting..." overlay.
+        // username_ is the RAW wire name (with `@server` suffix when
+        // NinjamZap server delivers one) — strip for display only; keep
+        // the raw form for the subscription/findSink keys above.
         paintCommon(g,
                     juce::Image{},
                     /*firstFrameSeen*/ false,
                     /*holdCount*/      0,
                     /*synced*/         false,
-                    /*username*/       username_,
+                    /*username*/       jamwide::stripAtSuffix(username_),
                     /*hovering*/       hovering_);
         return;
     }
@@ -83,7 +87,7 @@ void RemotePeerTile::paint(juce::Graphics& g)
                 firstFrame,
                 holds,
                 synced,
-                username_,
+                jamwide::stripAtSuffix(username_),
                 hovering_);
 }
 

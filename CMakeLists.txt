@@ -970,6 +970,7 @@ if(JAMWIDE_BUILD_TESTS)
     juce_generate_juce_header(test_video_tile_member_order)
     target_sources(test_video_tile_member_order PRIVATE
         tests/test_video_tile_member_order.cpp
+        juce/ui/BotFilter.cpp
         juce/ui/video/VideoTileBase.cpp
         juce/ui/video/SelfVideoTile.cpp
         juce/ui/video/RemotePeerTile.cpp
@@ -1008,6 +1009,7 @@ if(JAMWIDE_BUILD_TESTS)
     juce_generate_juce_header(test_remote_peer_popout_lifetime)
     target_sources(test_remote_peer_popout_lifetime PRIVATE
         tests/test_remote_peer_popout_lifetime.cpp
+        juce/ui/BotFilter.cpp
         juce/ui/video/RemotePeerPopoutWindow.cpp
         juce/ui/video/VideoTileBase.cpp
         juce/ui/video/RemotePeerTile.cpp

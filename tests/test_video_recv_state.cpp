@@ -15,7 +15,7 @@
          Cluster 1 timing instrumentation actually accumulates > 0 ns)
       6. test_ds_match_defers_to_pending
       7. test_prev_match_plays_immediately
-      8. test_no_match_holds_then_drops_at_4
+      8. test_no_match_holds_then_drops_at_32
       9. test_user_leave_resets_video_sync_state
      10. test_zero_length_frame_drops_cleanly (codex Cluster 10)
      11. test_oversize_prefix_clamps_at_4mb_cap (codex Cluster 10)
@@ -354,10 +354,10 @@ static void test_prev_match_plays_immediately() {
 }
 
 // ---------------------------------------------------------------------------
-// Sub-test 8: no-match holds, then drops at kHoldCapDrop=4.
+// Sub-test 8: no-match holds, then drops at kHoldCapDrop=32.
 // ---------------------------------------------------------------------------
-static void test_no_match_holds_then_drops_at_4() {
-    TEST("no-match HOLDs then force-resync at kHoldCapDrop=4");
+static void test_no_match_holds_then_drops_at_32() {
+    TEST("no-match HOLDs then force-resync at kHoldCapDrop=32");
     auto client = std::unique_ptr<NJClient>(new NJClient);
     auto vguid = make_guid(0x80);
     auto aguid_video = make_guid(0xCC);  // marker audio_guid
@@ -370,8 +370,11 @@ static void test_no_match_holds_then_drops_at_4() {
     auto *vs = client->GetVideoStreamForTest("hank", kChidx);
     if (!vs) { FAIL("VideoRecvState not created"); client->ClearTestRemoteUserMirror(0); return; }
 
-    // Three holds: each increments hold_count, next stays active.
-    for (int i = 1; i <= 3; i++) {
+    // 31 holds: each increments hold_count, next stays active.
+    // (Phase 22 UAT 2026-05-18 variant C: bumped 4 → 32 to tolerate
+    // multi-broadcaster transient mismatches; m_remoteuser_mirror lacks
+    // username so N≥2 peers fall through NONE/PREV paths.)
+    for (int i = 1; i <= 31; i++) {
         client->RunOnNewIntervalReceiveBlockForTest();
         if (vs->hold_count != i) {
             char buf[128]; snprintf(buf, sizeof(buf), "after swap %d expected hold_count=%d, got %d", i, i, vs->hold_count);
@@ -383,7 +386,7 @@ static void test_no_match_holds_then_drops_at_4() {
         }
     }
 
-    // Fourth swap: kHoldCapDrop=4 triggers force-resync.
+    // 32nd swap: kHoldCapDrop=32 triggers force-resync.
     client->RunOnNewIntervalReceiveBlockForTest();
     if (vs->next.active) {
         FAIL("expected next.active==false after force-resync");
@@ -546,7 +549,7 @@ int main() {
     test_pending_promotes_to_playing_on_next_swap();
     test_ds_match_defers_to_pending();
     test_prev_match_plays_immediately();
-    test_no_match_holds_then_drops_at_4();
+    test_no_match_holds_then_drops_at_32();
     test_user_leave_resets_video_sync_state();
     test_zero_length_frame_drops_cleanly();
     test_oversize_prefix_clamps_at_4mb_cap();

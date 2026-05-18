@@ -54,6 +54,21 @@ JamWideJuceProcessor::JamWideJuceProcessor()
     // User can switch to FLAC via codec selector in ConnectionBar
     client->config_autosubscribe = 1;
 
+    // Register a no-op RawData_Callback so the video-receive dispatch at
+    // njclient.cpp:2498 takes the video branch (handleVideoRecvBegin_/Write_/
+    // End_ do the actual Phase-21 receive work; the callback is just a guard).
+    // Without this, every peer's video chunks are silently dropped (Phase 22
+    // UAT 2026-05-18 surfaced this — the production receive path was never
+    // exercised end-to-end before because Phase 21 tests registered their own
+    // callback via tests/test_video_fourcc.cpp).
+    client->RawData_Callback = [](void* /*user*/, int /*eventType*/,
+                                   const unsigned char* /*guid*/,
+                                   unsigned int /*fourcc*/,
+                                   const char* /*username*/,
+                                   int /*chidx*/,
+                                   const void* /*data*/, int /*len*/) {};
+    client->RawData_User = nullptr;
+
     // OSC server (created after NJClient because it takes a processor reference
     // that may call getClient()). Does NOT start automatically -- user enables via dialog.
     oscServer = std::make_unique<OscServer>(*this);

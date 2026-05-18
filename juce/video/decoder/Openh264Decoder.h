@@ -61,6 +61,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <mutex>
 
@@ -191,6 +192,12 @@ private:
     std::atomic<int>        slotview_drop_count_{0};
     std::atomic<bool>       first_frame_seen_{false};
     std::atomic<bool>       is_open_{false};
+
+    // Frame-pacing: decoder thread sleeps between successful frame
+    // presentations so the message thread can paint each frame instead of
+    // AsyncUpdater coalescing a 105-frame burst into a single repaint.
+    // Phase 22 UAT 2026-05-18 surfaced this as "interval-pulse" video.
+    std::chrono::steady_clock::time_point last_frame_present_time_{};
 
 #ifdef JAMWIDE_BUILD_TESTS
     // Codex Cluster 10 — mutex-protected std::thread::id (lock-free

@@ -583,8 +583,16 @@ void Openh264Encoder::drainEncoder_() {
             // bytes. (SPS / PPS NALs inside the same packet are emitted
             // too — the receiver tolerates duplicate parameter sets
             // alongside the dedicated SPS/PPS chunk; CONTEXT.md notes
-            // libopenh264 baseline inlines them in IDR packets and the
-            // NinjamZap web decoder uses whichever arrives first.)
+            // libopenh264 baseline inlines them in IDR packets.
+            //
+            // VT-compat fix (Javier @ NinjamZap, 2026-05-18): iOS receivers
+            // using VTDecompressionSession build their CMVideoFormatDescription
+            // from the dedicated SPS/PPS chunk and then choke (-12909) when
+            // the IDR access unit contains its own inline SPS/PPS that
+            // doesn't match byte-for-byte. Skip NAL types 7 (SPS) and 8
+            // (PPS) here — the dedicated SPS/PPS chunk sent every interval
+            // is sufficient and authoritative. Only forward VCL NALs
+            // (types 1 = P-slice, 5 = IDR-slice).
             const unsigned char* data = packet_->data;
             const int size = packet_->size;
             int pos = 0;
@@ -596,6 +604,12 @@ void Openh264Encoder::drainEncoder_() {
                 int nal_end   = (sc_next < 0) ? size : sc_next;
                 int nal_len   = nal_end - nal_start;
                 if (nal_len > 0) {
+                    const int nal_type = data[nal_start] & 0x1f;
+                    if (nal_type == 7 || nal_type == 8) {
+                        // Skip inline SPS/PPS — VT-compat per Javier 2026-05-18.
+                        pos = nal_end;
+                        continue;
+                    }
                     publishEncodedNal_(data + nal_start, nal_len);
                 }
                 pos = nal_end;
@@ -661,7 +675,20 @@ bool Openh264Encoder::allocateLibavcodecResources_(const VideoEncoderConfig& cfg
     // option name is not exposed on this codec — that's acceptable; the
     // defaults are sane.
     av_opt_set(codecContext_->priv_data, "rc_mode",            "bitrate", 0);  // D-06 (RC_BITRATE_MODE)
-    av_opt_set(codecContext_->priv_data, "allow_skip_frames",  "1",       0);  // D-06 (openh264 RC_BITRATE_MODE req)
+    // VT-compat fix (Javier @ NinjamZap, 2026-05-18): libopenh264 with
+    // allow_skip_frames=1 silently drops frames without telling libavcodec
+    // (no AVERROR is returned — avcodec_receive_packet returns EAGAIN with
+    // no error and we get a frame_num gap). iOS VTDecompressionSession
+    // throws -12909 on subsequent P-frames that reference the missing
+    // frame; libavcodec on the decode side recovers but VT is stricter.
+    // Setting allow_skip_frames=0 means openh264 reduces quality (higher
+    // QP, more blockiness) instead of dropping frames — temporal
+    // consistency wins over precise bitrate adherence. At 300 kbps for
+    // 640x480 @ 15fps baseline, the bitrate headroom is plenty and
+    // visible quality degradation should be rare. D-06 original comment
+    // claimed openh264 RC_BITRATE_MODE requires this flag; openh264 SDK
+    // docs treat it as a rate-controller hint, not a hard requirement.
+    av_opt_set(codecContext_->priv_data, "allow_skip_frames",  "0",       0);  // VT-compat (Javier 2026-05-18)
     av_opt_set(codecContext_->priv_data, "slice_mode",         "fixed",   0);  // D-Discretion: single-slice
     av_opt_set(codecContext_->priv_data, "loopfilter_disable", "1",       0);  // D-Discretion
 
@@ -756,14 +783,23 @@ void Openh264Encoder::publishExtractedSpsPps_() {
     // 66" and falls back to UNSPECIFIC, in which case it embeds the
     // SPS/PPS inside the first IDR's NAL bytes instead of advertising
     // them via extradata).
+    //
+    // CRITICAL: extradata is raw libavcodec output (Annex-B framed:
+    // 00 00 00 01 SPS 00 00 00 01 PPS), NOT the NinjamZap wire format the
+    // receiver expects ([4B BE inner_len][2B sps_len][SPS][2B pps_len][PPS]).
+    // Publishing extradata directly was a latent bug — currently dormant
+    // because libopenh264 baseline doesn't populate extradata, but it would
+    // ship malformed SPS/PPS chunks the moment profile/version changes
+    // expose it. Route through scanAndPublishSpsPps_ which builds the
+    // correct NinjamZap wire format from any Annex-B-framed source.
     if (codecContext_->extradata != nullptr &&
         codecContext_->extradata_size > 0) {
-        publishSpsPps_(codecContext_->extradata, codecContext_->extradata_size);
-        if (listener_ != nullptr) {
-            listener_->onSpsPpsPublished(codecContext_->extradata_size);
-        }
-        sps_pps_published_ = true;
-        return;
+        scanAndPublishSpsPps_(codecContext_->extradata,
+                              codecContext_->extradata_size);
+        if (sps_pps_published_) return;
+        // If scanAndPublishSpsPps_ didn't find SPS+PPS in the extradata
+        // (e.g., AVCC sequence header instead of Annex-B), fall through
+        // to the first-IDR-packet path below.
     }
     // Fallback path: defer to the first emitted packet. drainEncoder_
     // observes sps_pps_published_ == false and invokes

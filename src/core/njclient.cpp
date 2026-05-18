@@ -2523,9 +2523,12 @@ int NJClient::Run() // nonzero if sleep ok
                   // the heavy decoder startup OUTSIDE m_video_recv_cs on the
                   // run thread. Idempotent: early-returns if the decoder is
                   // already installed OR the startup flag was cleared by a
-                  // racer. v1.3 fixed receive surface size 320x240 per
-                  // codex Cluster 10 LOW.
-                  completeVideoDecoderStartup_(dib.username, dib.chidx, 320, 240);
+                  // racer. v1.3 receive surface size bumped 320x240 → 640x480
+                  // (Phase 22 UAT 2026-05-18) for sharper tiles — peers send
+                  // 640x480+, so downscaling to 320 then upscaling at the tile
+                  // caused double-scaling blur. Memory cost ×4 (~1.2 MB BGRA
+                  // per peer × 16 peers max = ~20 MB, well within budget).
+                  completeVideoDecoderStartup_(dib.username, dib.chidx, 640, 480);
                 }
                 else if (dib.fourcc &&
                          dib.fourcc != NJ_ENCODER_FMT_TYPE &&
@@ -3778,11 +3781,12 @@ void NJClient::handleVideoRecvBegin_(const unsigned char guid[16], unsigned int 
   vs->accumulating.interval_seq = m_sync_interval_cnt;
 
   // Phase 21-03 Task 2 (codex Cluster 4 Phase 1): flag the decoder as needed.
-  // v1.3 fixed receive surface size 320x240 (codex Cluster 10 LOW — NOT
-  // first-seen peer resolution; SwsContext recreate handles real resolution
-  // per D-07 + Pitfall 7). NO allocation, NO avcodec_open2, NO thread start
-  // here — Phase 2 runs OUTSIDE m_video_recv_cs from the caller.
-  ensureVideoDecoderForPeerLater_(vs, 320, 240);
+  // v1.3 receive surface size 640x480 (bumped from 320x240 in Phase 22 UAT
+  // 2026-05-18 — peers send 640x480+ and downscaling to 320 then upscaling
+  // at the tile caused double-scaling blur; SwsContext recreate still adapts
+  // source dims per D-07 + Pitfall 7). NO allocation, NO avcodec_open2, NO
+  // thread start here — Phase 2 runs OUTSIDE m_video_recv_cs from the caller.
+  ensureVideoDecoderForPeerLater_(vs, 640, 480);
 
   m_video_recv_cs.Leave();
 }
@@ -4135,7 +4139,15 @@ void NJClient::runVideoReceiveBlock_()
         // held 3 swaps, the video frame was already 3 intervals ahead of
         // the eventual audio. Dropping a single video interval keeps
         // every subsequent interval aligned.
-        const int kHoldCapDrop = 4;
+        //
+        // Phase 22 UAT 2026-05-18 (variant C): bumped 4 → 32. Phase 21's
+        // m_remoteuser_mirror lacks username, so multi-broadcaster
+        // matching falls through to NONE/PREV paths and accumulates
+        // transient mismatches under N≥2 peers. At 4, those transients
+        // drop snapshots and the tile freezes. 32 tolerates ~32 intervals
+        // (~7s at 220ms cadence) of mismatch in exchange for a small
+        // audio-ahead-of-video drift window that resync still closes.
+        const int kHoldCapDrop = 32;
         if (!audioHasData) {
           vs->hold_count = 0;
           vs->empty_count = 0;

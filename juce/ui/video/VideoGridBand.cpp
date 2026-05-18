@@ -94,8 +94,22 @@ void VideoGridBand::timerCallback()
 
     // ─── Step B — D-13 Option a per-peer sink poll under cachedUsersMutex ─
     // Snapshot the non-bot peer name set under the same roster mutex
-    // ChannelStripArea uses (H1 codex closure — `jamwide::isBot` /
-    // `jamwide::stripAtSuffix` from BotFilter.h).
+    // ChannelStripArea uses (H1 codex closure — `jamwide::isBot` from
+    // BotFilter.h).
+    //
+    // RECEIVE-PATH KEY CONTRACT (fix from UAT 2026-05-18): Phase 21 keys
+    // PeerVideoSink by the RAW wire username (with `@server` suffix when the
+    // NinjamZap server sends one). `findOrCreateSink` / `subscribeToPeer` /
+    // `findSink` all funnel through `makeKey_(username, chidx)` which uses
+    // strcmp-style equality, so the lookup name MUST byte-match what the
+    // BEGIN handler passed to `findOrCreateVideoStream` (see njclient.cpp:
+    // 3591 `lstrcpyn_safe(vs->stream_username, username, ...)`).
+    // `cachedUsers[].name` is populated from `m_remoteusers[x]->name` which
+    // is the SAME raw wire string. Stripping `@suffix` here used to break
+    // the lookup whenever the server delivered names with the suffix — no
+    // tile would ever mount for those peers. We now keep the raw name for
+    // findSink/subscribeToPeer and let the tile strip for display via
+    // VideoTileBase::paintCommon.
     std::vector<juce::String> currentNonBotPeers;
     if (remoteDistributor_ != nullptr)
     {
@@ -106,7 +120,7 @@ void VideoGridBand::timerCallback()
             juce::String rawName(u.name);
             if (jamwide::isBot(rawName))
                 continue;
-            currentNonBotPeers.push_back(jamwide::stripAtSuffix(rawName));
+            currentNonBotPeers.push_back(rawName);
         }
     }
 
@@ -304,7 +318,7 @@ void VideoGridBand::paint(juce::Graphics& g)
             (float)(headerArea.getY() + 2),
             (float) kIconHitWidth,
             (float) kIconHitHeight);
-        g.drawText("\xE2\x86\x97",  // U+2197 NORTH EAST ARROW
+        g.drawText(juce::String::fromUTF8("\xE2\x86\x97"),  // U+2197 NORTH EAST ARROW
                    detachR.toNearestInt(),
                    juce::Justification::centred,
                    false);
@@ -315,7 +329,7 @@ void VideoGridBand::paint(juce::Graphics& g)
             (float)(headerArea.getY() + 2),
             (float) kIconHitWidth,
             (float) kIconHitHeight);
-        g.drawText("\xC3\x97",  // U+00D7 MULTIPLICATION SIGN
+        g.drawText(juce::String::fromUTF8("\xC3\x97"),  // U+00D7 MULTIPLICATION SIGN
                    closeR.toNearestInt(),
                    juce::Justification::centred,
                    false);

@@ -8,7 +8,15 @@
 //
 //   preset 0 → Low    : 320×240 @ 10 fps,  100 kbps, Baseline, gop=30
 //   preset 1 → Medium : 640×480 @ 15 fps,  300 kbps, Baseline, gop=30
-//   preset 2 → High   : 1280×720 @ 30 fps, 800 kbps, Baseline, gop=60
+//   preset 2 → High   : 1280×720 @ 30 fps, 1500 kbps, Baseline, gop=60
+//
+// Phase 22 UAT 2026-05-18: High bitrate bumped 800 → 1500 kbps.
+// 800 was conservative — fine for talking heads but blocky on
+// musicians' hand motion + instrument detail. 1500 kbps lands between
+// Zoom-720p-motion (~1.5 Mbps) and YouTube-Live-720p (2.5 Mbps) and is
+// the right target for jam-session use. Receive surface in
+// njclient.cpp::on_new_interval was bumped to 1280×720 in the same
+// session so peer HD broadcasts render at native res.
 //
 // Phase 19's CapturePreset enum publishes 0/1/2 — the encoder consumes that
 // same int via `makeConfigForPreset(preset)` at open() time. Main/High H.264
@@ -44,7 +52,7 @@ inline VideoEncoderConfig makeConfigForPreset(int preset) noexcept {
         case 1:
             return { 640,  480, 15, 300, H264Profile::Baseline, 30 };  // Medium
         case 2:
-            return { 1280, 720, 30, 800, H264Profile::Baseline, 60 };  // High
+            return { 1280, 720, 30, 1500, H264Profile::Baseline, 60 };  // High (Phase 22 UAT bump 800→1500)
         default:
             return { 320,  240, 10, 100, H264Profile::Baseline, 30 };  // defensive default
     }

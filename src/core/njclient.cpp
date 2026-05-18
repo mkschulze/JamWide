@@ -3781,12 +3781,20 @@ void NJClient::handleVideoRecvBegin_(const unsigned char guid[16], unsigned int 
   vs->accumulating.interval_seq = m_sync_interval_cnt;
 
   // Phase 21-03 Task 2 (codex Cluster 4 Phase 1): flag the decoder as needed.
-  // v1.3 receive surface size 640x480 (bumped from 320x240 in Phase 22 UAT
-  // 2026-05-18 — peers send 640x480+ and downscaling to 320 then upscaling
-  // at the tile caused double-scaling blur; SwsContext recreate still adapts
-  // source dims per D-07 + Pitfall 7). NO allocation, NO avcodec_open2, NO
-  // thread start here — Phase 2 runs OUTSIDE m_video_recv_cs from the caller.
-  ensureVideoDecoderForPeerLater_(vs, 640, 480);
+  // v1.3 receive surface size 1280x720 (bumped twice during Phase 22 UAT
+  // 2026-05-18: 320x240 → 640x480 → 1280x720). Peers now broadcast at the
+  // High preset (1280x720 @ 30fps, 1500 kbps); receiving at a smaller
+  // surface forces sws_scale to downsample and erases the HD detail.
+  // SwsContext recreate still adapts source dims per D-07 + Pitfall 7,
+  // so peers sending 480p get gently upscaled (the only visible cost).
+  // NO allocation, NO avcodec_open2, NO thread start here — Phase 2 runs
+  // OUTSIDE m_video_recv_cs from the caller.
+  //
+  // Memory cost: BGRA surface is 1280*720*4 ≈ 3.6 MB per peer (was 1.2 MB
+  // at 640x480). With kHoldCapDrop=32 already queuing more snapshots per
+  // peer, total per-peer memory grows ~3x. Tolerable for typical 2-4 peer
+  // jam rooms; revisit if 10+ peer rooms become common.
+  ensureVideoDecoderForPeerLater_(vs, 1280, 720);
 
   m_video_recv_cs.Leave();
 }

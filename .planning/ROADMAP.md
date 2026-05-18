@@ -471,7 +471,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 22-03-PLAN.md — Popout windows (RemotePeerPopoutWindow + DetachedGridWindow) + placeholder cards (PopoutPlaceholderCard + DetachedGridPlaceholderCard) + editor controller methods (openOrToggleRemotePopout, bringBackRemotePopout, reattachGrid) + Wave 0 popout-lifetime unit test + multi-monitor clamp (T-22-MM mitigation); manual visual checkpoint
+- [x] 22-03-PLAN.md — Popout windows (RemotePeerPopoutWindow + DetachedGridWindow) + placeholder cards (PopoutPlaceholderCard + DetachedGridPlaceholderCard) + editor controller methods (openOrToggleRemotePopout, bringBackRemotePopout, reattachGrid) + Wave 0 popout-lifetime unit test + multi-monitor clamp (T-22-MM mitigation); manual visual checkpoint
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -566,7 +566,7 @@ v1.3 execution order: 19 -> 20 -> 21 -> 22 -> 23 -> 24 (strict dependency chain 
 | 19. Camera Capture & Permission UX | v1.3 | 3/3 | Complete   | 2026-05-16 |
 | 20. H.264 Encoder & Send Pipeline | v1.3 | 3/4 | In Progress|  |
 | 21. H.264 Decoder & Receive Pipeline | v1.3 | 2/3 | In Progress|  |
-| 22. Native Video UI (Grid + Popouts) | v1.3 | 2/4 | In Progress|  |
+| 22. Native Video UI (Grid + Popouts) | v1.3 | 3/4 | In Progress|  |
 | 23. macOS Universal + Windows Build & Codesign | v1.3 | 0/3 | Not started | - |
 | 24. Beta Validation, Server Docs & Per-DAW UAT | v1.3 | 0/2 | Not started | - |
 

@@ -171,27 +171,89 @@ void VideoGridBand::resized()
     if (tileArea.getWidth() <= 0 || tileArea.getHeight() <= 0)
         return;
 
+    // ─── D-03: whole-band placeholder when grid is detached ───────────────
+    // When the user detaches the grid into a DetachedGridWindow, the
+    // in-main-view band renders a single full-band DetachedGridPlaceholderCard
+    // ("Grid is in detached window →"). All tiles + peer placeholders are
+    // hidden in this branch.
+    if (detachedActive_ && detachedPlaceholder_)
+    {
+        if (selfTile_) selfTile_->setVisible(false);
+        for (auto& [name, tile] : peerTiles_)
+            tile->setVisible(false);
+        for (auto& [name, ph] : peerPlaceholders_)
+            ph->setVisible(false);
+
+        detachedPlaceholder_->setVisible(true);
+        detachedPlaceholder_->setBounds(tileArea);
+        return;
+    }
+    // Hide the detached-grid placeholder otherwise (the editor's
+    // setDetachedActive(false) path drives the transition).
+    if (detachedPlaceholder_)
+        detachedPlaceholder_->setVisible(false);
+
     // Self-tile is always the first slot per D-07; peer iteration order is
     // implementation-defined for std::unordered_map, but the tile slot order
     // is NOT part of the user-facing contract — layout is recomputed from
     // peer count alone, so the visible tile size + grid shape is stable.
-    std::vector<juce::Component*> visibleTiles;
-    visibleTiles.reserve(1 + peerTiles_.size());
-    if (selfTile_)
-        visibleTiles.push_back(selfTile_.get());
-    for (auto& [name, tile] : peerTiles_)
-        visibleTiles.push_back(tile.get());
+    //
+    // Plan 22-03 Task 2 — visible "slot" can be either the tile OR the
+    // placeholder card. We build the visibleSlots vector with whichever
+    // child component owns this slot now, and hide the other one.
+    struct Slot { juce::Component* component; juce::String username; bool isSelf; };
+    std::vector<Slot> visibleSlots;
+    visibleSlots.reserve(1 + peerTiles_.size());
 
-    if (visibleTiles.empty())
+    if (selfTile_)
+    {
+        // Self-tile has no placeholder card (D-09 — Self-popout reuses
+        // Phase 19's CameraPreviewWindow, which lives outside the band).
+        selfTile_->setVisible(true);
+        visibleSlots.push_back({ selfTile_.get(), juce::String{}, true });
+    }
+    for (auto& [name, tile] : peerTiles_)
+    {
+        const bool poppedOut = poppedOutPeers_.find(name) != poppedOutPeers_.end();
+        if (poppedOut)
+        {
+            // Show placeholder card (lazy-created on demand by
+            // setPeerPoppedOut), hide the live tile.
+            tile->setVisible(false);
+            auto ph_it = peerPlaceholders_.find(name);
+            if (ph_it != peerPlaceholders_.end() && ph_it->second)
+            {
+                ph_it->second->setVisible(true);
+                visibleSlots.push_back({ ph_it->second.get(), name, false });
+            }
+            else
+            {
+                // Defensive: placeholder slot missing somehow. Skip this
+                // peer's slot rather than crashing. setPeerPoppedOut should
+                // have created the placeholder before resized() runs.
+            }
+        }
+        else
+        {
+            tile->setVisible(true);
+            // Hide any placeholder that might exist for this peer.
+            auto ph_it = peerPlaceholders_.find(name);
+            if (ph_it != peerPlaceholders_.end() && ph_it->second)
+                ph_it->second->setVisible(false);
+            visibleSlots.push_back({ tile.get(), name, false });
+        }
+    }
+
+    if (visibleSlots.empty())
         return;
 
-    const auto layout = computeGridLayout(static_cast<int>(visibleTiles.size()),
+    const auto layout = computeGridLayout(static_cast<int>(visibleSlots.size()),
                                           tileArea.getWidth(),
                                           tileArea.getHeight());
     if (layout.cols <= 0 || layout.tileW <= 0)
         return;
 
-    for (int i = 0; i < static_cast<int>(visibleTiles.size()); ++i)
+    for (int i = 0; i < static_cast<int>(visibleSlots.size()); ++i)
     {
         const int col = i % layout.cols;
         const int row = i / layout.cols;
@@ -201,7 +263,7 @@ void VideoGridBand::resized()
         const int y   = tileArea.getY() + layout.marginY
                       + layout.spacing
                       + row * (layout.tileH + layout.spacing);
-        visibleTiles[(size_t) i]->setBounds(x, y, layout.tileW, layout.tileH);
+        visibleSlots[(size_t) i].component->setBounds(x, y, layout.tileW, layout.tileH);
     }
 }
 
@@ -329,21 +391,65 @@ void VideoGridBand::mouseUp(const juce::MouseEvent& /*e*/)
     }
 }
 
-// ─── M7 Plan 22-03 placeholder bodies ──────────────────────────────────────
-// Declared here so the editor compiles against both Wave-2 (this plan) and
-// Wave-3 (Plan 22-03). Wave-3 will fill the bodies with the placeholder-card
-// swap logic.
-void VideoGridBand::setPeerPoppedOut(const juce::String& /*username*/,
-                                     bool                /*poppedOut*/)
+// ─── Plan 22-03 Task 2 — setPeerPoppedOut + setDetachedActive bodies ───────
+// Toggle the placeholder-vs-tile slot rendering. Both methods mutate band
+// state then call resized() to apply.
+
+void VideoGridBand::setPeerPoppedOut(const juce::String& username,
+                                     bool                poppedOut)
 {
-    // Body intentionally empty in Plan 22-02 — Plan 22-03 Task 2 swaps the
-    // peer tile for a "popped out" placeholder card.
+    if (username.isEmpty()) return;   // defensive — caller should never pass empty
+
+    if (poppedOut)
+    {
+        poppedOutPeers_.insert(username);
+
+        // Lazy-create the placeholder card for this peer (mirrors how
+        // peerTiles_ are lazy-created in timerCallback). Hidden initially;
+        // resized() flips it visible based on poppedOutPeers_ membership.
+        if (peerPlaceholders_.find(username) == peerPlaceholders_.end())
+        {
+            auto ph = std::make_unique<jamwide::PopoutPlaceholderCard>();
+            ph->setLabel("Popped out \xE2\x86\x92");   // U+2192 RIGHTWARDS ARROW
+            // codex H3 — placeholder click is the EXCLUSIVE destroy path.
+            // Editor's wired onPlaceholderBringBack lambda routes the
+            // non-empty username to bringBackRemotePopout.
+            const juce::String capturedUsername = username;
+            ph->onBringBack = [this, capturedUsername]() {
+                if (onPlaceholderBringBack) onPlaceholderBringBack(capturedUsername);
+            };
+            addChildComponent(*ph);   // not visible until resized() picks it
+            peerPlaceholders_.emplace(username, std::move(ph));
+        }
+    }
+    else
+    {
+        poppedOutPeers_.erase(username);
+        // We intentionally KEEP the placeholder card in peerPlaceholders_
+        // (it's only ~tens of bytes) so re-popping out the same peer is
+        // a no-allocation toggle. resized() will hide it via setVisible(false).
+    }
+
+    resized();
 }
 
-void VideoGridBand::setDetachedActive(bool /*active*/)
+void VideoGridBand::setDetachedActive(bool active)
 {
-    // Body intentionally empty in Plan 22-02 — Plan 22-03 Task 2 swaps the
-    // whole-band content for a placeholder when the user detaches the grid.
+    detachedActive_ = active;
+
+    if (active && ! detachedPlaceholder_)
+    {
+        detachedPlaceholder_ = std::make_unique<jamwide::DetachedGridPlaceholderCard>();
+        detachedPlaceholder_->setLabel("Grid is in detached window \xE2\x86\x92");
+        // Empty-string username signals "reattach grid" in the editor's
+        // onPlaceholderBringBack dispatch (vs. non-empty = bringBackRemotePopout).
+        detachedPlaceholder_->onBringBack = [this]() {
+            if (onPlaceholderBringBack) onPlaceholderBringBack(juce::String{});
+        };
+        addChildComponent(*detachedPlaceholder_);   // hidden until resized()
+    }
+
+    resized();
 }
 
 } // namespace jamwide

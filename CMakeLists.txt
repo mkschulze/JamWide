@@ -312,6 +312,17 @@ if(JAMWIDE_BUILD_JUCE)
         juce/ui/video/DetachedGridWindow.cpp
     )
 
+    # Plan 22-03 Task 2: placeholder cards swap in for live tiles when a
+    # peer is popped out (PopoutPlaceholderCard) or the whole grid is
+    # detached (DetachedGridPlaceholderCard). codex H3 EXCLUSIVE destroy
+    # path — clicking either card destroys the corresponding popout/window.
+    target_sources(JamWideJuce PRIVATE
+        juce/ui/video/PopoutPlaceholderCard.h
+        juce/ui/video/PopoutPlaceholderCard.cpp
+        juce/ui/video/DetachedGridPlaceholderCard.h
+        juce/ui/video/DetachedGridPlaceholderCard.cpp
+    )
+
     jamwide_use_ffmpeg(JamWideJuce)
 
     target_compile_definitions(JamWideJuce PUBLIC

@@ -698,6 +698,72 @@ void JamWideJuceProcessor::setCameraSelectedDevice(const juce::String& name)
     cameraSelectedDevice_ = name;
 }
 
+// ─── Phase 22 D-19 — video grid + popout persisted accessors ─────────────────
+//
+// detachedGridBounds_ is a single Rectangle protected by detachedGridMu_;
+// remotePopoutBoundsMap_ is a juce::HashMap<juce::String, juce::Rectangle<int>>
+// (H2 codex closure — deterministic hash-stable iteration → diffable XML)
+// protected by remotePopoutBoundsMu_. juce::HashMap API differs from
+// std::unordered_map: .contains(key), .set(key, val), .remove(key), and
+// the explicit Iterator pattern for traversal (no range-for support).
+// See juce/osc/OscAddressMap.h:65 for the canonical precedent.
+
+juce::Rectangle<int> JamWideJuceProcessor::getDetachedGridBounds() const
+{
+    std::lock_guard<std::mutex> lk(detachedGridMu_);
+    return detachedGridBounds_;
+}
+
+void JamWideJuceProcessor::setDetachedGridBounds(juce::Rectangle<int> b)
+{
+    std::lock_guard<std::mutex> lk(detachedGridMu_);
+    detachedGridBounds_ = b;
+}
+
+juce::Rectangle<int> JamWideJuceProcessor::getRemotePopoutBounds(const juce::String& username) const
+{
+    std::lock_guard<std::mutex> lk(remotePopoutBoundsMu_);
+    if (remotePopoutBoundsMap_.contains(username))                  // H2 — .contains()
+        return remotePopoutBoundsMap_[username];                    // H2 — [] read by value
+    return juce::Rectangle<int>(100, 100, 320, 240);  // D-14 default
+}
+
+void JamWideJuceProcessor::setRemotePopoutBounds(const juce::String& username,
+                                                  juce::Rectangle<int> b)
+{
+    if (username.isEmpty()) return;
+    std::lock_guard<std::mutex> lk(remotePopoutBoundsMu_);
+    // T-22-SP — cap the map size. If at cap and key isn't already present,
+    // drop silently. H2 — juce::HashMap::size() returns int, not size_t.
+    if (remotePopoutBoundsMap_.size() >= static_cast<int>(kRemotePopoutMapCap)
+        && ! remotePopoutBoundsMap_.contains(username))
+    {
+        return;
+    }
+    remotePopoutBoundsMap_.set(username, b);                        // H2 — .set()
+}
+
+std::vector<std::pair<juce::String, juce::Rectangle<int>>>
+JamWideJuceProcessor::getAllRemotePopoutBounds() const
+{
+    std::lock_guard<std::mutex> lk(remotePopoutBoundsMu_);
+    std::vector<std::pair<juce::String, juce::Rectangle<int>>> out;
+    out.reserve(static_cast<std::size_t>(remotePopoutBoundsMap_.size()));
+    // H2 — juce::HashMap::Iterator pattern (no range-for support).
+    for (juce::HashMap<juce::String, juce::Rectangle<int>>::Iterator it(remotePopoutBoundsMap_);
+         it.next();)
+    {
+        out.emplace_back(it.getKey(), it.getValue());
+    }
+    return out;
+}
+
+void JamWideJuceProcessor::clearAllRemotePopoutBounds()
+{
+    std::lock_guard<std::mutex> lk(remotePopoutBoundsMu_);
+    remotePopoutBoundsMap_.clear();                                 // H2 — .clear() same semantics
+}
+
 // ─── Phase 20-03 — H.264 broadcast lifecycle ─────────────────────────────────
 //
 // Encoder ownership: the processor owns a std::unique_ptr<jamwide::VideoEncoder>
@@ -978,6 +1044,35 @@ void JamWideJuceProcessor::getStateInformation(juce::MemoryBlock& destData)
     state.setProperty("cameraPrivacyAck",    cameraPrivacyAck_.load(std::memory_order_relaxed), nullptr);
     state.setProperty("cameraSelectedDevice", getCameraSelectedDevice(), nullptr);
 
+    // Phase 22 D-19 — video grid + popout persisted state (state version 5).
+    // Approach: structured `<video>` child node because per-peer popoutBounds
+    // is variadic (username keys are unknown at compile time). Flat siblings
+    // would require a fragile naming scheme. RESEARCH §"Alternatives Considered"
+    // recommends this structured XML approach.
+    //
+    // H2 codex closure — getAllRemotePopoutBounds() takes a snapshot of the
+    // juce::HashMap into a std::vector under the mutex, so we can iterate
+    // here without holding the lock during ValueTree mutation.
+    auto videoTree = juce::ValueTree("video");
+    videoTree.setProperty("gridVisible",        getVideoGridVisible(),       nullptr);
+    videoTree.setProperty("gridBandHeight",     getVideoGridBandHeight(),    nullptr);
+    auto dgBounds = getDetachedGridBounds();
+    videoTree.setProperty("detachedGridX",      dgBounds.getX(),             nullptr);
+    videoTree.setProperty("detachedGridY",      dgBounds.getY(),             nullptr);
+    videoTree.setProperty("detachedGridWidth",  dgBounds.getWidth(),         nullptr);
+    videoTree.setProperty("detachedGridHeight", dgBounds.getHeight(),        nullptr);
+    const auto popouts = getAllRemotePopoutBounds();        // vector snapshot
+    for (const auto& kv : popouts) {
+        auto popoutNode = juce::ValueTree("popout");
+        popoutNode.setProperty("name", kv.first,                  nullptr);
+        popoutNode.setProperty("x",    kv.second.getX(),          nullptr);
+        popoutNode.setProperty("y",    kv.second.getY(),          nullptr);
+        popoutNode.setProperty("w",    kv.second.getWidth(),      nullptr);
+        popoutNode.setProperty("h",    kv.second.getHeight(),     nullptr);
+        videoTree.addChild(popoutNode, -1, nullptr);
+    }
+    state.appendChild(videoTree, nullptr);
+
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -1106,6 +1201,42 @@ void JamWideJuceProcessor::setStateInformation(const void* data, int sizeInBytes
         // file. Most real device names are <40 chars.
         if (sel.length() > 256) sel = sel.substring(0, 256);
         setCameraSelectedDevice(sel);
+    }
+
+    // STEP 6: Phase 22 — video grid + popout flat properties (state version 5).
+    // v4 state (no <video> subtree) gets D-19 defaults. T-22-SP mitigation:
+    // every field is jlimit-clamped; popout map size is capped at
+    // kRemotePopoutMapCap (64); each popout name is required non-empty and
+    // <= kRemotePopoutUsernameMaxLen (256) chars; rectangle fields clamped.
+    {
+        auto videoTree = tree.getChildWithName("video");
+        if (videoTree.isValid()) {
+            setVideoGridVisible((bool) videoTree.getProperty("gridVisible", false));
+            setVideoGridBandHeight(juce::jlimit(140, 800,
+                (int) videoTree.getProperty("gridBandHeight", 280)));
+            const int dgX = juce::jlimit(-10000, 10000, (int) videoTree.getProperty("detachedGridX", 200));
+            const int dgY = juce::jlimit(-10000, 10000, (int) videoTree.getProperty("detachedGridY", 200));
+            const int dgW = juce::jlimit(320, 4096, (int) videoTree.getProperty("detachedGridWidth", 800));
+            const int dgH = juce::jlimit(240, 4096, (int) videoTree.getProperty("detachedGridHeight", 450));
+            setDetachedGridBounds(juce::Rectangle<int>(dgX, dgY, dgW, dgH));
+            clearAllRemotePopoutBounds();  // start from empty before applying loaded entries
+            std::size_t loadedCount = 0;
+            for (int i = 0; i < videoTree.getNumChildren(); ++i) {
+                if (loadedCount >= kRemotePopoutMapCap) break;  // T-22-SP cap
+                auto popoutNode = videoTree.getChild(i);
+                if (! popoutNode.hasType("popout")) continue;
+                const juce::String name = popoutNode.getProperty("name", "").toString();
+                if (name.isEmpty() || name.length() > kRemotePopoutUsernameMaxLen) continue;  // T-22-SP
+                const int x = juce::jlimit(-10000, 10000, (int) popoutNode.getProperty("x", 100));
+                const int y = juce::jlimit(-10000, 10000, (int) popoutNode.getProperty("y", 100));
+                const int w = juce::jlimit(240, 2560,    (int) popoutNode.getProperty("w", 320));
+                const int h = juce::jlimit(180, 1920,    (int) popoutNode.getProperty("h", 240));
+                setRemotePopoutBounds(name, juce::Rectangle<int>(x, y, w, h));
+                ++loadedCount;
+            }
+        }
+        // No <video> child → v4 save loaded by v5 code → defaults applied
+        // (graceful upgrade per D-19).
     }
 }
 

@@ -866,6 +866,28 @@ if(JAMWIDE_BUILD_TESTS)
         juce::juce_gui_basics)
     add_test(NAME plugin_state_v3_v4 COMMAND test_plugin_state_v3_v4)
 
+    # Plan 22-04 Task 2: test_plugin_state_v4_v5 — inline-replica round-trip
+    # test for the v4 -> v5 state-schema bump. Mirrors the v3_v4 pattern:
+    # pure-C++ console executable, links ONLY juce_core + juce_data_structures,
+    # replicates the v5 read/write logic in the test TU so the executable does
+    # NOT have to link JamWideJuceProcessor.cpp (which would transitively pull
+    # NJClient + ConnectionBar + ChannelStripArea + ffmpeg + the full video
+    # subsystem). M6 codex closure — the companion grep gate in Plan 22-04
+    # Task 1 acceptance criteria verifies the production source contains all
+    # 11 property names this replica asserts on; the inline-replica covers
+    # the schema logic, the M6 grep gate covers production drift.
+    add_executable(test_plugin_state_v4_v5
+        tests/test_plugin_state_v4_v5.cpp)
+    target_compile_definitions(test_plugin_state_v4_v5 PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_include_directories(test_plugin_state_v4_v5 PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/juce)
+    target_link_libraries(test_plugin_state_v4_v5 PRIVATE
+        juce::juce_core
+        juce::juce_data_structures)
+    add_test(NAME plugin_state_v4_v5 COMMAND test_plugin_state_v4_v5)
+
     # Plan 21-02 Task 3: H.264 decoder COD-03 unit test (8 sub-tests).
     # Mirrors test_video_encoder; links libavcodec + libswscale via
     # jamwide_use_ffmpeg. Pure-C++ in-process; links the decoder .cpp

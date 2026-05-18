@@ -120,7 +120,10 @@ private:
     // DetachedGridWindow.
     std::unique_ptr<jamwide::VideoGridBand> gridBand_;
     bool                                    gridBandVisible_ = false;
-    int                                     gridBandHeight_  = 280;
+    // Plan 22-04 — gridBandHeight is now persisted on the processor via
+    // processorRef.getVideoGridBandHeight() / setVideoGridBandHeight().
+    // The editor-side shadow was deleted (W3 mandatory checker gate);
+    // all read sites in resized() use processorRef.getVideoGridBandHeight().
 
     // D-05 auto-open latch — atomic so the once-fire test reads cleanly even
     // if a parallel pollStatus path ever touches it. Per-session sticky:

@@ -185,6 +185,8 @@ if(JAMWIDE_BUILD_JUCE)
         juce/ui/BeatBar.cpp
         juce/ui/SessionInfoStrip.cpp
         juce/ui/ChannelStripArea.cpp
+        juce/ui/BotFilter.h
+        juce/ui/BotFilter.cpp
         juce/ui/ServerBrowserOverlay.cpp
         juce/ui/LicenseDialog.cpp
         juce/osc/OscAddressMap.cpp

@@ -3507,18 +3507,27 @@ void NJClient::SetVideoSPSPPS(const void* data, int len)
 }
 
 #ifdef JAMWIDE_BUILD_TESTS
-// JAMWIDE_BUILD_TESTS-gated test wrappers — see njclient.h for the public
-// declarations. is_video_fourcc is file-static; IsVideoFourcc delegates to it
-// so tests can exercise the helper without exposing a production-time public
-// API. DrainRawDataSendQueueForTest is a destructive drain that hands
-// ownership of every queued WDL_HeapBuf payload back to the caller (which
-// must delete or otherwise dispose of them). ChunkRawDataItem provides
-// observable access to the MAX_ENC_BLOCKSIZE split logic used by the
-// run-thread drain block; the drain itself calls this same helper.
+// JAMWIDE_BUILD_TESTS-gated test wrappers (part 1 of 2) — see njclient.h for
+// the public declarations. is_video_fourcc is file-static; IsVideoFourcc
+// delegates to it so tests can exercise the helper without exposing a
+// production-time public API. Part 2 (DrainRawDataSendQueueForTest /
+// ChunkRawDataItem / DispatchTestVideoRecv* / etc.) is gated separately
+// further down in this file — see "JAMWIDE_BUILD_TESTS-gated test wrappers
+// (part 2 of 2)" below.
+//
+// Regression-fix 2026-05-19: a single outer #ifdef previously ran from this
+// line down to the part-2 #endif, accidentally enclosing the Phase 21-01
+// production helpers (handleVideoRecvBegin_/Write_, runVideoReceiveBlock_,
+// SetVideoDistributorOps, SetRemoteFrameDistributor,
+// completeVideoDecoderStartup_, VideoRecvState ctor, etc.). CI built with
+// JAMWIDE_BUILD_TESTS=OFF then failed to link those symbols; local builds
+// passed because they default BUILD_TESTS=ON. Splitting the gate restores
+// the intended "test wrappers only" surface.
 bool NJClient::IsVideoFourcc(unsigned int fcc) const
 {
   return is_video_fourcc(fcc);
 }
+#endif // JAMWIDE_BUILD_TESTS (part 1 — IsVideoFourcc only)
 
 // ---------------------------------------------------------------------------
 // Plan 21-02 Task 1 (W-2 forward-decl resolution + codex Cluster 2 Option A):
@@ -4380,6 +4389,10 @@ void NJClient::DispatchTestUserLeaveForVideoReset(const char *username)
 }
 #endif
 
+#ifdef JAMWIDE_BUILD_TESTS
+// JAMWIDE_BUILD_TESTS-gated test wrappers (part 2 of 2) — see part-1 header
+// comment above for context. These wrappers are tests-only (verified by
+// grep: callers live exclusively in tests/test_*.cpp).
 void NJClient::DrainRawDataSendQueueForTest(
     std::vector<NJClient::RawDataQueueItem*>& out)
 {

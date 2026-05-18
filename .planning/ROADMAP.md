@@ -362,7 +362,7 @@ Plans:
 - [x] **Phase 19: Camera Capture & Permission UX** -- JUCE CameraDevice integration in standalone + DAW-hosted plugin, camera entitlement, local preview, per-DAW permission-denial fallback dialog (completed 2026-05-16)
 - [x] **Phase 20: H.264 Encoder & Send Pipeline** -- Port JamTaba's FFMpegMuxer to JamWide via openh264 + libavcodec, wire through RawDataSendBegin/Write substrate, implement NinjamZap sender state machine (24-byte interval marker, SPS/PPS chunk, 4-byte BE length prefix per frame, `Net_Connection::Send` thread-safety mitigation) **(completed 2026-05-17; visually validated against canonical NinjamZap web viewer on `video.ninjamzap.com:2049` after 6-fix UAT-driven diagnostic session; perf/TSan/teardown formal re-runs scheduled into Plan 24-01)**
 - [ ] **Phase 21: H.264 Decoder & Receive Pipeline** -- Port JamTaba's FFMpegDemuxer to JamWide, implement NinjamZap's 4-stage receive pipeline (`accumulating → next → pending → playing`) with per-stream WRITE-time accumulation, marker parse, and GUID-pairing decision tree (DS/PREV/no-match with `kHoldCapDrop=4`)
-- [ ] **Phase 22: Native Video UI (Grid + Popouts)** -- Per-user `juce::Image` display tile, grid layout in main view, `juce::DocumentWindow` popout per user, hide/show toggle, grid + popouts active simultaneously
+- [x] **Phase 22: Native Video UI (Grid + Popouts)** -- Per-user `juce::Image` display tile, grid layout in main view, `juce::DocumentWindow` popout per user, hide/show toggle, grid + popouts active simultaneously (completed 2026-05-18)
 - [ ] **Phase 23: macOS Universal + Windows Build & Codesign** -- Reproducible macOS arm64 + x86_64 universal binary (lipo + per-dylib codesign + `install_name_tool` Frameworks-path rewriting + camera entitlement) AND Windows x86_64 build (bundled ffmpeg DLLs with correct load-path resolution + signtool codesigning where applicable); CI lanes on both platforms with LGPL discipline gates (`otool -L` on macOS, `dumpbin /dependents` on Windows)
 - [ ] **Phase 24: Beta Validation, Server Docs & Per-DAW UAT** -- Ship `docs/SERVER.md` (section 1: public `video.ninjamzap.com:2049` recommended path, manual entry via existing server browser; section 2: self-host with Docker Compose + version pin), port ≥20 of 26 NinjamZap video-sync test scenarios cross-platform (macOS + Windows), manual UAT on macOS standalone + REAPER (fallback expected) + Logic Pro (camera grant expected) + Windows standalone + Windows REAPER VST3, cross-platform macOS↔Windows interop on `video.ninjamzap.com:2049`, NinjamZap mobile interop check, document beta release notes and known issues
 
@@ -475,7 +475,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 22-04-PLAN.md — Plugin state v4→v5 bump (structured `<video>` ValueTree subtree per D-19) + T-22-SP hardening (popout map cap=64 + username cap=256 + jlimit clamping) + Wave 0 test_plugin_state_v4_v5 + manual UAT procedure (13 cells covering DISP-01..04 + 6 manual-only behaviors) + final closure checkpoint
+- [x] 22-04-PLAN.md — Plugin state v4→v5 bump (structured `<video>` ValueTree subtree per D-19) + T-22-SP hardening (popout map cap=64 + username cap=256 + jlimit clamping) + Wave 0 test_plugin_state_v4_v5 + manual UAT procedure (13 cells covering DISP-01..04 + 6 manual-only behaviors) + final closure checkpoint
 
 **UI hint**: yes
 
@@ -566,7 +566,7 @@ v1.3 execution order: 19 -> 20 -> 21 -> 22 -> 23 -> 24 (strict dependency chain 
 | 19. Camera Capture & Permission UX | v1.3 | 3/3 | Complete   | 2026-05-16 |
 | 20. H.264 Encoder & Send Pipeline | v1.3 | 3/4 | In Progress|  |
 | 21. H.264 Decoder & Receive Pipeline | v1.3 | 2/3 | In Progress|  |
-| 22. Native Video UI (Grid + Popouts) | v1.3 | 3/4 | In Progress|  |
+| 22. Native Video UI (Grid + Popouts) | v1.3 | 4/4 | Complete   | 2026-05-18 |
 | 23. macOS Universal + Windows Build & Codesign | v1.3 | 0/3 | Not started | - |
 | 24. Beta Validation, Server Docs & Per-DAW UAT | v1.3 | 0/2 | Not started | - |
 

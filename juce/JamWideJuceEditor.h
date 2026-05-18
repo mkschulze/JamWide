@@ -13,6 +13,7 @@
 #include "video/native/JamWideCameraDevice.h"
 #include "video/native/CameraFallbackCause.h"
 #include "video/native/CameraStatusDialog.h"
+#include "ui/video/VideoGridBand.h"
 
 namespace jamwide {
     class CameraPreviewWindow;
@@ -48,6 +49,12 @@ private:
     // Task 1 ships a stub; Task 2 fills in the Capturing→show / Idle→hide path.
     void drivePreviewWindowVisibility(jamwide::CameraState newState);
     void timerCallback() override;
+
+    // Phase 22-02 — toggle the in-main-view VideoGridBand visibility. Wired
+    // by ConnectionBar's onGridToggleClicked AND by the D-05 auto-open
+    // latch in timerCallback. DISP-04 hard requirement — this method's
+    // body MUST NOT touch NJClient (audio session continues across toggle).
+    void toggleGridBand(bool visible);
     void drainEvents();
     void pollStatus();
     void showServerBrowser();
@@ -80,6 +87,23 @@ private:
     // privacy dialog is lazily constructed on first need (~24 bytes idle).
     std::unique_ptr<jamwide::CameraPreviewWindow> previewWindow_;
     std::unique_ptr<jamwide::NativeCameraPrivacyDialog> privacyDialog_;
+
+    // Phase 22-02 — in-main-view native video grid band. Inserted between
+    // sessionInfoStrip and channelStripArea by resized() when gridBandVisible_.
+    // Constructed with Mode::MainBand (codex M7) — the editor explicitly opts
+    // in to the main-band mode at construction; Plan 22-03 will construct
+    // an inner VideoGridBand with Mode::DetachedBand inside its
+    // DetachedGridWindow.
+    std::unique_ptr<jamwide::VideoGridBand> gridBand_;
+    bool                                    gridBandVisible_ = false;
+    int                                     gridBandHeight_  = 280;
+
+    // D-05 auto-open latch — atomic so the once-fire test reads cleanly even
+    // if a parallel pollStatus path ever touches it. Per-session sticky:
+    // once fired, the band's open is sticky for the editor lifetime; further
+    // peer first-frames do not re-open the band even if the user explicitly
+    // closed it.
+    std::atomic<bool>                       gridAutoOpenLatchFired_{false};
 
     // Phase 19-03 — cause-aware fallback dialog (D-13..D-16). Owns the
     // suppress-after-first-show state. onCameraFallback delegates here.
@@ -139,11 +163,15 @@ private:
     bool infoStripVisible = true;
     int prevPollStatus_ = -1;  // REVIEW FIX: member, not static
 
-    // 1200 accommodates the connection bar after the Phase-19 Camera button
-    // (130px, expandable to "Recheck permission" text) and 2026-05 removal
-    // of the legacy VDO.Ninja Video button. At 1030 the right cluster ran
-    // under the left cluster (Camera/DBG/Fit drew over Connect/Browse).
-    static constexpr int kBaseWidth = 1200;
+    // 1280 accommodates the connection bar after the Phase-22 GridButton
+    // (60 px) joined the right cluster between Camera and DBG. The Phase-19
+    // budget at 1200 left ~85 px slack for the Camera button (130 px), but
+    // adding Grid pushed the leftmost right-cluster item under the status
+    // label area (overlap of ~77 px at width=1200). Pitfall 7 documents the
+    // fallback as a kBaseWidth bump rather than a silent layout collapse.
+    // History: 1030 (pre-Phase-19) → 1200 (post-Camera button, post-VDO.Ninja
+    // removal 2026-05) → 1280 (post-GridButton, this plan).
+    static constexpr int kBaseWidth = 1280;
     static constexpr int kBaseHeight = 700;
     static constexpr int kConnectionBarHeight = 44;
     static constexpr int kBeatBarHeight = 22;

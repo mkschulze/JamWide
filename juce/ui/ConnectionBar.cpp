@@ -70,6 +70,18 @@ private:
     ConnectionBar& parent;
 };
 
+// Phase 22-02 — file-local subclass of juce::TextButton for the new Grid
+// button. Mirrors CameraButton's file-local pattern. No right-click menu
+// (D-04 — always-visible Toggle); the button is a plain toggle that fires
+// onGridToggleClicked via setClickingTogglesState + onClick.
+class ConnectionBar::GridButton : public juce::TextButton {
+public:
+    explicit GridButton(ConnectionBar& p) : parent(p) {}
+
+private:
+    ConnectionBar& parent;
+};
+
 static const char* kLogoSvg = R"SVG(
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <defs>
@@ -257,6 +269,24 @@ ConnectionBar::ConnectionBar(JamWideJuceProcessor& processor)
         addAndMakeVisible(*midiStatusDot);
     }
 
+    // Phase 22-02 — Grid toggle button. Placed to the LEFT of the Camera
+    // button. 60 px wide to keep the right-cluster pixel budget inside the
+    // 1200 px kBaseWidth (Pitfall 7).
+    gridButton = std::make_unique<GridButton>(*this);
+    gridButton->setButtonText("Grid");
+    gridButton->setColour(juce::TextButton::buttonColourId,
+        juce::Colour(JamWideLookAndFeel::kSurfaceStrip));
+    gridButton->setColour(juce::TextButton::textColourOffId,
+        juce::Colour(JamWideLookAndFeel::kTextSecondary));
+    gridButton->setColour(juce::TextButton::textColourOnId,
+        juce::Colour(JamWideLookAndFeel::kAccentConnect));
+    gridButton->setTooltip("Toggle video grid");
+    gridButton->setClickingTogglesState(true);
+    gridButton->onClick = [this]() {
+        if (onGridToggleClicked) onGridToggleClicked();
+    };
+    addAndMakeVisible(*gridButton);
+
     // Phase 19-02 — Camera button. The legacy VDO.Ninja Video button used
     // to sit immediately right of it and was removed in 2026-05 (Camera is
     // the v1.3 replacement). D-11 says Camera is independent of Connect
@@ -362,6 +392,12 @@ void ConnectionBar::resized()
     if (cameraButton) {
         cameraButton->setBounds(rightX - 130, y, 130, h);
         rightX -= 130 + gap;
+    }
+    // Phase 22-02 — Grid button placed to the LEFT of Camera. 60 px wide
+    // (Pitfall 7 — kBaseWidth budget; revised from 80px in plan checker W1).
+    if (gridButton) {
+        gridButton->setBounds(rightX - 60, y, 60, h);
+        rightX -= 60 + gap;
     }
     debugButton.setBounds(rightX - 36, y, 36, h);
     rightX -= 36 + gap;
@@ -715,4 +751,15 @@ void ConnectionBar::setCameraLabel(const juce::String& label)
 void ConnectionBar::setCameraQualityPreset(int preset)
 {
     currentCameraQualityPreset_ = preset;
+}
+
+// Phase 22-02 — editor calls this from toggleGridBand() so the GridButton's
+// toggle-state highlight (green textColourOnId) reflects band visibility.
+// We pass juce::dontSendNotification so the setToggleState call does NOT
+// invoke the button's onClick lambda (which would re-toggle the band).
+void ConnectionBar::setGridVisible(bool v) noexcept
+{
+    gridVisible_ = v;
+    if (gridButton)
+        gridButton->setToggleState(v, juce::dontSendNotification);
 }

@@ -44,6 +44,10 @@ public:
     std::function<void(int)> onCameraQualitySelected;
     std::function<void()> onCameraStopRequested;
 
+    // Phase 22-02 — new Grid button. Wired by editor's lambda to toggle the
+    // VideoGridBand visibility (DISP-04: pure UI; no NJClient API call).
+    std::function<void()> onGridToggleClicked;
+
     // Phase 20-03 — Broadcast toggle. Lives as a secondary state on the Camera
     // button's right-click popup menu so the right-cluster width stays within
     // the 1200 px kBaseWidth budget set by commit 5250ff1.
@@ -65,6 +69,12 @@ public:
     bool getCameraIsBroadcasting() const noexcept {
         return cameraIsBroadcasting_;
     }
+
+    // Phase 22-02 — Grid button toggle state mirror. The editor calls
+    // setGridVisible(true/false) from its toggleGridBand() helper so the
+    // GridButton's toggle state reflects the current band visibility.
+    void setGridVisible(bool v) noexcept;
+    bool getGridVisible() const noexcept { return gridVisible_; }
 
     void setRoutingModeHighlight(int mode);  // Updates Route button text color
     void updateSyncState(int state);
@@ -107,6 +117,11 @@ private:
     class CameraButton;
     std::unique_ptr<CameraButton> cameraButton;
 
+    // Phase 22-02 — Grid toggle button. File-local TextButton subclass (no
+    // right-click menu — D-04 always-visible "Toggle video grid").
+    class GridButton;
+    std::unique_ptr<GridButton> gridButton;
+
     // Right-click menu's checkmark state mirrors processor-stored preset.
     // Updated via setCameraQualityPreset(int) from the editor.
     int currentCameraQualityPreset_{1};
@@ -118,6 +133,12 @@ private:
     // ("Start Broadcast" vs "Stop Broadcast"). Written by the editor's
     // BroadcastToggle callback via setCameraIsBroadcasting; read in CameraButton::mouseDown.
     bool cameraIsBroadcasting_{false};
+
+    // Phase 22-02 — Grid band visibility mirror. Drives the GridButton's
+    // toggle-state highlight. Written by editor's toggleGridBand() via
+    // setGridVisible(). DOES NOT trigger band visibility — the editor
+    // owns gridBand_->setVisible(); this flag is UI feedback only.
+    bool gridVisible_{false};
 
     // Debug snapshot button — writes current /rcmstats data + extra context
     // to a timestamped log file under userApplicationDataDirectory()/JamWide/Logs/.

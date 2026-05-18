@@ -8,8 +8,12 @@
 #include "video/native/CameraPreviewWindow.h"
 #include "video/native/NativeCameraPrivacyDialog.h"
 #include "video/native/CameraStatusDialog.h"
+#include "ui/BotFilter.h"   // Phase 22-02 codex H1 — jamwide::isBot for D-05 latch
+#include "video/distributor/JamWideRemoteFrameDistributor.h"
+#include "video/distributor/PeerVideoSink.h"
 
 #include <chrono>
+#include <mutex>
 #include <variant>
 
 // Phase 19-02 — file-scope helper for log messages. The state machine doesn't
@@ -252,6 +256,39 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
         };
     }
 
+    // Phase 22-02 — construct the in-main-view VideoGridBand. Required
+    // inputs: BOTH the self-camera distributor (Phase 19) AND the remote
+    // frame distributor (Phase 21). If either is unavailable the band is
+    // not constructed (gridBand_ stays null) and the GridButton toggle
+    // simply no-ops. M7 codex closure — explicitly pass Mode::MainBand
+    // at construction.
+    if (auto* selfDist = processorRef.getFrameDistributor()) {
+        if (auto* remoteDist = processorRef.getRemoteFrameDistributor()) {
+            gridBand_ = std::make_unique<jamwide::VideoGridBand>(
+                processorRef,
+                connectionBar,
+                selfDist,
+                remoteDist,
+                jamwide::VideoGridBand::Mode::MainBand);
+            gridBand_->onCloseRequested = [this]() {
+                toggleGridBand(false);
+            };
+            gridBand_->onHeightChangeRequested = [this](int h) {
+                gridBandHeight_ = juce::jlimit(140, 800, h);
+                resized();
+            };
+            // gridBand_->onDetachRequested + onPeerPopoutRequested left
+            // UNSET in Plan 22-02 — Plan 22-03 wires them.
+            addChildComponent(*gridBand_);   // starts hidden (D-14 mirror)
+        }
+    }
+
+    // Wire the new ConnectionBar Grid button to toggle the band. Pure UI;
+    // DISP-04 — toggleGridBand() does not call any NJClient API.
+    connectionBar.onGridToggleClicked = [this]() {
+        toggleGridBand(! gridBandVisible_);
+    };
+
     // Restore state if already connected (editor recreated while session active).
     // HasUserInfoChanged() is destructive — the flag was consumed before the old
     // editor was destroyed, so no UserInfoChangedEvent will fire. We must
@@ -395,6 +432,14 @@ void JamWideJuceEditor::resized()
     int toggleY = kConnectionBarHeight + kBeatBarHeight + (area.getHeight() - kChatToggleHeight) / 2;
     chatToggleButton.setBounds(toggleX, toggleY, kChatToggleWidth, kChatToggleHeight);
 
+    // Phase 22-02 — VideoGridBand inserted between sessionInfoStrip and
+    // channelStripArea. Width follows the mixer column (i.e. AFTER chat panel
+    // is removed from the right — W2 checker decision, iter-1). Height is
+    // gridBandHeight_ (default 280 px, persisted by Plan 22-04).
+    if (gridBand_ && gridBandVisible_) {
+        gridBand_->setBounds(area.removeFromTop(gridBandHeight_));
+    }
+
     // Channel strip area fills remaining center
     channelStripArea.setBounds(area);
 
@@ -402,6 +447,20 @@ void JamWideJuceEditor::resized()
     serverBrowser.setBounds(getLocalBounds());
     licenseDialog.setBounds(getLocalBounds());
     videoPrivacyDialog.setBounds(getLocalBounds());
+}
+
+// Phase 22-02 — pure UI toggle (DISP-04). No NJClient call. Audio session
+// continues uninterrupted across the toggle. Callable from:
+//   - GridButton's onClick → ConnectionBar::onGridToggleClicked lambda
+//   - D-05 auto-open latch in timerCallback (lock-release-then-sync)
+//   - VideoGridBand's onCloseRequested callback (header × icon)
+void JamWideJuceEditor::toggleGridBand(bool visible)
+{
+    if (! gridBand_) return;
+    gridBandVisible_ = visible;
+    gridBand_->setVisible(visible);
+    connectionBar.setGridVisible(visible);
+    resized();
 }
 
 void JamWideJuceEditor::timerCallback()
@@ -494,6 +553,38 @@ void JamWideJuceEditor::timerCallback()
 
     // Note: VU updates are driven by ChannelStripArea's own 30Hz timer (REVIEW FIX #7)
     // The editor does NOT need to call channelStripArea.updateVuLevels() here.
+
+    // Phase 22 D-05 — auto-open the band on the first observed peer frame.
+    // Codex review M4 — lock-release-then-sync. The timer is already on the
+    // message thread, so async-dispatching this toggle would be both
+    // unnecessary AND unsafe: a queued lambda captures raw `this`, and if
+    // the editor is destroyed before the async callback runs, the resumed
+    // toggleGridBand() segfaults. Releasing the cachedUsersMutex BEFORE
+    // calling toggleGridBand also avoids any callback re-entering the mutex.
+    bool shouldOpen = false;
+    if (! gridAutoOpenLatchFired_.load(std::memory_order_acquire))
+    {
+        if (auto* dist = processorRef.getRemoteFrameDistributor())
+        {
+            std::lock_guard<std::mutex> lk(processorRef.cachedUsersMutex);
+            for (const auto& u : processorRef.cachedUsers)
+            {
+                if (jamwide::isBot(juce::String(u.name))) continue;   // H1: namespaced
+                if (auto* sink = dist->findSink(u.name, /*chidx*/ 1))
+                {
+                    if (sink->first_frame_seen.load(std::memory_order_acquire))
+                    {
+                        if (! gridAutoOpenLatchFired_.exchange(true))
+                            shouldOpen = true;
+                        break;
+                    }
+                }
+            }
+            // mutex released here as `lk` falls out of scope
+        }
+    }
+    if (shouldOpen)
+        toggleGridBand(true);    // SYNCHRONOUS — no callAsync, no UAF (M4)
 }
 
 void JamWideJuceEditor::drainEvents()

@@ -5,6 +5,8 @@
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <utility>
+#include <vector>
 
 #include "threading/spsc_ring.h"
 #include "threading/ui_command.h"
@@ -92,8 +94,9 @@ public:
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-    // v4: added camera flat properties (Phase 19-02; D-24, D-25).
-    static constexpr int currentStateVersion = 4;
+    // v5: added <video> child subtree (Phase 22; D-19) — gridVisible /
+    // gridBandHeight / detachedGridBounds + per-peer popoutBounds map.
+    static constexpr int currentStateVersion = 5;
     static constexpr int kTotalOutChannels = 34;  // 17 stereo buses
     static constexpr int kNumOutputBuses = 17;
     static constexpr int kMetronomeBus = 16;      // Last bus (channels 32-33)
@@ -246,6 +249,21 @@ public:
     juce::String getCameraSelectedDevice() const;
     void setCameraSelectedDevice(const juce::String& name);
 
+    // Phase 22 D-19 — video grid + popout persisted state (state version 5).
+    // gridVisible + gridBandHeight are atomics for lock-free message-thread
+    // access from editor::resized() / toggleGridBand(); detachedGridBounds_
+    // and remotePopoutBoundsMap_ are protected by per-field mutexes.
+    bool                 getVideoGridVisible()    const noexcept { return videoGridVisible_.load(std::memory_order_relaxed); }
+    void                 setVideoGridVisible(bool v)    noexcept { videoGridVisible_.store(v, std::memory_order_relaxed); }
+    int                  getVideoGridBandHeight() const noexcept { return videoGridBandHeight_.load(std::memory_order_relaxed); }
+    void                 setVideoGridBandHeight(int h)  noexcept { videoGridBandHeight_.store(juce::jlimit(140, 800, h), std::memory_order_relaxed); }
+    juce::Rectangle<int> getDetachedGridBounds() const;
+    void                 setDetachedGridBounds(juce::Rectangle<int> b);
+    juce::Rectangle<int> getRemotePopoutBounds(const juce::String& username) const;
+    void                 setRemotePopoutBounds(const juce::String& username, juce::Rectangle<int> b);
+    std::vector<std::pair<juce::String, juce::Rectangle<int>>> getAllRemotePopoutBounds() const;
+    void                 clearAllRemotePopoutBounds();
+
     juce::AudioProcessorValueTreeState apvts;
     jamwide::SpscRing<jamwide::UiCommand, 256> cmd_queue;
 
@@ -359,6 +377,22 @@ public:
     mutable std::mutex cameraSelectedDeviceMu_;
     juce::Rectangle<int> cameraPopoutBounds_{100, 100, 320, 240};
     mutable std::mutex cameraPopoutMu_;
+
+    // Phase 22 D-19 — video grid persisted state. Public-section members
+    // for symmetry with cameraPopoutBounds_ (same access pattern: state
+    // save/load reads + UI thread reads/writes via the accessors above).
+    std::atomic<bool>    videoGridVisible_{false};
+    std::atomic<int>     videoGridBandHeight_{280};       // D-10 default
+    mutable std::mutex   detachedGridMu_;
+    juce::Rectangle<int> detachedGridBounds_{200, 200, 800, 450};
+    mutable std::mutex   remotePopoutBoundsMu_;
+    // H2 codex closure — juce::HashMap<juce::String, ...> preferred over
+    // std::unordered_map per OscAddressMap.h:65 precedent. juce::HashMap
+    // iteration order is hash-stable per session → deterministic <popout>
+    // child order in serialized XML → diffable plugin-state saves.
+    juce::HashMap<juce::String, juce::Rectangle<int>> remotePopoutBoundsMap_;
+    static constexpr std::size_t kRemotePopoutMapCap = 64;   // T-22-SP — DoS guard
+    static constexpr int kRemotePopoutUsernameMaxLen = 256;  // T-22-SP
 
 private:
     std::unique_ptr<NJClient> client;

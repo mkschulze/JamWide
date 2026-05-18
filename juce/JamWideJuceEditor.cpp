@@ -274,7 +274,9 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
                 toggleGridBand(false);
             };
             gridBand_->onHeightChangeRequested = [this](int h) {
-                gridBandHeight_ = juce::jlimit(140, 800, h);
+                // Plan 22-04 — persist band height (D-19 / D-10). The
+                // setter inside the processor jlimit-clamps to [140, 800].
+                processorRef.setVideoGridBandHeight(h);
                 resized();
             };
             // Plan 22-03 Task 2 — wire detach + popout + placeholder bring-back.
@@ -293,6 +295,21 @@ JamWideJuceEditor::JamWideJuceEditor(JamWideJuceProcessor& p)
             };
             addChildComponent(*gridBand_);   // starts hidden (D-14 mirror)
         }
+    }
+
+    // Plan 22-04 D-19 — restore persisted band visibility. D-14 governs ONLY
+    // popouts and the detached-grid window (those start CLOSED on launch
+    // even with persisted bounds). The BAND itself auto-restores its last
+    // visibility per the plan's action block; the D-05 auto-open latch in
+    // timerCallback() handles the open-on-first-frame case for previously-
+    // closed bands. Skip calling toggleGridBand() here — that would
+    // re-persist visibility (no-op semantically, but also fire connectionBar
+    // / resized() before the editor has been laid out). Instead set the
+    // surface state directly; resized() runs at first paint.
+    if (gridBand_ && processorRef.getVideoGridVisible()) {
+        gridBandVisible_ = true;
+        gridBand_->setVisible(true);
+        connectionBar.setGridVisible(true);
     }
 
     // Wire the new ConnectionBar Grid button to toggle the band. Pure UI;
@@ -466,9 +483,10 @@ void JamWideJuceEditor::resized()
     // Phase 22-02 — VideoGridBand inserted between sessionInfoStrip and
     // channelStripArea. Width follows the mixer column (i.e. AFTER chat panel
     // is removed from the right — W2 checker decision, iter-1). Height is
-    // gridBandHeight_ (default 280 px, persisted by Plan 22-04).
+    // persisted on the processor (Plan 22-04 D-19) — default 280 px,
+    // clamped to [140, 800] by the setter.
     if (gridBand_ && gridBandVisible_) {
-        gridBand_->setBounds(area.removeFromTop(gridBandHeight_));
+        gridBand_->setBounds(area.removeFromTop(processorRef.getVideoGridBandHeight()));
     }
 
     // Channel strip area fills remaining center
@@ -491,6 +509,10 @@ void JamWideJuceEditor::toggleGridBand(bool visible)
     gridBandVisible_ = visible;
     gridBand_->setVisible(visible);
     connectionBar.setGridVisible(visible);
+    // Plan 22-04 — persist visibility (D-19). Note: D-14 still applies on
+    // editor construction (band starts CLOSED on launch; persisted bounds
+    // restore on next open, but visibility does NOT auto-restore).
+    processorRef.setVideoGridVisible(visible);
     resized();
 }
 
@@ -569,9 +591,13 @@ void JamWideJuceEditor::openOrToggleRemotePopout(jamwide::VideoPopoutTarget t)
         popout->onCloseRequested = [capturedUsername]() {
             juce::ignoreUnused(capturedUsername);
         };
-        popout->onBoundsChanged = [](juce::Rectangle<int> r) {
-            // Plan 22-04 swaps this for processorRef.setRemotePopoutBounds.
-            juce::ignoreUnused(r);
+        // Plan 22-04 — persist popout bounds so they survive plugin reload
+        // (D-19 / D-15). Lambda captures `this` for processorRef access
+        // and `capturedUsername` by value (juce::String is ref-counted but
+        // copying the handle here is the simplest safe pattern; the
+        // captured copy outlives any popout drag/resize).
+        popout->onBoundsChanged = [this, capturedUsername](juce::Rectangle<int> r) {
+            processorRef.setRemotePopoutBounds(capturedUsername, r);
         };
         popout->setVisible(true);
         remotePopouts_.emplace(username, std::move(popout));   // std::unordered_map::emplace (H2 NARROWED — accepts move-only value)
@@ -629,8 +655,9 @@ void JamWideJuceEditor::openOrToggleDetachedGrid()
             // per D-18 default is FULL DESTROY on close.
             reattachGrid();
         };
-        detachedGrid_->onBoundsChanged = [](juce::Rectangle<int>) {
-            // Plan 22-04 swap.
+        // Plan 22-04 — persist detached-grid bounds (D-19 / D-16).
+        detachedGrid_->onBoundsChanged = [this](juce::Rectangle<int> r) {
+            processorRef.setDetachedGridBounds(r);
         };
 
         // codex M7 closure — replay existing popout state into the new
@@ -662,19 +689,20 @@ void JamWideJuceEditor::reattachGrid()
     detachedGrid_.reset();
 }
 
-juce::Rectangle<int> JamWideJuceEditor::getInitialPopoutBounds(const juce::String& /*username*/) const
+juce::Rectangle<int> JamWideJuceEditor::getInitialPopoutBounds(const juce::String& username) const
 {
-    // Plan 22-03 stub — Plan 22-04 swaps for
-    // processorRef.getRemotePopoutBounds(username). The default is
-    // intentionally NOT display-aware here; RemotePeerPopoutWindow's
-    // constructor performs the Desktop::getDisplays() clamp at window-open
-    // time (T-22-MM mitigation).
-    return juce::Rectangle<int>{100, 100, 320, 240};
+    // Plan 22-04 — was stub return {100,100,320,240}; now routes to the
+    // processor's persisted per-peer map. RemotePeerPopoutWindow's
+    // constructor still performs the Desktop::getDisplays() clamp at
+    // window-open time (T-22-MM mitigation).
+    return processorRef.getRemotePopoutBounds(username);
 }
 
 juce::Rectangle<int> JamWideJuceEditor::getInitialDetachedGridBounds() const
 {
-    return juce::Rectangle<int>{200, 200, 800, 450};
+    // Plan 22-04 — was stub return {200,200,800,450}; now routes to the
+    // processor's persisted detached-grid bounds.
+    return processorRef.getDetachedGridBounds();
 }
 
 void JamWideJuceEditor::timerCallback()

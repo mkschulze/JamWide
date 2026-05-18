@@ -278,6 +278,19 @@ if(JAMWIDE_BUILD_JUCE)
         juce/video/distributor/PeerVideoSink.cpp
     )
 
+    # Plan 22-01 Task 2: tile substrate (VideoTileBase + SelfVideoTile +
+    # RemotePeerTile). Pure UI consumer of the Phase 19 / Phase 21 distributor
+    # surfaces. No ffmpeg dependency; juce_video / juce_graphics / juce_events
+    # already linked on JamWideJuce.
+    target_sources(JamWideJuce PRIVATE
+        juce/ui/video/VideoTileBase.h
+        juce/ui/video/VideoTileBase.cpp
+        juce/ui/video/SelfVideoTile.h
+        juce/ui/video/SelfVideoTile.cpp
+        juce/ui/video/RemotePeerTile.h
+        juce/ui/video/RemotePeerTile.cpp
+    )
+
     jamwide_use_ffmpeg(JamWideJuce)
 
     target_compile_definitions(JamWideJuce PUBLIC
@@ -775,6 +788,20 @@ if(JAMWIDE_BUILD_TESTS)
     target_link_libraries(test_camera_frame_stall PRIVATE juce::juce_core)
     add_test(NAME camera_frame_stall COMMAND test_camera_frame_stall)
 
+    # ─── Plan 22-01 Task 1 wiring ────────────────────────────────────────
+    # Pure-C++ unit test for jamwide::computeGridLayout. The helper is a
+    # single-header inline function (juce/ui/video/computeGridLayout.h), so
+    # this test executable has no source-file dependency beyond the test
+    # source itself. Links juce::juce_core for juce::jlimit only.
+    add_executable(test_video_grid_layout
+        tests/test_video_grid_layout.cpp)
+    target_compile_definitions(test_video_grid_layout PRIVATE JAMWIDE_BUILD_TESTS=1)
+    target_include_directories(test_video_grid_layout PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(test_video_grid_layout PRIVATE juce::juce_core)
+    add_test(NAME video_grid_layout COMMAND test_video_grid_layout)
+
     add_executable(test_camera_cause_mapping
         tests/test_camera_cause_mapping.cpp
         juce/video/native/CameraStatusDialog.cpp)
@@ -876,6 +903,44 @@ if(JAMWIDE_BUILD_TESTS)
     jamwide_use_ffmpeg(test_remote_frame_distributor)
     add_test(NAME remote_frame_distributor
              COMMAND test_remote_frame_distributor)
+
+    # ─── Plan 22-01 Task 3 wiring ────────────────────────────────────────
+    # MEMBER-ORDER CONTRACT runtime offset-comparison test for both tile
+    # classes (T-22-MO-1 mitigation). Console-app variant for JUCE message
+    # thread; links the tile sources + Phase 19/21 distributors + decoder
+    # (transitively required by JamWideRemoteFrameDistributor.cpp's
+    # createDecoderAndSinkForPeer codepath, even though the test doesn't
+    # exercise it).
+    juce_add_console_app(test_video_tile_member_order
+                          PRODUCT_NAME "Video Tile Member Order Test")
+    juce_generate_juce_header(test_video_tile_member_order)
+    target_sources(test_video_tile_member_order PRIVATE
+        tests/test_video_tile_member_order.cpp
+        juce/ui/video/VideoTileBase.cpp
+        juce/ui/video/SelfVideoTile.cpp
+        juce/ui/video/RemotePeerTile.cpp
+        juce/ui/JamWideLookAndFeel.cpp
+        juce/video/native/JamWideFrameDistributor.cpp
+        juce/video/distributor/JamWideRemoteFrameDistributor.cpp
+        juce/video/distributor/PeerVideoSink.cpp
+        juce/video/decoder/Openh264Decoder.cpp)
+    target_compile_definitions(test_video_tile_member_order PRIVATE
+        JAMWIDE_BUILD_TESTS=1
+        JUCE_STANDALONE_APPLICATION=1
+        JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_include_directories(test_video_tile_member_order PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/juce)
+    target_link_libraries(test_video_tile_member_order PRIVATE
+        njclient
+        juce::juce_core
+        juce::juce_events
+        juce::juce_graphics
+        juce::juce_gui_basics)
+    jamwide_use_ffmpeg(test_video_tile_member_order)
+    add_test(NAME video_tile_member_order
+             COMMAND test_video_tile_member_order)
 
     # Plan 21-03 Task 3 — 3-peer per-peer isolation + cross-plan sender_seq
     # monotonic alignment integration test. Drives 3 DecoderBundles via the

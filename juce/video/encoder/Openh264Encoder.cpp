@@ -41,6 +41,9 @@ extern "C" {
 #include <juce_graphics/juce_graphics.h>
 
 #include <algorithm>
+#include <cerrno>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace jamwide {
@@ -234,6 +237,12 @@ void Openh264Encoder::close() {
     publishSpsPps_     = nullptr;
     publishEncodedNal_ = nullptr;
     audio_interval_seq_ = nullptr;
+
+    if (tx_capture_file_ != nullptr) {
+        std::fclose(tx_capture_file_);
+        tx_capture_file_ = nullptr;
+    }
+    tx_capture_attempted_ = false;
 
     m_open.store(false, std::memory_order_release);
 
@@ -610,6 +619,11 @@ void Openh264Encoder::drainEncoder_() {
                         pos = nal_end;
                         continue;
                     }
+                    // Phase 22 UAT debug: also write the VCL NAL into the
+                    // env-var-gated tx capture so the ffmpeg sanity-test
+                    // recording matches what the wire sees.
+                    tryOpenTxCapture_();
+                    writeAnnexBToTxCapture_(data + nal_start, nal_len);
                     publishEncodedNal_(data + nal_start, nal_len);
                 }
                 pos = nal_end;
@@ -872,6 +886,15 @@ void Openh264Encoder::scanAndPublishSpsPps_(const unsigned char* nal_stream,
         sps_payload_len > 0xFFFF || pps_payload_len > 0xFFFF) {
         return;
     }
+
+    // Phase 22 UAT debug: write SPS + PPS to the env-var-gated tx capture
+    // so the ffmpeg sanity-test recording starts with a valid parameter
+    // set. Lazy-open ensures zero overhead when JAMWIDE_VIDEO_TX_CAPTURE
+    // is unset.
+    tryOpenTxCapture_();
+    writeAnnexBToTxCapture_(nal_stream + sps_start + 4, sps_payload_len);
+    writeAnnexBToTxCapture_(nal_stream + pps_start + 4, pps_payload_len);
+
     const int inner_len = 2 + sps_payload_len + 2 + pps_payload_len;
 
     std::vector<unsigned char> buf;
@@ -951,6 +974,53 @@ void Openh264Encoder::handleReconfigure_(const VideoEncoderConfig& newCfg) {
     if (listener_ != nullptr) {
         listener_->onEncoderReconfigured(newCfg);
     }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Phase 22 UAT debug — env-var-gated tx-side .h264 Annex-B capture for
+// Javier @ NinjamZap's ffmpeg sanity test (commit 2783455 follow-up).
+//
+// Usage:
+//   JAMWIDE_VIDEO_TX_CAPTURE=/tmp/jamwide-tx.h264 ./JamWide.app/.../JamWide
+//   # broadcast for ~10s
+//   ffmpeg -i /tmp/jamwide-tx.h264 -c copy /tmp/out.h264 && ffplay /tmp/out.h264
+//
+// If ffmpeg/ffplay decode cleanly, VTDecompressionSession should too —
+// Javier's verification criterion for the -12909 fix chain.
+// ───────────────────────────────────────────────────────────────────────
+
+void Openh264Encoder::tryOpenTxCapture_() {
+    if (tx_capture_attempted_) return;
+    tx_capture_attempted_ = true;
+    const char* path = std::getenv("JAMWIDE_VIDEO_TX_CAPTURE");
+    if (path == nullptr || path[0] == '\0') return;
+    tx_capture_file_ = std::fopen(path, "wb");
+    if (tx_capture_file_ != nullptr) {
+        std::fprintf(stderr,
+            "[jamwide] tx capture opened: %s — feed to "
+            "`ffmpeg -i %s -c copy out.h264 && ffplay out.h264`\n",
+            path, path);
+    } else {
+        std::fprintf(stderr,
+            "[jamwide] tx capture FAILED to open %s (errno=%d %s)\n",
+            path, errno, std::strerror(errno));
+    }
+}
+
+void Openh264Encoder::writeAnnexBToTxCapture_(const unsigned char* nal_payload,
+                                              int                  nal_payload_len)
+{
+    if (tx_capture_file_ == nullptr) return;
+    if (nal_payload == nullptr || nal_payload_len <= 0) return;
+    static const unsigned char kStartCode[4] = {0x00, 0x00, 0x00, 0x01};
+    std::fwrite(kStartCode, 1, 4, tx_capture_file_);
+    std::fwrite(nal_payload, 1,
+                static_cast<std::size_t>(nal_payload_len),
+                tx_capture_file_);
+    // No fflush per-NAL — OS buffering absorbs writes; fclose in close()
+    // (or ~Openh264Encoder via close()) flushes on shutdown. Per-NAL
+    // fflush would synchronously hit disk on every frame and pile up
+    // encoder-thread latency.
 }
 
 } // namespace jamwide

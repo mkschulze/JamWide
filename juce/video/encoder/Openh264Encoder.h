@@ -45,6 +45,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <vector>
 
@@ -179,6 +180,17 @@ private:
     PublishEncodedNalCallback                publishEncodedNal_;
     VideoEncoderListener*                    listener_ = nullptr;
 
+    // ───── Phase 22 UAT debug: env-var-gated tx-side .h264 capture ─────
+    // Set JAMWIDE_VIDEO_TX_CAPTURE=/path/to/file.h264 before launching to
+    // capture every published SPS + PPS + VCL NAL as an Annex-B stream
+    // (with 00 00 00 01 start codes). For Javier @ NinjamZap's ffmpeg
+    // sanity test:
+    //   ffmpeg -i file.h264 -c copy out.h264 && ffplay out.h264
+    // If ffmpeg decodes, VTDecompressionSession should too. Zero overhead
+    // when env var unset. Encoder thread is sole producer (no locking).
+    std::FILE*       tx_capture_file_      = nullptr;
+    bool             tx_capture_attempted_ = false;
+
     // ───── encoder thread (juce::Thread) ─────
     void run() override;
 
@@ -190,6 +202,11 @@ private:
     void drainEncoder_();  // calls receive_packet in a loop until EAGAIN
     void handleReconfigure_(const VideoEncoderConfig& newCfg);
     void scanAndPublishSpsPps_(const unsigned char* nal_stream, int len);
+
+    // Tx capture helpers (encoder thread only).
+    void tryOpenTxCapture_();
+    void writeAnnexBToTxCapture_(const unsigned char* nal_payload,
+                                 int                  nal_payload_len);
 
     // Helper for the drop-oldest enqueue path inside onFrame /
     // feedRawBgraForTest.

@@ -1,0 +1,14 @@
+prefix=/Users/runner/work/JamWide/JamWide/libs/ffmpeg/macos-arm64
+exec_prefix=${prefix}
+libdir=/Users/runner/work/JamWide/JamWide/libs/ffmpeg/macos-arm64/lib
+includedir=/Users/runner/work/JamWide/JamWide/libs/ffmpeg/macos-arm64/include
+
+Name: libavformat
+Description: FFmpeg container format library
+Version: 61.7.100
+Requires: 
+Requires.private: libavcodec >= 61.19.101, libavutil >= 59.39.100
+Conflicts:
+Libs: -L${libdir}  -lavformat 
+Libs.private: -lm -lz
+Cflags: -I${includedir}

@@ -1,0 +1,14 @@
+prefix=/Users/runner/work/JamWide/JamWide/libs/ffmpeg/macos-arm64
+exec_prefix=${prefix}
+libdir=/Users/runner/work/JamWide/JamWide/libs/ffmpeg/macos-arm64/lib
+includedir=/Users/runner/work/JamWide/JamWide/libs/ffmpeg/macos-arm64/include
+
+Name: libavcodec
+Description: FFmpeg codec library
+Version: 61.19.101
+Requires: 
+Requires.private: libavutil >= 59.39.100
+Conflicts:
+Libs: -L${libdir}  -lavcodec 
+Libs.private: -pthread -liconv -lm -L/Users/runner/work/JamWide/JamWide/.bg-shell/ffmpeg-build-macos-arm64/openh264-prefix/lib -lopenh264
+Cflags: -I${includedir}

@@ -229,21 +229,62 @@ target_link_libraries(ffmpeg::lgpl INTERFACE
     "${_avutil_lib}"
     "${_openh264_lib}"
 )
-# Stash the include path on the target as a custom property so the
-# jamwide_use_ffmpeg() macro can read it back without re-computing the
-# per-platform logic.
+# Stash include + lib dirs on the target as custom properties so the
+# jamwide_use_ffmpeg() / jamwide_bundle_ffmpeg_apple() helpers can read
+# them back without re-computing the per-platform logic.
 set_target_properties(ffmpeg::lgpl PROPERTIES
     JAMWIDE_FFMPEG_INCLUDE_DIR "${_ffmpeg_dir}/include"
+    JAMWIDE_FFMPEG_LIB_DIR "${_ffmpeg_dir}/lib"
 )
 
-# POSIX runtime discovery: emit -rpath pointing at the vendored dir so the
-# executable finds the shared libraries at runtime. On Windows (.dll
-# discovery via consumer-adjacent path or %PATH%) this is a no-op.
-if(NOT WIN32)
+# POSIX runtime discovery:
+#   * Linux: emit -rpath pointing at the vendored dir so the executable
+#     finds the shared libraries at runtime. Linux distribution still
+#     deferred (per memory `project_jamtaba_video_port`: receive-only v1,
+#     CameraDevice conditional pending), so the build-tree rpath is fine
+#     for the dev/CI workflow we have today.
+#   * Apple: do NOT bake in the build-tree path. Apple distribution
+#     requires dylibs to live inside <bundle>/Contents/Frameworks/ with
+#     the binary's rpath set to @loader_path/../Frameworks. That's done
+#     post-build by jamwide_bundle_ffmpeg_apple() — see below + the
+#     companion cmake/bundle_ffmpeg_macos.cmake script. The old
+#     target_link_options(LINKER:-rpath,...) emission baked the CI
+#     runner's absolute build path into shipping binaries and caused the
+#     v1.1-beta.20.8 crash-on-launch on user machines.
+#   * Windows: .dll discovery via consumer-adjacent path or %PATH%.
+if(UNIX AND NOT APPLE)
     target_link_options(ffmpeg::lgpl INTERFACE
         "LINKER:-rpath,${_ffmpeg_dir}/lib"
     )
 endif()
+
+# Apple-only POST_BUILD bundling helper. Capture the cmake/ dir at
+# definition time so the function call site doesn't need to know where
+# the script lives.
+set(_JAMWIDE_FFMPEG_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+function(jamwide_bundle_ffmpeg_apple target)
+    if(NOT APPLE)
+        return()
+    endif()
+    if(NOT TARGET ${target})
+        message(FATAL_ERROR "jamwide_bundle_ffmpeg_apple: target '${target}' does not exist")
+    endif()
+    get_target_property(_ff_lib_dir ffmpeg::lgpl JAMWIDE_FFMPEG_LIB_DIR)
+    if(NOT _ff_lib_dir)
+        message(FATAL_ERROR
+            "jamwide_bundle_ffmpeg_apple(${target}): ffmpeg::lgpl missing "
+            "JAMWIDE_FFMPEG_LIB_DIR property — vendored tree probably not built.")
+    endif()
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            -DSRC_DIR=${_ff_lib_dir}
+            -DBUNDLE=$<TARGET_BUNDLE_DIR:${target}>
+            -DBINARY=$<TARGET_FILE:${target}>
+            -P "${_JAMWIDE_FFMPEG_CMAKE_DIR}/bundle_ffmpeg_macos.cmake"
+        COMMENT "Bundling ffmpeg dylibs into ${target}"
+        VERBATIM
+    )
+endfunction()
 
 message(STATUS "ffmpeg::lgpl resolved → ${_ffmpeg_dir}")
 message(STATUS "  avcodec  = ${_avcodec_lib}")

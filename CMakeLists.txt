@@ -368,6 +368,23 @@ if(JAMWIDE_BUILD_JUCE)
         CLAP_FEATURES audio-effect utility mixing
     )
 
+    # Bundle ffmpeg dylibs into each plugin format's Contents/Frameworks/
+    # and rewrite the binary's rpath to @loader_path/../Frameworks. This
+    # replaces the build-tree-absolute -rpath that cmake/ffmpeg.cmake used
+    # to emit, which baked the CI runner's path into shipping binaries
+    # and caused beta.20.8 crash-on-launch (dyld: Library not loaded:
+    # @rpath/libavcodec.61.19.101.dylib — searched only the CI runner's
+    # /Users/runner/work/JamWide/JamWide/build/ffmpeg-universal/lib).
+    # Runs before the codesign POST_BUILD below so `codesign --deep`
+    # covers the newly-bundled dylibs in one pass.
+    if(APPLE)
+        foreach(_fmt Standalone VST3 AU CLAP)
+            if(TARGET JamWideJuce_${_fmt})
+                jamwide_bundle_ffmpeg_apple(JamWideJuce_${_fmt})
+            endif()
+        endforeach()
+    endif()
+
     # macOS code signing
     # - Dev builds: ad-hoc signing (default, no certificate needed)
     # - Release builds: Developer ID signing with hardened runtime

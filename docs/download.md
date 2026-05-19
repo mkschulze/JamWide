@@ -7,22 +7,22 @@ title: Download
 
 ---
 
-## Latest Beta — v1.1-beta.20.8 (macOS Universal + Windows x64)
+## Latest Beta — v1.1-beta.20.9 (macOS Universal + Windows x64)
 
-**First cross-platform beta of the native H.264 video stack.** macOS Universal (Apple Silicon + Intel) plus Windows x64 — running the same NinjamZap-compatible wire format, so a macOS user and a Windows user can join the same room and broadcast/receive each other's video. Linux deferred to the next tag (camera-code conditional in flight).
+**Critical fix release.** v1.1-beta.20.8 crashed on launch on every macOS user's machine because the ffmpeg dylibs weren't bundled inside the `.app` / `.vst3` / `.component` / `.clap` — the binaries pointed at the GitHub Actions runner's build path. v1.1-beta.20.9 ships dylibs inside each bundle's `Contents/Frameworks/` and uses `@loader_path` so they resolve anywhere.
 
-**Highlights:**
+**Highlights (carried over from beta.20.8):**
 - Native webcam capture + H.264 broadcast/receive in standalone and DAW-hosted plugin
 - Per-user video tile grid + detachable popout windows (multi-monitor)
 - HD broadcast preset (1280×720 @ 30fps); Medium/Low presets for bandwidth-constrained sessions
 - iOS NinjamZap-mobile receiver compat (cross-AI encoder review by Javier @ NinjamZap)
-- First Windows x64 build of the native video stack
+- Windows x64 build of the native video stack
 
 **This is beta software** — report issues on [GitHub](https://github.com/mkschulze/JamWide/issues).
 
 <div class="download-section">
-  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.8" class="btn btn-primary btn-large">
-    Download v1.1-beta.20.8 (macOS + Windows)
+  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.9" class="btn btn-primary btn-large">
+    Download v1.1-beta.20.9 (macOS + Windows)
   </a>
   <p class="version-info">macOS Universal (Apple Silicon + Intel) / Windows x64 — Linux next beta</p>
 </div>
@@ -33,7 +33,7 @@ title: Download
 
 ## Linux — use v1.1-beta.20.5 for now
 
-If you're on Linux, use the older cross-platform beta until the next tag lands the camera-code conditional. v1.1-beta.20.8 ships macOS + Windows only.
+If you're on Linux, use the older cross-platform beta until the next tag lands the camera-code conditional. v1.1-beta.20.9 ships macOS + Windows only.
 
 <div class="download-section">
   <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.5" class="btn btn-large">

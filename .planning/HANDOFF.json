@@ -1,58 +1,66 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-18T19:59:35.276Z",
-  "phase": "22",
-  "phase_name": "native-video-ui-grid-popouts",
-  "phase_dir": ".planning/phases/22-native-video-ui-grid-popouts",
-  "plan": 4,
-  "task": "UAT live with peers",
-  "total_tasks": 13,
-  "status": "paused-uat-debug",
+  "timestamp": "2026-05-19T07:17:42.766Z",
+  "phase": "23",
+  "phase_name": "macOS Universal + Windows Build & Codesign (regression-fix scope per 23-CONTEXT.md)",
+  "phase_dir": ".planning/phases/23-macos-universal-windows-build-codesign",
+  "plan": 0,
+  "task": "Linux camera-code conditional + Linux CI re-enable",
+  "total_tasks": 3,
+  "status": "paused",
   "completed_tasks": [
-    {"id": "22-01", "name": "tile substrate", "status": "done", "commit": "86ede3b"},
-    {"id": "22-02", "name": "grid band container", "status": "done", "commit": "1c26d51"},
-    {"id": "22-03", "name": "popout windows", "status": "done", "commit": "1cd52e5"},
-    {"id": "22-04", "name": "state persistence + UAT", "status": "done", "commit": "91f8b71"},
-    {"id": "uat-fixes", "name": "10 UAT-discovered fixes (5 Phase-22 + 3 Phase-21 + 2 from Javier)", "status": "in_progress (uncommitted)", "progress": "applied + tested live; freeze regression open"}
+    {"id": "23-mac-universal", "name": "macOS Universal binary restoration", "status": "done", "commit": "7421a7b", "shipped_in_tag": "v1.1-beta.20.7 (universal mac), v1.1-beta.20.8 (with Windows)"},
+    {"id": "23-windows-x64", "name": "Windows x64 build restoration (openh264 + MSVC .lib generation + ffmpeg DLL bundling)", "status": "done", "commit": "50b7678", "shipped_in_tag": "v1.1-beta.20.8"},
+    {"id": "23-linux", "name": "Linux camera-code conditional + receive-only build + build-linux CI gate re-enable", "status": "not_started"}
   ],
   "remaining_tasks": [
-    {"id": "freeze-investigate", "name": "Decide variant A/B/C for freeze regression", "status": "awaiting_user_input"},
-    {"id": "strip-diag", "name": "Strip diagnostic fprintfs (REMOVE BEFORE MERGE markers)", "status": "not_started"},
-    {"id": "commit-chain", "name": "Commit UAT fix chain atomically", "status": "not_started"},
-    {"id": "uat-cells", "name": "Resume UAT cells 2/3/4/6/7/10/11/12/13", "status": "not_started"}
+    {"id": "linux-camera-conditional", "name": "Wrap juce::CameraDevice in #if JUCE_MAC || JUCE_WINDOWS in juce/video/native/JamWideCameraDevice.{h,cpp}", "status": "not_started"},
+    {"id": "linux-ui-fallback", "name": "Linux UI: 'Camera not available' affordance (reuse Phase 19 fallback dialog pattern)", "status": "not_started"},
+    {"id": "linux-ffmpeg-vendor", "name": "Capture libs/ffmpeg/linux-x86_64/ via one-shot artifact upload (same pattern as mac-arm64 + windows-x86_64 bundling), commit, strip from-source build step", "status": "not_started"},
+    {"id": "linux-ci-enable", "name": "Remove if: ${{ false }} from build-linux job in .github/workflows/juce-build.yml", "status": "not_started"},
+    {"id": "linux-release-job", "name": "Add build-linux to release job needs + JamWide-Linux.tar.gz to upload list", "status": "not_started"},
+    {"id": "tag-v20.9", "name": "Tag v1.1-beta.20.9 with all three platforms + update docs/download.md to drop the Linux footnote pointing at .20.5", "status": "not_started"}
   ],
-  "blockers": [
-    {"description": "Image freezes intermittently after dst=640x480 bump", "type": "technical", "workaround": "User to choose variant A (dst=480x360), B (24fps pacing), or C (bump kHoldCapDrop)"},
-    {"description": "Diagnostic fprintfs still in source code", "type": "technical", "workaround": "Strip before commit — marked 'REMOVE BEFORE MERGE'"},
-    {"description": "Phase 21 multi-broadcaster matching limit (m_remoteuser_mirror lacks username)", "type": "technical", "workaround": "Empirically tolerable — sometimes matches via NONE path; file as Phase-21 followup"},
-    {"description": "Phase 21 latency inherent (~7s+ from interval architecture)", "type": "external", "workaround": "Cannot fix without redesigning wire protocol; document as design constraint"},
-    {"description": "A/V sync not yet verified after smooth playback achieved", "type": "human_action", "workaround": "User to test next session"}
-  ],
+  "blockers": [],
   "human_actions_pending": [
-    {"action": "Choose freeze investigation variant A/B/C", "context": "freeze regression after dst=640x480 bump; three hypotheses to test", "blocking": true},
-    {"action": "Test A/V sync with live peers", "context": "30fps pacing decoupled from audio clock; may drift", "blocking": false},
-    {"action": "Run ffmpeg-copy sanity test on captured outgoing stream", "context": "Verify Javier's fixes worked (no -12909 from VT receivers)", "blocking": false}
+    {"action": "(none — resume is fully machine-driven)", "context": "Linux iteration is straightforward; no manual approvals or external dependencies", "blocking": false}
   ],
   "decisions": [
-    {"decision": "30fps frame pacing in decoder drainReceiveFrameLoop_", "rationale": "Source peers send 15-30fps; 15fps pacing fell behind on 30fps peers; 30fps keeps 1:1 and lower-fps peers just decode faster"},
-    {"decision": "Receive surface bumped 320x240 → 640x480", "rationale": "Peers send 640x480+; downscale-then-upscale caused double-scaling blur on tiles"},
-    {"decision": "Javier Fix #1 — skip NAL types 7/8 in per-frame walk", "rationale": "iOS VT receivers built CMVideoFormatDescription from dedicated SPS/PPS chunk; inline SPS/PPS in IDR caused -12909"},
-    {"decision": "Javier Fix #2 — allow_skip_frames=0 (option a)", "rationale": "Simpler than option (b) IDR-after-skip-detection; openh264 maintains temporal consistency at cost of bitrate-control (warning emitted)"},
-    {"decision": "Bypass jamwide::stripAtSuffix before findSink in VideoGridBand polling", "rationale": "Wire usernames carry @<peer-ip> suffix (e.g. Mark-Ninjamzap@172.16.30.x); Phase 21 keys sinks by raw wire name; strip only for display"},
-    {"decision": "Register no-op RawData_Callback in JamWideJuceProcessor", "rationale": "njclient.cpp:2498 dispatch requires RawData_Callback non-null to route video; Phase 21 tests registered their own callback but production code never did — entire receive branch was unreachable"}
+    {"decision": "Phase 23 reframed from greenfield Phase-23-as-roadmapped to regression-fix scope", "rationale": "User clarification: 'we had a working CI pipeline that built cross platform targets... just want that back'. Captured in 23-CONTEXT.md (commit a07b1a4ish — earlier today)", "phase": "23"},
+    {"decision": "Bundle vendored ffmpeg trees in the repo (libs/ffmpeg/<platform>/) instead of rebuilding from source on every CI run", "rationale": "User question: 'whats so problematic with ffmpeg, can we just bundle it in our repo, would that help?'. Eliminates 15-25 min/CI from-source build, removes entire MSYS2 toolchain-rot surface. Cost: ~25 MB repo growth, manageable. Trees committed: macos-arm64 (a51bb04), macos-x86_64 (pre-existing), windows-x86_64 (50b7678). Linux next.", "phase": "23"},
+    {"decision": "MSVC .lib import libraries for Windows ffmpeg generated via gendef + dlltool post-process", "rationale": "ffmpeg's MinGW autotools build produces .dll.a MinGW-format import libs that MSVC's link.exe rejects. dlltool --output-lib emits COFF that MSVC accepts for ffmpeg's C symbols. Same pattern as the openh264 fix. Generated .lib files committed at libs/ffmpeg/windows-x86_64/lib/.", "phase": "23"},
+    {"decision": "Ship Windows beta unsigned (SmartScreen 'More info → Run anyway' on first launch)", "rationale": "Memory project_apple_signing documents only the Apple cert; no Windows code-signing cert exists. EV cert acquisition (~$300+/yr, slow procurement) deferred to v1.4 if SmartScreen friction becomes a real adoption blocker.", "phase": "23"},
+    {"decision": "macOS Universal stitching via lipo'd universal dylibs in CMAKE_BINARY_DIR/ffmpeg-universal/ (not committed to repo)", "rationale": "cmake/ffmpeg.cmake detects multi-arch CMAKE_OSX_ARCHITECTURES and lipos the per-arch macos-{arm64,x86_64} trees into universal dylibs at configure time. Build-tree only; regenerated on build dir wipe. Local Intel-only dev path uses libs/ffmpeg/macos-x86_64/ directly (no lipo).", "phase": "23"},
+    {"decision": "CI scope: local stays Intel-only fast iteration, CI is the place where cross-platform/universal happens", "rationale": "User directive: 'no need to build universal locally, just CI. local is only intel mac, much faster. but CI is the purpose to build cross platform'", "phase": "23"},
+    {"decision": "Iterative fix-and-tag flow instead of formal Phase 23 plan", "rationale": "User redirect: 'doesn't make sense to run this as a full phase, we need to debug in iterations about whats breaking'. CONTEXT.md still useful as the regression inventory + locked decisions; no PLAN.md was written.", "phase": "23"}
   ],
   "uncommitted_files": [
-    "CMakeLists.txt",
-    "juce/JamWideJuceProcessor.cpp",
-    "juce/ui/video/RemotePeerTile.cpp",
-    "juce/ui/video/VideoGridBand.cpp",
-    "juce/ui/video/VideoGridBand.h",
-    "juce/video/decoder/Openh264Decoder.cpp",
-    "juce/video/decoder/Openh264Decoder.h",
-    "juce/video/distributor/JamWideRemoteFrameDistributor.cpp",
-    "juce/video/encoder/Openh264Encoder.cpp",
-    "src/core/njclient.cpp"
+    ".planning/STATE.md (carry-forward session-continuity narrative from earlier today — leave dirty for next session review)",
+    ".planning/config.json (pre-existing newline-EOF fix from May-15 HANDOFF — orthogonal to Phase 23)",
+    "various .agents/.claude/.codex/.mcp.json/.superpowers/ untracked tool config (not part of Phase 23 work)"
   ],
-  "next_action": "Ask user to choose freeze investigation variant A (dst back to 480x360), B (24fps pacing for sws_scale headroom), or C (bump kHoldCapDrop=4 → 32 to keep Phase-21 multi-broadcaster matching from dropping snapshots). Then strip diag fprintfs and commit the UAT fix chain.",
-  "context_notes": "Phase 22 UAT surfaced 10 fixes across Phase 22, Phase 21, and Phase 20. Two architectural pieces of Phase 21 work were never finished: (a) Phase 21-03 left an empty placeholder in Openh264Decoder.cpp:676 where the production sink-delivery code was supposed to land — the comment 'Plan 21-03 will replace this comment with...' shipped verbatim, causing every decoded frame to be silently dropped before reaching the tile; (b) Phase 21-03 was also supposed to widen m_remoteuser_mirror to carry username for multi-broadcaster matching but didn't, leaving the kHoldCapDrop=4 hammer to drop video snapshots when N≥2 peers have audio activity. JamWide's Phase 22 UAT was the first time the production receive path got end-to-end live testing (Phase 21 UAT used the JAMWIDE_BUILD_TESTS path which registered its own RawData_Callback, so this bug stayed hidden). External cross-AI review (Javier @ NinjamZap) caught two additional encoder-side issues (inline SPS/PPS in IDR breaking VT receivers, allow_skip_frames=1 causing silent frame drops that VT can't recover from)."
+  "next_action": "Open juce/video/native/JamWideCameraDevice.{h,cpp} and wrap juce::CameraDevice references in #if JUCE_MAC || JUCE_WINDOWS. Scope: .h has juce_video include + std::unique_ptr<juce::CameraDevice> juceCamera_ + onOpenResult signature; .cpp has CameraListener subclass + openDeviceAsync + getAvailableDevices calls. ~50-100 lines of guards. Then re-enable build-linux in .github/workflows/juce-build.yml (remove `if: ${{ false }}`), push, observe what next breaks on Linux CI.",
+  "context_notes": "Today shipped two beta tags: v1.1-beta.20.7 (macOS Universal only) and v1.1-beta.20.8 (macOS Universal + Windows x64). Both signed/notarized where applicable. docs/download.md advertises 20.8 as latest + links 20.5 as Linux footnote until 20.9 ships. The entire ffmpeg-build-from-source toolchain has been removed from CI for both mac and Windows — both lanes are now ~5-8 min per push instead of 25+. Linux is the last platform owed. After Linux lands + 20.9 tag, the v1.3 cross-platform restoration goal (per user's framing of Phase 23) is complete. Open carry-forward items not blocking Linux work: Phase 22 UAT cells 2/3/4/6/7/10/11/12/13 (live-peer testing — separate cadence), Javier @ NinjamZap iOS interop confirmation (bitstream-verified via QuickTime; live iOS test still owed), STATE.md/config.json uncommitted bookkeeping.",
+  "session_summary": {
+    "tags_shipped": ["v1.1-beta.20.7", "v1.1-beta.20.8"],
+    "commits_on_branch": [
+      "ff044ef ci(windows): generate MSVC .lib import libraries for ffmpeg DLLs",
+      "f31bb80 ci(windows): upload vendored windows-x86_64 ffmpeg tree as one-shot artifact",
+      "50b7678 chore(ffmpeg): vendor windows-x86_64 prebuilt tree + strip from-source CI",
+      "3bfcc27 ci(release): include Windows artifact alongside macOS universal",
+      "d230576 docs(download): advertise v1.1-beta.20.8 (macOS Universal + Windows x64)",
+      "7421a7b feat(ci): macOS universal build (arm64 + x86_64) via lipo'd ffmpeg tree",
+      "a51bb04 chore(ffmpeg): vendor macos-arm64 prebuilt tree (captured from CI artifact)",
+      "b58c97c ci(mac): upload macos-arm64 ffmpeg tree as one-shot artifact",
+      "4634073 ci: enable Windows-x86_64 build + add to release artifacts",
+      "de0e71f ci(windows): install gendef + mingw64 binutils so openh264 link-test succeeds",
+      "710a77b fix(21): split JAMWIDE_BUILD_TESTS gate — production helpers were accidentally enclosed",
+      "012bf47 feat(22): bump High preset to 720p30 @ 1500 kbps + match receive surface",
+      "b0bf430 feat(22): env-var-gated tx-side .h264 capture for Javier's ffmpeg sanity test",
+      "2783455 fix(22): UAT fix chain — variant C + 9 Phase-21/22/encoder fixes"
+    ],
+    "ci_runs": "26068665308 (tag v20.8 CI: macos+windows green, release published), 26068172310 (bundled-windows validation), 26067455150 (windows ffmpeg artifact capture), 26066904056 (windows .lib first success), 26065890381 (tag v20.7 CI), 26065247127 (universal mac first success), 26064600141 (arm64 ffmpeg artifact capture), 26063971492 (gendef install + first concrete avcodec link errors), 26063780711 (gate-fix validation), 26062553592 (first concrete Windows openh264 pkg-config error)",
+    "memories_added": ["javier-ninjamzap-encoder-review"],
+    "files_added_or_substantially_modified": [".github/workflows/juce-build.yml (CI workflow simplified for bundled trees)", "cmake/ffmpeg.cmake (universal-mac lipo path)", ".gitignore (libs/ffmpeg/**/*.lib exception)", "scripts/build_ffmpeg_lgpl.sh (Windows MSVC .lib post-process)", "libs/ffmpeg/macos-arm64/ (149 files, ~5.5 MB bundled)", "libs/ffmpeg/windows-x86_64/ (140 files, ~7.3 MB bundled)", "src/core/njclient.cpp (test-gate split + variant C kHoldCapDrop 4→32 + tx capture)", "juce/video/encoder/Openh264Encoder.{h,cpp} (Javier fixes + env-var tx capture)", "juce/video/encoder/VideoEncoderConfig.h (High preset 800→1500 kbps)", "docs/download.md (advertise v1.1-beta.20.8)", "tests/test_video_recv_state.cpp (kHoldCapDrop=32 sub-test 8 update)"]
+  }
 }

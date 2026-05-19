@@ -184,51 +184,35 @@ jobs:
       - name: Setup CMake
         uses: lukka/get-cmake@latest
 
-      - name: Setup MSYS2 (for ffmpeg ./configure + make)
-        # Phase 14.3-01: ffmpeg's autotools build needs a unix-like environment
-        # on Windows. JamWide itself still builds via MSVC; only the vendored
-        # ffmpeg+openh264 step uses MinGW64-gcc to produce DLLs (DLL ABI is
-        # interop-stable with MSVC consumers).
+      - name: Setup MSYS2 (for LGPL verify only)
+        # The full from-source ffmpeg build packages (gcc, nasm, binutils,
+        # tools-git, autoconf, automake, make) were dropped once
+        # libs/ffmpeg/windows-x86_64/ landed bundled in the repo. The verify
+        # step still wants bash + strings — base-devel covers both.
+        # If you need to regenerate the vendored Windows tree (ffmpeg or
+        # openh264 version bump), restore the full install list and re-add
+        # the Vendor LGPL ffmpeg step temporarily.
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
           install: >-
             base-devel
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-nasm
-            mingw-w64-x86_64-binutils
-            mingw-w64-x86_64-tools-git
-            autoconf
-            automake
-            make
-            git
 
-      - name: Vendor LGPL ffmpeg
-        # Phase 14.3-01: produce libs/ffmpeg/windows-x86_64/ on the CI runner.
-        # Invoked under MSYS2 bash so uname returns MINGW64_NT-* and the script
-        # picks the windows-x86_64 leg (Cisco openh264 win64 prebuilt + ffmpeg
-        # LGPL from source). All inputs are static; no untrusted github event
-        # data flows into shell.
-        shell: msys2 {0}
-        run: bash scripts/build_ffmpeg_lgpl.sh
-
-      - name: Verify LGPL discipline
+      - name: Verify LGPL discipline (vendored trees in libs/ffmpeg/)
+        # Iterates every populated libs/ffmpeg/<platform>/ tree (Windows
+        # vendored as of this commit) and asserts no libx264 strings + clean
+        # PE-import dependency check. Same gate that the mac CI runs against
+        # the bundled trees.
+        # The "Vendor LGPL ffmpeg" rebuild-from-source step that used to run
+        # here was removed once libs/ffmpeg/windows-x86_64/ landed bundled
+        # in the repo — saves 15-25 min/CI run and eliminates the gendef/
+        # dlltool/lib generation toolchain-rot surface that took multiple
+        # iterations to get green. Run scripts/build_ffmpeg_lgpl.sh manually
+        # under MSYS2 when bumping ffmpeg or openh264 version, then commit
+        # the refreshed tree.
         shell: msys2 {0}
         run: bash scripts/verify_ffmpeg_lgpl.sh
-
-      - name: Upload vendored windows-x86_64 ffmpeg tree (one-shot for bundling)
-        # Mirror of the mac-arm64 one-shot capture. Once libs/ffmpeg/windows-x86_64/
-        # lands in the repo, the MSYS2 setup + Vendor LGPL ffmpeg + Verify
-        # steps can be deleted from the Windows job entirely (saves 15-25 min
-        # per CI run and eliminates the gendef/dlltool/lib generation
-        # toolchain-rot surface that took multiple iterations to get green).
-        uses: actions/upload-artifact@v4
-        with:
-          name: libs-ffmpeg-windows-x86_64
-          path: libs/ffmpeg/windows-x86_64/
-          retention-days: 7
 
       - name: Configure CMake
         run: |

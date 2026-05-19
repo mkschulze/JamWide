@@ -1,0 +1,14 @@
+prefix=/d/a/JamWide/JamWide/libs/ffmpeg/windows-x86_64
+exec_prefix=${prefix}
+libdir=/d/a/JamWide/JamWide/libs/ffmpeg/windows-x86_64/lib
+includedir=/d/a/JamWide/JamWide/libs/ffmpeg/windows-x86_64/include
+
+Name: libavformat
+Description: FFmpeg container format library
+Version: 61.7.100
+Requires: 
+Requires.private: libavcodec >= 61.19.101, libavutil >= 59.39.100
+Conflicts:
+Libs: -L${libdir}  -lavformat 
+Libs.private: -lm -lz -latomic
+Cflags: -I${includedir}

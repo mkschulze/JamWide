@@ -1,0 +1,14 @@
+prefix=/d/a/JamWide/JamWide/libs/ffmpeg/windows-x86_64
+exec_prefix=${prefix}
+libdir=/d/a/JamWide/JamWide/libs/ffmpeg/windows-x86_64/lib
+includedir=/d/a/JamWide/JamWide/libs/ffmpeg/windows-x86_64/include
+
+Name: libswscale
+Description: FFmpeg image rescaling library
+Version: 8.3.100
+Requires: 
+Requires.private: libavutil >= 59.39.100
+Conflicts:
+Libs: -L${libdir}  -lswscale 
+Libs.private: -lm -latomic
+Cflags: -I${includedir}

@@ -370,13 +370,11 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    # macOS universal landed 2026-05-19 (commit 7421a7b — arm64+x86_64
-    # via lipo'd ffmpeg trees). Windows still owes ffmpeg .lib import
-    # libraries (avcodec/avformat/avutil/swscale need dlltool-generated
-    # .lib files for MSVC — same shape as the openh264 fix that landed).
-    # Linux still owes the JUCE_LINUX camera-code conditional. Both
-    # deferred to a follow-up tag; shipping mac-only universal for now.
-    needs: [build-macos]
+    # macOS universal + Windows x64 both shipping as of v1.1-beta.20.8
+    # (50b7678 — bundled libs/ffmpeg/windows-x86_64/ with MSVC .lib import
+    # libraries generated via gendef + dlltool). Linux still owes the
+    # JUCE_LINUX camera-code conditional; queued for v1.1-beta.20.9.
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -388,9 +386,11 @@ jobs:
 
       - name: Prepare release artifacts
         run: |
-          # macOS universal — uses tar.gz to preserve Unix permissions per
-          # memory `project_release_packaging`. Windows + Linux deferred.
+          # macOS universal uses tar.gz (preserves Unix permissions per memory
+          # `project_release_packaging`); Windows uses zip. Linux still
+          # deferred (camera-code conditional queued).
           cp artifacts/JamWide-macOS/JamWide-macOS.tar.gz .
+          cp artifacts/JamWide-Windows/JamWide-Windows.zip .
 
       - name: Create or update release
         env:
@@ -406,12 +406,14 @@ jobs:
             gh release upload "$TAG_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber \
-              JamWide-macOS.tar.gz
+              JamWide-macOS.tar.gz \
+              JamWide-Windows.zip
           else
             gh release create "$TAG_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --title "$TAG_NAME" \
               --generate-notes \
               $PRERELEASE_FLAG \
-              JamWide-macOS.tar.gz
+              JamWide-macOS.tar.gz \
+              JamWide-Windows.zip
           fi

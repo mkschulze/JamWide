@@ -184,21 +184,6 @@ jobs:
       - name: Setup CMake
         uses: lukka/get-cmake@latest
 
-      - name: Setup MSYS2 (for LGPL verify only)
-        # The full from-source ffmpeg build packages (gcc, nasm, binutils,
-        # tools-git, autoconf, automake, make) were dropped once
-        # libs/ffmpeg/windows-x86_64/ landed bundled in the repo. The verify
-        # step still wants bash + strings — base-devel covers both.
-        # If you need to regenerate the vendored Windows tree (ffmpeg or
-        # openh264 version bump), restore the full install list and re-add
-        # the Vendor LGPL ffmpeg step temporarily.
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            base-devel
-
       - name: Verify LGPL discipline (vendored trees in libs/ffmpeg/)
         # Iterates every populated libs/ffmpeg/<platform>/ tree (Windows
         # vendored as of this commit) and asserts no libx264 strings + clean
@@ -211,7 +196,12 @@ jobs:
         # iterations to get green. Run scripts/build_ffmpeg_lgpl.sh manually
         # under MSYS2 when bumping ffmpeg or openh264 version, then commit
         # the refreshed tree.
-        shell: msys2 {0}
+        # Runs under Git Bash (shipped on windows-latest by default — has
+        # bash + binutils strings). Dropped the previous setup-msys2 step
+        # in beta.20.9 after pacman -Syuu kept timing out against
+        # mirror.accum.se, breaking the tag CI for a transient mirror
+        # issue unrelated to our actual build.
+        shell: bash
         run: bash scripts/verify_ffmpeg_lgpl.sh
 
       - name: Configure CMake
@@ -254,11 +244,25 @@ jobs:
           Copy-Item "build/JamWideJuce_artefacts/Release/Standalone/JamWide.exe" "staging/JamWide.exe"
           # Vendored ffmpeg DLLs (LGPL) — required runtime deps for video
           # encode/decode. Phase 23-02 owns proper Windows install layout;
-          # for the beta we just colocate the DLLs with the standalone +
-          # plugins so DLL search finds them. Per memory
+          # for the beta we just colocate the DLLs next to the standalone +
+          # plugins so Windows' DLL search resolves them. Per memory
           # `project_release_packaging`: Windows uses zip (not tar.gz).
-          if (Test-Path "libs/ffmpeg/windows-x86_64/bin") {
-              Copy-Item "libs/ffmpeg/windows-x86_64/bin/*.dll" "staging/"
+          # The DLLs live in libs/ffmpeg/windows-x86_64/lib/ (the same dir
+          # as the MSVC .lib import libraries — MinGW autotools dropped
+          # them all under lib/ regardless of .dll vs .lib). The previous
+          # path "libs/ffmpeg/windows-x86_64/bin/" did not exist on the
+          # runner and the Test-Path soft-check silently skipped the copy,
+          # shipping v1.1-beta.20.8 Windows zip without any ffmpeg DLLs
+          # — that beta launch-crashed on Windows for the same reason
+          # the macOS .app did (missing runtime ffmpeg, just a different
+          # OS' dynamic loader complaining).
+          $ffmpegDlls = Get-ChildItem "libs/ffmpeg/windows-x86_64/lib/*.dll" -ErrorAction SilentlyContinue
+          if ($ffmpegDlls) {
+              Copy-Item $ffmpegDlls "staging/"
+              Write-Host "Staged $($ffmpegDlls.Count) ffmpeg DLL(s)"
+          } else {
+              Write-Error "No ffmpeg DLLs found under libs/ffmpeg/windows-x86_64/lib/ — packaging would ship a broken Windows zip"
+              exit 1
           }
 
       - name: Package Windows zip

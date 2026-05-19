@@ -7,36 +7,39 @@ title: Download
 
 ---
 
-## Latest macOS Beta — v1.1-beta.20.7 (Universal: Apple Silicon + Intel)
+## Latest Beta — v1.1-beta.20.8 (macOS Universal + Windows x64)
 
-**First public beta of the native H.264 video stack.** Replaces VDO.Ninja browser companion with an in-app/in-plugin video stack compatible with the NinjamZap mobile/web clients via `video.ninjamzap.com:2049`. Single universal binary runs natively on both Apple Silicon and Intel Macs.
+**First cross-platform beta of the native H.264 video stack.** macOS Universal (Apple Silicon + Intel) plus Windows x64 — running the same NinjamZap-compatible wire format, so a macOS user and a Windows user can join the same room and broadcast/receive each other's video. Linux deferred to the next tag (camera-code conditional in flight).
 
 **Highlights:**
 - Native webcam capture + H.264 broadcast/receive in standalone and DAW-hosted plugin
 - Per-user video tile grid + detachable popout windows (multi-monitor)
 - HD broadcast preset (1280×720 @ 30fps); Medium/Low presets for bandwidth-constrained sessions
 - iOS NinjamZap-mobile receiver compat (cross-AI encoder review by Javier @ NinjamZap)
+- First Windows x64 build of the native video stack
 
 **This is beta software** — report issues on [GitHub](https://github.com/mkschulze/JamWide/issues).
 
 <div class="download-section">
-  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.7" class="btn btn-primary btn-large">
-    Download v1.1-beta.20.7 (macOS Universal)
+  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.8" class="btn btn-primary btn-large">
+    Download v1.1-beta.20.8 (macOS + Windows)
   </a>
-  <p class="version-info">macOS Universal (Apple Silicon + Intel) — Windows + Linux next beta</p>
+  <p class="version-info">macOS Universal (Apple Silicon + Intel) / Windows x64 — Linux next beta</p>
 </div>
+
+> macOS binary is Developer-ID signed + notarized (Gatekeeper-friendly). Windows binary is unsigned — SmartScreen will show "More info → Run anyway" on first launch.
 
 ---
 
-## Last Cross-Platform Beta — v1.1-beta.20.5
+## Linux — use v1.1-beta.20.5 for now
 
-If you're on Windows or Linux, use this older beta until the next cross-platform tag lands. macOS users — prefer v1.1-beta.20.7 above; it has the new native video stack + variant-C freeze fix + Javier's encoder fixes.
+If you're on Linux, use the older cross-platform beta until the next tag lands the camera-code conditional. v1.1-beta.20.8 ships macOS + Windows only.
 
 <div class="download-section">
   <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.5" class="btn btn-large">
-    Download v1.1-beta.20.5
+    Download v1.1-beta.20.5 (Linux x64)
   </a>
-  <p class="version-info">macOS (Universal) / Windows (x64) / Linux (x64)</p>
+  <p class="version-info">Linux x64 — last cross-platform beta with Linux build</p>
 </div>
 
 ---

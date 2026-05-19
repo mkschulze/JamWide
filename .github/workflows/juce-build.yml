@@ -153,12 +153,24 @@ jobs:
           rm -f "$NOTARIZE_KEY_PATH"
 
       - name: Package artifacts
+        # IMPORTANT — use `cp -R` (capital R), NOT `cp -r`. On macOS 14+
+        # BSD cp treats lowercase `-r` as `-RL`, which dereferences
+        # symlinks. The vendored ffmpeg dylibs are bundled with version-
+        # alias symlinks (libavcodec.61.dylib -> libavcodec.61.19.101.dylib)
+        # that libavformat depends on, and codesign+notarize seal the
+        # bundle expecting <symlink> entries in _CodeSignature/CodeResources.
+        # `cp -r` flattens symlinks into duplicate files, breaking the seal
+        # AFTER notarization+stapling. Result: spctl rejects with "a sealed
+        # resource is missing or invalid" and macOS Gatekeeper shows
+        # the bundle as "damaged" — exactly the v1.1-beta.20.10 launch
+        # failure on Apple Silicon. `cp -R` preserves symlinks (verified
+        # empirically against the macos-14 runner).
         run: |
           mkdir -p staging
-          cp -r "build/JamWideJuce_artefacts/Release/VST3/JamWide.vst3" staging/
-          cp -r "build/JamWideJuce_artefacts/Release/AU/JamWide.component" staging/
-          cp -r "build/JamWideJuce_artefacts/Release/CLAP/JamWide.clap" staging/
-          cp -r "build/JamWideJuce_artefacts/Release/Standalone/JamWide.app" staging/
+          cp -R "build/JamWideJuce_artefacts/Release/VST3/JamWide.vst3" staging/
+          cp -R "build/JamWideJuce_artefacts/Release/AU/JamWide.component" staging/
+          cp -R "build/JamWideJuce_artefacts/Release/CLAP/JamWide.clap" staging/
+          cp -R "build/JamWideJuce_artefacts/Release/Standalone/JamWide.app" staging/
           cd staging && tar czf ../JamWide-macOS.tar.gz .
 
       - name: Upload macOS artifacts

@@ -7,9 +7,9 @@ title: Download
 
 ---
 
-## Latest Beta — v1.1-beta.20.10 (macOS Universal + Windows x64)
+## Latest Beta — v1.1-beta.20.11 (macOS Universal + Windows x64)
 
-**Critical fix release.** v1.1-beta.20.8 crashed on launch on every macOS user's machine because the ffmpeg dylibs weren't bundled inside the `.app` / `.vst3` / `.component` / `.clap` — the binaries pointed at the GitHub Actions runner's build path. v1.1-beta.20.10 ships dylibs inside each bundle's `Contents/Frameworks/` and uses `@loader_path` so they resolve anywhere.
+**Critical fix release.** v1.1-beta.20.8 crashed on launch on every macOS user's machine because the ffmpeg dylibs weren't bundled inside the `.app` / `.vst3` / `.component` / `.clap` — the binaries pointed at the GitHub Actions runner's build path. v1.1-beta.20.11 ships dylibs inside each bundle's `Contents/Frameworks/` and uses `@loader_path` so they resolve anywhere.
 
 **Highlights (carried over from beta.20.8):**
 - Native webcam capture + H.264 broadcast/receive in standalone and DAW-hosted plugin
@@ -21,8 +21,8 @@ title: Download
 **This is beta software** — report issues on [GitHub](https://github.com/mkschulze/JamWide/issues).
 
 <div class="download-section">
-  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.10" class="btn btn-primary btn-large">
-    Download v1.1-beta.20.10 (macOS + Windows)
+  <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.11" class="btn btn-primary btn-large">
+    Download v1.1-beta.20.11 (macOS + Windows)
   </a>
   <p class="version-info">macOS Universal (Apple Silicon + Intel) / Windows x64 — Linux next beta</p>
 </div>
@@ -33,7 +33,7 @@ title: Download
 
 ## Linux — use v1.1-beta.20.5 for now
 
-If you're on Linux, use the older cross-platform beta until the next tag lands the camera-code conditional. v1.1-beta.20.10 ships macOS + Windows only.
+If you're on Linux, use the older cross-platform beta until the next tag lands the camera-code conditional. v1.1-beta.20.11 ships macOS + Windows only.
 
 <div class="download-section">
   <a href="https://github.com/mkschulze/JamWide/releases/tag/v1.1-beta.20.5" class="btn btn-large">

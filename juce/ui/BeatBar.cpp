@@ -58,7 +58,7 @@ void BeatBar::paint(juce::Graphics& g)
         auto bpmArea = labelArea.removeFromLeft(36);
         g.setColour(textCol);
         g.setFont(numberFont);
-        g.drawText(juce::String(static_cast<int>(currentBpm_)), bpmArea,
+        g.drawText(juce::String(static_cast<int>(std::round(currentBpm_))), bpmArea,
                    juce::Justification::centredRight, false);
 
         // Separator "/"
@@ -158,7 +158,7 @@ void BeatBar::mouseDown(const juce::MouseEvent& e)
 void BeatBar::createVoteEditor(bool forBpm)
 {
     editingBpm_ = forBpm;
-    int currentVal = forBpm ? static_cast<int>(currentBpm_) : bpi_;
+    int currentVal = forBpm ? static_cast<int>(std::round(currentBpm_)) : bpi_;
 
     // Create TextEditor overlay
     voteEditor_ = std::make_unique<juce::TextEditor>();
@@ -188,7 +188,7 @@ void BeatBar::createVoteEditor(bool forBpm)
 
         if (valid && processorRef_)
         {
-            int existingVal = editingBpm_ ? static_cast<int>(currentBpm_) : bpi_;
+            int existingVal = editingBpm_ ? static_cast<int>(std::round(currentBpm_)) : bpi_;
             if (newVal != existingVal)
             {
                 jamwide::SendChatCommand cmd;

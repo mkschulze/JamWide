@@ -603,12 +603,12 @@ void ConnectionBar::handleSyncClick()
             return;
         }
 
-        if (static_cast<int>(hostBpm) != static_cast<int>(serverBpm))
+        if (static_cast<int>(std::round(hostBpm)) != static_cast<int>(std::round(serverBpm)))
         {
             // BPM mismatch -- show bubble per UI-SPEC
-            juce::String msg = "Host tempo (" + juce::String(static_cast<int>(hostBpm))
+            juce::String msg = "Host tempo (" + juce::String(static_cast<int>(std::round(hostBpm)))
                 + " BPM) does not match server ("
-                + juce::String(static_cast<int>(serverBpm)) + " BPM)";
+                + juce::String(static_cast<int>(std::round(serverBpm))) + " BPM)";
             syncMismatchBubble = std::make_unique<juce::BubbleMessageComponent>(3000);
             addChildComponent(syncMismatchBubble.get());  // MUST come before showAt (review fix)
             syncMismatchBubble->showAt(&syncButton,

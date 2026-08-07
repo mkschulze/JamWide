@@ -477,15 +477,15 @@ void NinjamRunThread::detectBpmBpiChanges(NJClient* client)
     }
 
     // Detect BPM change
-    if (prevBpm > 0.0f && static_cast<int>(prevBpm) != static_cast<int>(newBpm))
+    if (prevBpm > 0.0f && static_cast<int>(std::round(prevBpm)) != static_cast<int>(std::round(newBpm)))
     {
         processor.evt_queue.try_push(jamwide::BpmChangedEvent{prevBpm, newBpm});
 
         ChatMessage msg;
         msg.type = ChatMessageType::System;
         msg.content = "[Server] BPM changed from "
-                      + std::to_string(static_cast<int>(prevBpm))
-                      + " to " + std::to_string(static_cast<int>(newBpm));
+                      + std::to_string(static_cast<int>(std::round(prevBpm)))
+                      + " to " + std::to_string(static_cast<int>(std::round(newBpm)));
         msg.timestamp = currentTimeString();
         processor.chat_queue.try_push(std::move(msg));
 
